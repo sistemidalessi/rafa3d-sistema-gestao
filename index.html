@@ -226,6 +226,7 @@ async function checkSession() {
 function renderLoginScreen(errorMsg) {
   document.getElementById('appRoot').classList.add('hidden');
   const el = document.getElementById('authScreen');
+  el.classList.remove('hidden');
   el.innerHTML =
     '<div class="auth-card">' +
       '<img class="auth-logo" src="catalogo/assets/logo_clean.png" alt="Rafa 3D">' +
@@ -267,7 +268,9 @@ async function enterApp() {
     return;
   }
   currentProfile = profileR.data;
-  document.getElementById('authScreen').innerHTML = '';
+  const authEl = document.getElementById('authScreen');
+  authEl.classList.add('hidden');
+  authEl.innerHTML = '';
   document.getElementById('appRoot').classList.remove('hidden');
   const roleLabel = currentProfile.role === 'owner' ? 'dono(a)' : 'ajudante';
   document.getElementById('whoLabel').innerHTML =
