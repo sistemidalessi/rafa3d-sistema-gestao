@@ -689,25 +689,430 @@ async function salvarPagamento(orderId) {
 /* ============================================================
    FILA DE IMPRESSÃO
    ============================================================ */
+const FILA_STATUSES = ['recebido', 'orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir'];
+
 async function renderFila() {
   const el = document.getElementById('tab-fila');
-  emptyState(el, 'Fila de impressão por máquina, com baixa automática de filamento — Fase 4.');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+
+  const items = await q(SUPA.from('order_line_items')
+    .select('*, orders(order_number, customers(name)), products(name)')
+    .in('line_status', FILA_STATUSES)
+    .order('created_at'));
+  const impressoras = await getImpressorasSafe();
+
+  const grupos = {};
+  const semImpressora = [];
+  impressoras.forEach((p) => { grupos[p.id] = { nome: p.name, itens: [] }; });
+  items.forEach((it) => {
+    if (it.printer_id && grupos[it.printer_id]) grupos[it.printer_id].itens.push(it);
+    else semImpressora.push(it);
+  });
+
+  let html = '';
+  html += renderGrupoFila('📥 Sem impressora atribuída', null, semImpressora, impressoras);
+  impressoras.forEach((p) => {
+    html += renderGrupoFila('🖨️ ' + p.name, p.id, grupos[p.id].itens, impressoras);
+  });
+  el.innerHTML = html || '<div class="card"><div class="empty">Fila vazia — nenhum item em produção agora.</div></div>';
+}
+
+function renderGrupoFila(titulo, printerId, itens, impressoras) {
+  let html = '<div class="card">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+  html += '<strong>' + titulo + '</strong><span style="color:var(--muted); font-size:12px;">' + itens.length + ' item(ns)</span>';
+  html += '</div>';
+  if (itens.length === 0) {
+    html += '<div class="empty">Nada por aqui.</div>';
+  } else {
+    html += '<table><tr><th>Pedido</th><th>Item</th><th>Qtd</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
+    itens.forEach((it) => {
+      const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+      html += '<tr>';
+      html += '<td>' + escapeHtml(it.orders ? (it.orders.order_number || '') : '') + '<br><span style="color:var(--muted);font-size:11px;">' + escapeHtml(it.orders && it.orders.customers ? it.orders.customers.name : '') + '</span></td>';
+      html += '<td>' + escapeHtml(nome) + '</td>';
+      html += '<td>' + it.quantity + '</td>';
+      html += '<td id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</td>';
+      html += '<td><select onchange="atribuirImpressora(\'' + it.id + '\', this.value)">';
+      html += '<option value="">— nenhuma —</option>';
+      impressoras.forEach((p) => { html += '<option value="' + p.id + '"' + (p.id === printerId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>'; });
+      html += '</select></td>';
+      html += '<td><select onchange="mudarStatusFilaItem(\'' + it.id + '\', this.value)">';
+      Object.keys(LINE_STATUS_LABELS).forEach((k) => {
+        html += '<option value="' + k + '"' + (k === it.line_status ? ' selected' : '') + '>' + LINE_STATUS_LABELS[k] + '</option>';
+      });
+      html += '</select></td>';
+      html += '<td class="row-actions">';
+      html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">Concluir</button>';
+      if (it.line_status === 'falhou_reimprimir') {
+        html += '<button class="btn ghost" onclick="reimprimirItem(\'' + it.id + '\')">Reimprimir</button>';
+      } else {
+        html += '<button class="btn ghost" onclick="openMarcarFalha(\'' + it.id + '\')">Falhou</button>';
+      }
+      html += '</td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+  }
+  html += '</div>';
+  // preenche a cor solicitada de forma assíncrona (usa a lista segura de cores)
+  setTimeout(() => preencherCoresFila(itens), 0);
+  return html;
+}
+
+async function preencherCoresFila(itens) {
+  if (!itens.length) return;
+  const cores = await getFilamentosSafe();
+  itens.forEach((it) => {
+    const el = document.getElementById('cor-' + it.id);
+    if (!el) return;
+    const cor = cores.find((c) => c.id === it.requested_filament_color_id);
+    el.textContent = cor ? cor.name : '—';
+  });
+}
+
+async function atribuirImpressora(itemId, printerId) {
+  const { error } = await SUPA.from('order_line_items').update({ printer_id: printerId || null, updated_at: new Date().toISOString() }).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Impressora atualizada.');
+  await renderFila();
+}
+
+async function mudarStatusFilaItem(itemId, novoStatus) {
+  const { error } = await SUPA.from('order_line_items').update({ line_status: novoStatus, updated_at: new Date().toISOString() }).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Status atualizado.');
+  await renderFila();
+}
+
+async function openConcluirImpressao(itemId) {
+  const item = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
+  let gramasEstimado = '';
+  if (item.product_id) {
+    const receita = await q(SUPA.from('product_recipes').select('estimated_grams').eq('product_id', item.product_id).maybeSingle());
+    if (receita) gramasEstimado = receita.estimated_grams;
+  }
+  const cores = await getFilamentosSafe();
+  const spools = await getSpools(true);
+  const corAlvo = item.requested_filament_color_id;
+  const spoolsDaCor = spools.filter((s) => (!corAlvo || s.color_id === corAlvo) && s.status !== 'empty');
+  let options = '<option value="">— selecione o rolo —</option>';
+  spoolsDaCor.forEach((s) => {
+    const cor = cores.find((c) => c.id === s.color_id);
+    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
+  });
+  openModal(
+    '<h3>Concluir impressão</h3>' +
+    '<label>Rolo usado</label><select id="ccSpool">' + options + '</select>' +
+    '<label>Gramas usadas</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Confirmar</button>' +
+    '</div>'
+  );
+}
+
+async function salvarConclusaoImpressao(itemId) {
+  const spoolId = document.getElementById('ccSpool').value;
+  const gramas = parseFloat(document.getElementById('ccGramas').value);
+  if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
+  if (isNaN(gramas) || gramas <= 0) { toast('Preenche as gramas usadas.'); return; }
+  const { error: e1 } = await SUPA.rpc('consume_filament', {
+    p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramas, p_reason: 'print_job_consumption',
+  });
+  if (e1) { toast('Erro: ' + e1.message); return; }
+  const { error: e2 } = await SUPA.from('order_line_items').update({
+    filament_spool_id: spoolId, grams_used_actual: gramas, line_status: 'pos_processamento', updated_at: new Date().toISOString(),
+  }).eq('id', itemId);
+  if (e2) { toast('Erro: ' + e2.message); return; }
+  closeModal();
+  toast('Impressão concluída, estoque atualizado.');
+  await renderFila();
+}
+
+async function openMarcarFalha(itemId) {
+  const cores = await getFilamentosSafe();
+  const spools = await getSpools(true);
+  let options = '<option value="">— sem perda de material —</option>';
+  spools.filter((s) => s.status !== 'empty').forEach((s) => {
+    const cor = cores.find((c) => c.id === s.color_id);
+    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
+  });
+  openModal(
+    '<h3>Marcar impressão como falhou</h3>' +
+    '<label>Rolo usado (se perdeu material)</label><select id="mfSpool">' + options + '</select>' +
+    '<label>Gramas perdidas</label><input id="mfGramas" type="number" step="0.1" value="0">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn secondary" onclick="salvarFalha(\'' + itemId + '\')">Confirmar falha</button>' +
+    '</div>'
+  );
+}
+
+async function salvarFalha(itemId) {
+  const spoolId = document.getElementById('mfSpool').value;
+  const gramas = parseFloat(document.getElementById('mfGramas').value) || 0;
+  if (spoolId && gramas > 0) {
+    const { error: e1 } = await SUPA.rpc('consume_filament', {
+      p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramas, p_reason: 'waste_failed_print',
+    });
+    if (e1) { toast('Erro: ' + e1.message); return; }
+  }
+  const { error: e2 } = await SUPA.from('order_line_items').update({ line_status: 'falhou_reimprimir', updated_at: new Date().toISOString() }).eq('id', itemId);
+  if (e2) { toast('Erro: ' + e2.message); return; }
+  closeModal();
+  toast('Marcado como falha. Use "Reimprimir" quando quiser gerar uma nova tentativa.');
+  await renderFila();
+}
+
+async function reimprimirItem(itemId) {
+  const original = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
+  const novo = {
+    order_id: original.order_id, line_type: original.line_type, product_id: original.product_id,
+    custom_description: original.custom_description, custom_reference_image_path: original.custom_reference_image_path,
+    custom_reference_link: original.custom_reference_link, requested_filament_color_id: original.requested_filament_color_id,
+    quantity: original.quantity, unit_price: 0, unit_cost_estimate: original.unit_cost_estimate,
+    line_status: 'fila_impressao', printer_id: original.printer_id, reprint_of_line_item_id: original.id,
+  };
+  const { error } = await SUPA.from('order_line_items').insert([novo]);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Reimpressão criada e adicionada à fila (sem cobrar de novo do cliente).');
+  await renderFila();
 }
 
 /* ============================================================
    FILAMENTOS
    ============================================================ */
+let filamentosCache = [];
+let spoolsCache = [];
+async function getFilamentos(force) {
+  if (filamentosCache.length && !force) return filamentosCache;
+  filamentosCache = await q(SUPA.from('filament_colors').select('*').order('name'));
+  return filamentosCache;
+}
+async function getSpools(force) {
+  if (spoolsCache.length && !force) return spoolsCache;
+  spoolsCache = await q(SUPA.from('filament_spools').select('*').order('purchased_at', { ascending: false }));
+  return spoolsCache;
+}
+// versão sem custo/kg, pra popular seletor de cor em telas que ajudante também acessa (Fila, itens de pedido)
+async function getFilamentosSafe() {
+  return await q(SUPA.rpc('filament_colors_safe'));
+}
+
+function estoquePorCor(colorId) {
+  return spoolsCache.filter((s) => s.color_id === colorId && s.status !== 'empty')
+    .reduce((sum, s) => sum + Number(s.remaining_weight_g), 0);
+}
+
 async function renderFilamentos() {
   const el = document.getElementById('tab-filamentos');
-  emptyState(el, 'Cadastro de cores, rolos e custo por kg — Fase 4.');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  const cores = await getFilamentos(true);
+  await getSpools(true);
+
+  let html = '<div class="card">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+  html += '<strong>' + cores.length + ' cores de filamento</strong>';
+  html += '<button class="btn" onclick="openFilamentoForm()">+ Nova cor</button>';
+  html += '</div>';
+  if (cores.length === 0) {
+    html += '<div class="empty">Nenhuma cor cadastrada ainda.</div>';
+  } else {
+    html += '<table><tr><th></th><th>Cor</th><th>Material</th><th>Estoque</th><th>Custo/kg</th><th></th></tr>';
+    cores.forEach((c) => {
+      const estoqueG = estoquePorCor(c.id);
+      const baixo = estoqueG <= c.low_stock_threshold_g;
+      html += '<tr>';
+      html += '<td><span style="display:inline-block; width:22px; height:22px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.1);"></span></td>';
+      html += '<td>' + escapeHtml(c.name) + (c.active ? '' : ' <span style="color:var(--muted);font-size:11px;">(inativa)</span>') + '</td>';
+      html += '<td>' + escapeHtml(c.material) + '</td>';
+      html += '<td><span class="badge ' + (baixo ? 'off' : 'on') + '">' + estoqueG.toFixed(0) + ' g' + (baixo ? ' · baixo!' : '') + '</span></td>';
+      html += '<td>' + fmtMoney(c.cost_per_kg) + '</td>';
+      html += '<td class="row-actions">';
+      html += '<button class="btn ghost" onclick="openFilamentoForm(\'' + c.id + '\')">Editar</button>';
+      html += '<button class="btn ghost" onclick="openSpoolForm(\'' + c.id + '\')">+ Rolo</button>';
+      html += '<button class="btn ghost" onclick="toggleSpoolsList(\'' + c.id + '\')">Rolos</button>';
+      html += '</td>';
+      html += '</tr>';
+      html += '<tr id="spools-' + c.id + '" class="hidden"><td colspan="6">' + renderSpoolsMini(c.id) + '</td></tr>';
+    });
+    html += '</table>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function renderSpoolsMini(colorId) {
+  const spools = spoolsCache.filter((s) => s.color_id === colorId);
+  if (spools.length === 0) return '<div class="empty">Nenhum rolo cadastrado pra essa cor.</div>';
+  let html = '<table style="font-size:12px;"><tr><th>Comprado em</th><th>Inicial</th><th>Restante</th><th>Status</th></tr>';
+  spools.forEach((s) => {
+    html += '<tr><td>' + fmtDate(s.purchased_at) + '</td><td>' + Number(s.initial_weight_g).toFixed(0) + ' g</td>';
+    html += '<td>' + Number(s.remaining_weight_g).toFixed(0) + ' g</td><td>' + escapeHtml(s.status) + '</td></tr>';
+  });
+  html += '</table>';
+  return html;
+}
+
+function toggleSpoolsList(colorId) {
+  document.getElementById('spools-' + colorId).classList.toggle('hidden');
+}
+
+function openFilamentoForm(id) {
+  const c = id ? filamentosCache.find((x) => x.id === id) : null;
+  openModal(
+    '<h3>' + (c ? 'Editar cor' : 'Nova cor de filamento') + '</h3>' +
+    '<label>Nome</label><input id="flNome" value="' + (c ? escapeHtml(c.name) : '') + '" placeholder="Ex: Azul Céu">' +
+    '<label>Material</label><input id="flMaterial" value="' + (c ? escapeHtml(c.material) : 'PLA') + '">' +
+    '<label>Cor (CSS, ex: #4db8d4)</label><input id="flCor" value="' + (c ? escapeHtml(c.hex_or_gradient || '') : '') + '">' +
+    '<label>Custo por kg (R$)</label><input id="flCusto" type="number" step="0.01" value="' + (c ? c.cost_per_kg : 0) + '">' +
+    '<label>Alerta de estoque baixo (gramas)</label><input id="flLimite" type="number" value="' + (c ? c.low_stock_threshold_g : 200) + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="saveFilamento(' + (c ? "'" + id + "'" : 'null') + ')">Salvar</button>' +
+    '</div>'
+  );
+}
+
+async function saveFilamento(id) {
+  const name = document.getElementById('flNome').value.trim();
+  const material = document.getElementById('flMaterial').value.trim() || 'PLA';
+  const hex_or_gradient = document.getElementById('flCor').value.trim() || null;
+  const cost_per_kg = parseFloat(document.getElementById('flCusto').value) || 0;
+  const low_stock_threshold_g = parseFloat(document.getElementById('flLimite').value) || 200;
+  if (!name) { toast('Preenche o nome da cor.'); return; }
+  const payload = { name, material, hex_or_gradient, cost_per_kg, low_stock_threshold_g };
+  const { error } = id
+    ? await SUPA.from('filament_colors').update(payload).eq('id', id)
+    : await SUPA.from('filament_colors').insert([payload]);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Cor salva.');
+  await renderFilamentos();
+}
+
+function openSpoolForm(colorId) {
+  const c = filamentosCache.find((x) => x.id === colorId);
+  openModal(
+    '<h3>Novo rolo — ' + escapeHtml(c.name) + '</h3>' +
+    '<label>Peso inicial (gramas)</label><input id="spPeso" type="number" value="1000">' +
+    '<label>Valor pago (R$)</label><input id="spCusto" type="number" step="0.01" value="' + (c.cost_per_kg || 0) + '">' +
+    '<label>Fornecedor</label><input id="spFornecedor">' +
+    '<label>Data da compra</label><input id="spData" type="date" value="' + todayISO() + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="saveSpool(\'' + colorId + '\')">Adicionar rolo</button>' +
+    '</div>'
+  );
+}
+
+async function saveSpool(colorId) {
+  const initial_weight_g = parseFloat(document.getElementById('spPeso').value);
+  const cost_paid = parseFloat(document.getElementById('spCusto').value) || null;
+  const supplier = document.getElementById('spFornecedor').value.trim() || null;
+  const purchased_at = document.getElementById('spData').value || null;
+  if (isNaN(initial_weight_g) || initial_weight_g <= 0) { toast('Preenche o peso do rolo.'); return; }
+  const { error } = await SUPA.rpc('add_filament_spool', {
+    p_color_id: colorId, p_initial_weight_g: initial_weight_g, p_cost_paid: cost_paid, p_supplier: supplier, p_purchased_at: purchased_at,
+  });
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Rolo adicionado.');
+  await renderFilamentos();
 }
 
 /* ============================================================
    IMPRESSORAS
    ============================================================ */
+let impressorasCache = [];
+async function getImpressoras(force) {
+  if (impressorasCache.length && !force) return impressorasCache;
+  impressorasCache = await q(SUPA.from('printers').select('*').order('name'));
+  return impressorasCache;
+}
+// versão sem custo/hora, pra popular seletor de impressora em telas que ajudante também acessa (Fila)
+async function getImpressorasSafe() {
+  return await q(SUPA.rpc('printers_safe'));
+}
+
 async function renderImpressoras() {
   const el = document.getElementById('tab-impressoras');
-  emptyState(el, 'Cadastro de impressoras e custo por hora — Fase 4.');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  const impressoras = await getImpressoras(true);
+  let html = '<div class="card">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
+  html += '<strong>' + impressoras.length + ' impressoras</strong>';
+  html += '<button class="btn" onclick="openImpressoraForm()">+ Nova impressora</button>';
+  html += '</div>';
+  if (impressoras.length === 0) {
+    html += '<div class="empty">Nenhuma impressora cadastrada ainda.</div>';
+  } else {
+    html += '<table><tr><th>Nome</th><th>Modelo</th><th>Potência</th><th>Custo/hora</th><th>Status</th><th></th></tr>';
+    impressoras.forEach((p) => {
+      html += '<tr>';
+      html += '<td>' + escapeHtml(p.name) + '</td>';
+      html += '<td>' + escapeHtml(p.model || '—') + '</td>';
+      html += '<td>' + (p.power_watts ? p.power_watts + ' W' : '—') + '</td>';
+      html += '<td>' + (p.hourly_cost != null ? fmtMoney(p.hourly_cost) : '—') + '</td>';
+      html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativa' : 'Inativa') + '</span></td>';
+      html += '<td class="row-actions"><button class="btn ghost" onclick="openImpressoraForm(\'' + p.id + '\')">Editar</button></td>';
+      html += '</tr>';
+    });
+    html += '</table>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+}
+
+function openImpressoraForm(id) {
+  const p = id ? impressorasCache.find((x) => x.id === id) : null;
+  const watts = p ? (p.power_watts || 0) : 150;
+  const preco = p ? (p.energy_price_per_kwh || 1.20) : 1.20;
+  openModal(
+    '<h3>' + (p ? 'Editar impressora' : 'Nova impressora') + '</h3>' +
+    '<label>Nome</label><input id="ipNome" value="' + (p ? escapeHtml(p.name) : '') + '" placeholder="Ex: Bambu Lab A1">' +
+    '<label>Modelo</label><input id="ipModelo" value="' + (p ? escapeHtml(p.model || '') : '') + '">' +
+    '<label>Potência média durante impressão (W)</label><input id="ipPotencia" type="number" step="1" value="' + watts + '" oninput="atualizarCustoHoraImpressora()">' +
+    '<div style="color:var(--muted); font-size:11px; margin-top:-2px;">Use a média real de consumo, não o pico do fabricante (aquecedores ciclam ligado/desligado).</div>' +
+    '<label>Preço da energia (R$/kWh)</label><input id="ipPrecoEnergia" type="number" step="0.01" value="' + preco + '" oninput="atualizarCustoHoraImpressora()">' +
+    '<label>Custo por hora (calculado)</label><input id="ipCustoCalculado" type="text" value="" disabled style="background:#f3f4f7;">' +
+    '<label>Status</label>' +
+    '<select id="ipAtiva"><option value="true"' + (!p || p.active ? ' selected' : '') + '>Ativa</option><option value="false"' + (p && !p.active ? ' selected' : '') + '>Inativa</option></select>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="saveImpressora(' + (p ? "'" + id + "'" : 'null') + ')">Salvar</button>' +
+    '</div>'
+  );
+  atualizarCustoHoraImpressora();
+}
+
+function calcularCustoHoraImpressora() {
+  const watts = parseFloat(document.getElementById('ipPotencia').value) || 0;
+  const preco = parseFloat(document.getElementById('ipPrecoEnergia').value) || 0;
+  return (watts / 1000) * preco;
+}
+
+function atualizarCustoHoraImpressora() {
+  document.getElementById('ipCustoCalculado').value = fmtMoney(calcularCustoHoraImpressora()) + ' / hora';
+}
+
+async function saveImpressora(id) {
+  const name = document.getElementById('ipNome').value.trim();
+  const model = document.getElementById('ipModelo').value.trim();
+  const power_watts = parseFloat(document.getElementById('ipPotencia').value) || null;
+  const energy_price_per_kwh = parseFloat(document.getElementById('ipPrecoEnergia').value) || null;
+  const hourly_cost = calcularCustoHoraImpressora();
+  const active = document.getElementById('ipAtiva').value === 'true';
+  if (!name) { toast('Preenche o nome da impressora.'); return; }
+  const payload = { name, model: model || null, power_watts, energy_price_per_kwh, hourly_cost, active };
+  const { error } = id
+    ? await SUPA.from('printers').update(payload).eq('id', id)
+    : await SUPA.from('printers').insert([payload]);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Impressora salva.');
+  await renderImpressoras();
 }
 
 /* ============================================================
@@ -733,11 +1138,33 @@ async function getProdutos(force) {
   return produtosCache;
 }
 
+let receitasCache = [];
+async function getReceitas(force) {
+  if (receitasCache.length && !force) return receitasCache;
+  receitasCache = await q(SUPA.from('product_recipes').select('*'));
+  return receitasCache;
+}
+
+function calcularCustoReceita(receita) {
+  if (!receita) return null;
+  const cor = filamentosCache.find((c) => c.id === receita.filament_color_id);
+  const impressora = impressorasCache.find((p) => p.id === receita.printer_id);
+  const custoMaterial = cor ? (receita.estimated_grams / 1000) * cor.cost_per_kg : 0;
+  const custoMaquina = impressora && impressora.hourly_cost ? receita.estimated_print_hours * impressora.hourly_cost : 0;
+  const custoMaoObra = receita.post_processing_labor_rate ? (receita.post_processing_minutes / 60) * receita.post_processing_labor_rate : 0;
+  return {
+    custoMaterial, custoMaquina, custoMaoObra,
+    total: custoMaterial + custoMaquina + custoMaoObra,
+    corFaltando: !cor, impressoraFaltando: !impressora,
+  };
+}
+
 async function renderProdutos() {
   const el = document.getElementById('tab-produtos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
   const produtos = await getProdutos(true);
   const isOwner = currentProfile && currentProfile.role === 'owner';
+  if (isOwner) { await getReceitas(true); await getFilamentos(); await getImpressoras(); }
 
   let html = '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
@@ -746,7 +1173,7 @@ async function renderProdutos() {
   if (produtos.length === 0) {
     html += '<div class="empty">Nenhum produto importado ainda.</div>';
   } else {
-    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th><th>Status</th>' + (isOwner ? '<th></th>' : '') + '</tr>';
+    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Custo</th><th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th></th>' : '') + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
       html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
@@ -754,9 +1181,23 @@ async function renderProdutos() {
       html += '<td>' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + '</td>';
       html += '<td>' + escapeHtml(p.name) + '</td>';
       html += '<td>' + fmtMoney(p.sale_price) + (p.price_unit_note ? ' <span style="color:var(--muted);font-size:11px;">' + escapeHtml(p.price_unit_note) + '</span>' : '') + '</td>';
+      if (isOwner) {
+        const receita = receitasCache.find((r) => r.product_id === p.id);
+        const custo = calcularCustoReceita(receita);
+        if (custo) {
+          const margemPct = p.sale_price > 0 ? ((p.sale_price - custo.total) / p.sale_price * 100) : 0;
+          html += '<td>' + fmtMoney(custo.total) + '</td>';
+          html += '<td><span class="badge ' + (margemPct >= 40 ? 'on' : 'off') + '">' + margemPct.toFixed(0) + '%</span></td>';
+        } else {
+          html += '<td colspan="2" style="color:var(--muted); font-size:12px;">sem receita cadastrada</td>';
+        }
+      }
       html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativo' : 'Inativo') + '</span></td>';
       if (isOwner) {
-        html += '<td class="row-actions"><button class="btn ghost" onclick="openProdutoForm(\'' + p.id + '\')">Editar</button></td>';
+        html += '<td class="row-actions">';
+        html += '<button class="btn ghost" onclick="openProdutoForm(\'' + p.id + '\')">Editar</button>';
+        html += '<button class="btn ghost" onclick="openCustoForm(\'' + p.id + '\')">Custo</button>';
+        html += '</td>';
       }
       html += '</tr>';
     });
@@ -764,6 +1205,69 @@ async function renderProdutos() {
   }
   html += '</div>';
   el.innerHTML = html;
+}
+
+function openCustoForm(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  const r = receitasCache.find((x) => x.product_id === productId) || {};
+  let coresOptions = '<option value="">— nenhuma —</option>';
+  filamentosCache.forEach((c) => { coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' + escapeHtml(c.name) + ' (' + fmtMoney(c.cost_per_kg) + '/kg)</option>'; });
+  let impOptions = '<option value="">— nenhuma —</option>';
+  impressorasCache.forEach((imp) => { impOptions += '<option value="' + imp.id + '"' + (imp.id === r.printer_id ? ' selected' : '') + '>' + escapeHtml(imp.name) + (imp.hourly_cost ? ' (' + fmtMoney(imp.hourly_cost) + '/h)' : '') + '</option>'; });
+
+  openModal(
+    '<h3>Custo — ' + escapeHtml(p.name) + '</h3>' +
+    '<label>Cor de filamento</label><select id="rcCor" oninput="atualizarCustoPreview()" onchange="atualizarCustoPreview()">' + coresOptions + '</select>' +
+    '<label>Impressora</label><select id="rcImpressora" oninput="atualizarCustoPreview()" onchange="atualizarCustoPreview()">' + impOptions + '</select>' +
+    '<label>Peso da peça (gramas)</label><input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="atualizarCustoPreview()">' +
+    '<label>Tempo de impressão (horas)</label><input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="atualizarCustoPreview()">' +
+    '<label>Pós-processamento (minutos)</label><input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="atualizarCustoPreview()">' +
+    '<label>Valor hora de mão de obra (R$)</label><input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="atualizarCustoPreview()">' +
+    '<div class="card" id="rcPreview" style="margin-top:14px; background:#f7f9fc;"></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="saveReceita(\'' + productId + '\', ' + (r.id ? "'" + r.id + "'" : 'null') + ')">Salvar</button>' +
+    '</div>'
+  );
+  atualizarCustoPreview();
+}
+
+function atualizarCustoPreview() {
+  const colorId = document.getElementById('rcCor').value;
+  const printerId = document.getElementById('rcImpressora').value;
+  const grams = parseFloat(document.getElementById('rcGramas').value) || 0;
+  const hours = parseFloat(document.getElementById('rcHoras').value) || 0;
+  const minutes = parseFloat(document.getElementById('rcMinutos').value) || 0;
+  const laborRate = parseFloat(document.getElementById('rcMaoObra').value) || 0;
+
+  const custo = calcularCustoReceita({
+    filament_color_id: colorId, printer_id: printerId, estimated_grams: grams,
+    estimated_print_hours: hours, post_processing_minutes: minutes, post_processing_labor_rate: laborRate,
+  });
+  const el = document.getElementById('rcPreview');
+  el.innerHTML =
+    '<div>Material: ' + fmtMoney(custo.custoMaterial) + '</div>' +
+    '<div>Máquina: ' + fmtMoney(custo.custoMaquina) + '</div>' +
+    '<div>Mão de obra: ' + fmtMoney(custo.custoMaoObra) + '</div>' +
+    '<div style="margin-top:6px; font-weight:700;">Custo total: ' + fmtMoney(custo.total) + '</div>';
+}
+
+async function saveReceita(productId, recipeId) {
+  const filament_color_id = document.getElementById('rcCor').value || null;
+  const printer_id = document.getElementById('rcImpressora').value || null;
+  const estimated_grams = parseFloat(document.getElementById('rcGramas').value);
+  const estimated_print_hours = parseFloat(document.getElementById('rcHoras').value);
+  const post_processing_minutes = parseFloat(document.getElementById('rcMinutos').value) || 0;
+  const post_processing_labor_rate = parseFloat(document.getElementById('rcMaoObra').value) || 0;
+  if (isNaN(estimated_grams) || isNaN(estimated_print_hours)) { toast('Preenche peso e tempo de impressão.'); return; }
+  const payload = { product_id: productId, filament_color_id, printer_id, estimated_grams, estimated_print_hours, post_processing_minutes, post_processing_labor_rate };
+  const { error } = recipeId
+    ? await SUPA.from('product_recipes').update(payload).eq('id', recipeId)
+    : await SUPA.from('product_recipes').insert([payload]);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Receita de custo salva.');
+  await renderProdutos();
 }
 
 function openProdutoForm(id) {

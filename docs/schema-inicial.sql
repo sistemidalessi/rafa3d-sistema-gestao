@@ -80,7 +80,9 @@ create table if not exists printers (
   name text not null,
   model text,
   active boolean not null default true,
-  hourly_cost numeric(10,2) -- R$/hora estimado (depreciação + energia), alimenta o cálculo de custo
+  power_watts numeric(10,2), -- potência média DURANTE a impressão (não o pico do fabricante), pra custo de energia realista
+  energy_price_per_kwh numeric(10,4) default 1.20, -- R$/kWh, ver conta de luz
+  hourly_cost numeric(10,2) -- calculado no app a partir de power_watts × energy_price_per_kwh; alimenta o cálculo de custo
 );
 
 -- ---------------------------------------------------------------------
@@ -117,6 +119,7 @@ create table if not exists product_recipes (
   id uuid primary key default gen_random_uuid(),
   product_id uuid not null references products(id) on delete cascade,
   filament_color_id uuid references filament_colors(id), -- null = cor qualquer, estimativa usa cor padrão
+  printer_id uuid references printers(id), -- qual impressora usar na estimativa de custo/hora
   estimated_grams numeric(10,2) not null,
   estimated_print_hours numeric(6,2) not null,
   post_processing_minutes numeric(6,2) not null default 0,
