@@ -396,7 +396,77 @@ function closeModal() {
    ============================================================ */
 async function renderDashboard() {
   const el = document.getElementById('tab-dashboard');
-  emptyState(el, 'Painel geral (pedidos em aberto, fila de impressão, estoque baixo) — chega na Fase 3/4.');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+  const isOwner = currentProfile && currentProfile.role === 'owner';
+
+  const orcamentosPendentes = await q(SUPA.from('order_line_items')
+    .select('*, orders(order_number, customers(name))')
+    .eq('line_status', 'orcamento_pendente')
+    .order('created_at'));
+  const filaCounts = await q(SUPA.from('order_line_items').select('line_status').in('line_status', ['fila_impressao', 'imprimindo', 'pos_processamento']));
+  const orders = await q(SUPA.from('orders').select('id, order_number, total_amount, customers(name)').neq('status', 'cancelado'));
+  const statuses = await q(SUPA.from('orders_payment_status').select('*'));
+  const statusById = {};
+  statuses.forEach((s) => { statusById[s.order_id] = s; });
+  const pendentesPagamento = orders.filter((o) => statusById[o.id] && statusById[o.id].payment_status !== 'quitado');
+  const aReceber = pendentesPagamento.reduce((sum, o) => sum + (o.total_amount - statusById[o.id].total_paid), 0);
+
+  const countFila = filaCounts.filter((i) => i.line_status === 'fila_impressao').length;
+  const countImprimindo = filaCounts.filter((i) => i.line_status === 'imprimindo').length;
+  const countPos = filaCounts.filter((i) => i.line_status === 'pos_processamento').length;
+
+  let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
+  html += statCard('🧾', orcamentosPendentes.length, 'Orçamentos pendentes');
+  html += statCard('🖨️', countFila + countImprimindo, 'Na fila / imprimindo');
+  html += statCard('🎨', countPos, 'Em pós-processamento');
+  html += statCard('💰', fmtMoney(aReceber), 'A receber');
+  html += '</div>';
+
+  if (orcamentosPendentes.length > 0) {
+    html += '<div class="card">';
+    html += '<strong>🧾 Orçamentos aguardando aprovação</strong>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Cliente</th><th>Item</th><th></th></tr>';
+    orcamentosPendentes.forEach((it) => {
+      html += '<tr>';
+      html += '<td>' + escapeHtml(it.orders ? it.orders.order_number || '' : '') + '</td>';
+      html += '<td>' + escapeHtml(it.orders && it.orders.customers ? it.orders.customers.name : '—') + '</td>';
+      html += '<td>' + escapeHtml(it.custom_description || '') + (it.custom_reference_link ? ' <a href="' + escapeHtml(it.custom_reference_link) + '" target="_blank" rel="noopener">🔗</a>' : '') + '</td>';
+      html += '<td class="row-actions">';
+      if (isOwner) html += '<button class="btn ghost" onclick="abrirPedido(\'' + it.order_id + '\'); showTab(\'pedidos\');">Abrir pedido</button>';
+      html += '</td></tr>';
+    });
+    html += '</table></div>';
+  }
+
+  if (isOwner) {
+    const cores = await getFilamentos();
+    await getSpools();
+    const baixos = cores.filter((c) => estoquePorCor(c.id) <= c.low_stock_threshold_g && c.active);
+    if (baixos.length > 0) {
+      html += '<div class="card">';
+      html += '<strong>🧵 Estoque de filamento baixo</strong>';
+      html += '<table style="margin-top:8px;"><tr><th>Cor</th><th>Estoque</th><th></th></tr>';
+      baixos.forEach((c) => {
+        html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + estoquePorCor(c.id).toFixed(0) + ' g</td>';
+        html += '<td class="row-actions"><button class="btn ghost" onclick="showTab(\'filamentos\')">Ver</button></td></tr>';
+      });
+      html += '</table></div>';
+    }
+  }
+
+  if (orcamentosPendentes.length === 0 && countFila + countImprimindo + countPos === 0 && pendentesPagamento.length === 0) {
+    html += '<div class="card"><div class="empty">Tudo em dia por aqui! 🎉</div></div>';
+  }
+
+  el.innerHTML = html;
+}
+
+function statCard(icon, valor, label) {
+  return '<div class="card" style="text-align:center; margin-bottom:0;">' +
+    '<div style="font-size:22px;">' + icon + '</div>' +
+    '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px; margin-top:4px;">' + valor + '</div>' +
+    '<div style="color:var(--muted); font-size:12px; margin-top:2px;">' + escapeHtml(label) + '</div>' +
+  '</div>';
 }
 
 /* ============================================================
@@ -530,11 +600,14 @@ async function renderPedidoDetalhe(id) {
   if (items.length === 0) {
     html += '<div class="empty">Nenhum item ainda.</div>';
   } else {
+    const isOwner = currentProfile && currentProfile.role === 'owner';
     html += '<table><tr><th>Item</th><th>Qtd</th><th>Preço</th><th>Status</th><th></th></tr>';
     items.forEach((it) => {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       html += '<tr>';
-      html += '<td>' + escapeHtml(nome) + (it.line_type === 'custom' ? ' <span style="color:var(--muted);font-size:11px;">(personalizado)</span>' : '') + '</td>';
+      html += '<td>' + escapeHtml(nome) + (it.line_type === 'custom' ? ' <span style="color:var(--muted);font-size:11px;">(personalizado)</span>' : '');
+      if (it.custom_reference_link) html += '<br><a href="' + escapeHtml(it.custom_reference_link) + '" target="_blank" rel="noopener" style="font-size:11px;">🔗 referência do cliente</a>';
+      html += '</td>';
       html += '<td>' + it.quantity + '</td>';
       html += '<td>' + fmtMoney(it.unit_price * it.quantity) + '</td>';
       html += '<td><select onchange="mudarStatusItem(\'' + it.id + '\', this.value, \'' + id + '\')">';
@@ -542,7 +615,12 @@ async function renderPedidoDetalhe(id) {
         html += '<option value="' + k + '"' + (k === it.line_status ? ' selected' : '') + '>' + LINE_STATUS_LABELS[k] + '</option>';
       });
       html += '</select></td>';
-      html += '<td class="row-actions"><button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + id + '\')">Remover</button></td>';
+      html += '<td class="row-actions">';
+      if (isOwner && it.line_status === 'orcamento_pendente') {
+        html += '<button class="btn" onclick="openAprovarOrcamento(\'' + it.id + '\', \'' + id + '\')">Definir preço e aprovar</button>';
+      }
+      html += '<button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + id + '\')">Remover</button>';
+      html += '</td>';
       html += '</tr>';
     });
     html += '</table>';
@@ -654,6 +732,35 @@ async function removerItem(itemId, orderId) {
   const { error } = await SUPA.from('order_line_items').delete().eq('id', itemId);
   if (error) { toast('Erro: ' + error.message); return; }
   await recalcularTotalPedido(orderId);
+  await renderPedidoDetalhe(orderId);
+}
+
+async function openAprovarOrcamento(itemId, orderId) {
+  const item = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
+  openModal(
+    '<h3>Definir preço e aprovar orçamento</h3>' +
+    '<p style="color:var(--muted); font-size:13px;">' + escapeHtml(item.custom_description || '') + '</p>' +
+    (item.custom_reference_link ? '<p><a href="' + escapeHtml(item.custom_reference_link) + '" target="_blank" rel="noopener">🔗 ver referência do cliente</a></p>' : '') +
+    '<label>Preço a cobrar (R$)</label><input id="apPreco" type="number" step="0.01" value="' + (item.unit_price || 0) + '">' +
+    '<label>Custo estimado (R$, opcional)</label><input id="apCusto" type="number" step="0.01" value="' + (item.unit_cost_estimate || '') + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="salvarAprovacaoOrcamento(\'' + itemId + '\', \'' + orderId + '\')">Aprovar e liberar pra fila</button>' +
+    '</div>'
+  );
+}
+
+async function salvarAprovacaoOrcamento(itemId, orderId) {
+  const unit_price = parseFloat(document.getElementById('apPreco').value);
+  const unit_cost_estimate = parseFloat(document.getElementById('apCusto').value) || null;
+  if (isNaN(unit_price) || unit_price <= 0) { toast('Preenche o preço.'); return; }
+  const { error } = await SUPA.from('order_line_items').update({
+    unit_price, unit_cost_estimate, line_status: 'orcamento_aprovado', updated_at: new Date().toISOString(),
+  }).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  await recalcularTotalPedido(orderId);
+  closeModal();
+  toast('Orçamento aprovado — já pode entrar na fila de impressão.');
   await renderPedidoDetalhe(orderId);
 }
 
