@@ -735,10 +735,15 @@ function abrirAnexarModeloProjeto(lineItemId) {
   );
 }
 
+function arquivoE3DValido(file) {
+  return /\.(stl|3mf)$/i.test(file.name);
+}
+
 async function uploadModeloProjeto(lineItemId) {
   const fileInput = document.getElementById('projModeloArquivo');
   const file = fileInput.files[0];
   if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
+  if (!arquivoE3DValido(file)) { toast('Esse arquivo não é .stl nem .3mf — se for a foto de referência, usa o botão "Anexar foto" em vez desse.'); return; }
   const path = 'projetos/' + lineItemId + '/' + file.name;
   const { error: upErr } = await SUPA.storage.from('modelos-3d').upload(path, file, { upsert: true });
   if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
@@ -1794,6 +1799,7 @@ async function uploadModelo3D(productId) {
   const fileInput = document.getElementById('md3dArquivo');
   const file = fileInput.files[0];
   if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
+  if (!arquivoE3DValido(file)) { toast('Esse arquivo não é .stl nem .3mf.'); return; }
   const path = p.catalog_code + '/' + file.name;
   const { error: upErr } = await SUPA.storage.from('modelos-3d').upload(path, file, { upsert: true });
   if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
