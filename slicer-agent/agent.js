@@ -1,6 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
-const { execFile, spawn } = require('child_process');
+const { execFile } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -265,8 +265,20 @@ async function abrirNoFatiador(product) {
     fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
 
     log('Abrindo "' + product.name + '" no fatiador...');
-    const child = spawn(SLICER_APP_PATH, [localPath], { detached: true, stdio: 'ignore' });
-    child.unref();
+    // Abre via um script PowerShell em vez de spawn direto: o agente roda em
+    // segundo plano, então a janela do fatiador nasceria atrás de tudo sem
+    // ninguém perceber — o script espera a janela existir e traz pra frente.
+    const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
+    const psResult = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript,
+        '-ExePath', SLICER_APP_PATH, '-FilePath', localPath,
+      ], { timeout: 30000, windowsHide: true }, (err, stdout, stderr) => {
+        resolve({ stdout: stdout || '', stderr: stderr || '', err });
+      });
+    });
+    if (psResult.err) throw new Error('não consegui abrir o fatiador: ' + (psResult.stderr || psResult.err.message).slice(0, 300));
+    log(psResult.stdout.trim() || 'fatiador aberto.');
 
     await supabase.from('products').update({ open_slicer_status: 'done', open_slicer_error: null }).eq('id', product.id);
     log('✅ "' + product.name + '" aberto no fatiador.');

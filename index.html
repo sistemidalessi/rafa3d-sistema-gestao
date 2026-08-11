@@ -392,6 +392,7 @@ function closeModal() {
   const root = document.getElementById('modalRoot');
   root.classList.remove('show');
   root.innerHTML = '';
+  _produtoGerenciarAberto = null;
 }
 
 /* ============================================================
@@ -1248,6 +1249,17 @@ async function getProdutos(force) {
   return produtosCache;
 }
 
+let produtosFiltroTexto = '';
+let produtosFiltroCategoria = '';
+function produtosFiltrados() {
+  const termo = produtosFiltroTexto.trim().toLowerCase();
+  return produtosCache.filter((p) => {
+    if (produtosFiltroCategoria && p.category !== produtosFiltroCategoria) return false;
+    if (!termo) return true;
+    return (p.name || '').toLowerCase().includes(termo) || (p.catalog_code || '').toLowerCase().includes(termo);
+  });
+}
+
 let receitasCache = [];
 async function getReceitas(force) {
   if (receitasCache.length && !force) return receitasCache;
@@ -1302,20 +1314,39 @@ function renderFatiamentoBtns(p) {
 }
 
 async function renderProdutos() {
-  const el = document.getElementById('tab-produtos');
-  const scrollY = window.scrollY;
-  const produtos = await getProdutos(true);
+  await getProdutos(true);
   const isOwner = currentProfile && currentProfile.role === 'owner';
   if (isOwner) { await getReceitas(true); await getFilamentos(); await getImpressoras(); }
+  desenharProdutos();
+}
+
+function onFiltroProdutosTexto(v) { produtosFiltroTexto = v; desenharProdutos(); }
+function onFiltroProdutosCategoria(v) { produtosFiltroCategoria = v; desenharProdutos(); }
+
+function desenharProdutos() {
+  const el = document.getElementById('tab-produtos');
+  if (!el) return;
+  const scrollY = window.scrollY;
+  const isOwner = currentProfile && currentProfile.role === 'owner';
+  const produtos = produtosFiltrados();
+
+  let opcoesCategoria = '<option value="">Todas as categorias</option>';
+  Object.keys(CATEGORY_LABELS).forEach((k) => {
+    opcoesCategoria += '<option value="' + k + '"' + (produtosFiltroCategoria === k ? ' selected' : '') + '>' + escapeHtml(CATEGORY_LABELS[k]) + '</option>';
+  });
 
   let html = '<div class="card">';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
-  html += '<strong>' + produtos.length + ' produtos</strong>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; gap:12px; flex-wrap:wrap;">';
+  html += '<strong>' + produtos.length + ' de ' + produtosCache.length + ' produtos</strong>';
+  html += '<div style="display:flex; gap:8px; flex:1; max-width:520px; min-width:240px;">';
+  html += '<input type="text" placeholder="🔍 Buscar por nome ou código..." value="' + escapeHtml(produtosFiltroTexto) + '" oninput="onFiltroProdutosTexto(this.value)" style="flex:1;">';
+  html += '<select onchange="onFiltroProdutosCategoria(this.value)" style="width:auto;">' + opcoesCategoria + '</select>';
+  html += '</div>';
   html += '</div>';
   if (produtos.length === 0) {
-    html += '<div class="empty">Nenhum produto importado ainda.</div>';
+    html += '<div class="empty">Nenhum produto encontrado' + (produtosFiltroTexto || produtosFiltroCategoria ? ' com esse filtro.' : ' ainda.') + '</div>';
   } else {
-    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Custo</th><th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th>Fatiamento</th><th></th>' : '') + '</tr>';
+    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th></th>' : '') + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
       html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
@@ -1328,21 +1359,14 @@ async function renderProdutos() {
         const custo = calcularCustoReceita(receita);
         if (custo) {
           const margemPct = p.sale_price > 0 ? ((p.sale_price - custo.total) / p.sale_price * 100) : 0;
-          html += '<td>' + fmtMoney(custo.total) + '</td>';
           html += '<td><span class="badge ' + (margemPct >= 40 ? 'on' : 'off') + '">' + margemPct.toFixed(0) + '%</span></td>';
         } else {
-          html += '<td colspan="2" style="color:var(--muted); font-size:12px;">sem receita cadastrada</td>';
+          html += '<td style="color:var(--muted); font-size:12px;">sem receita</td>';
         }
       }
       html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativo' : 'Inativo') + '</span></td>';
       if (isOwner) {
-        html += '<td>' + renderFatiamentoCell(p) + '</td>';
-        html += '<td class="row-actions">';
-        html += '<button class="btn ghost" onclick="openProdutoForm(\'' + p.id + '\')">Editar</button>';
-        html += '<button class="btn ghost" onclick="openCustoForm(\'' + p.id + '\')">Custo</button>';
-        html += '<button class="btn ghost" onclick="openModelo3DForm(\'' + p.id + '\')">' + (p.model_file_path ? '📦 Arquivo 3D' : '+ Arquivo 3D') + '</button>';
-        html += renderFatiamentoBtns(p);
-        html += '</td>';
+        html += '<td><button class="btn" onclick="abrirGerenciarProduto(\'' + p.id + '\')">⚙️ Gerenciar</button></td>';
       }
       html += '</tr>';
     });
@@ -1354,12 +1378,45 @@ async function renderProdutos() {
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
 
   clearTimeout(_fatiamentoPollTimer);
-  const emAndamento = produtos.some((p) =>
+  const emAndamento = produtosCache.some((p) =>
     p.open_slicer_status === 'queued' ||
     p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
-  if (emAndamento && document.getElementById('tab-produtos') && !document.getElementById('tab-produtos').classList.contains('hidden')) {
+  if (emAndamento && !el.classList.contains('hidden')) {
     _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
   }
+}
+
+let _produtoGerenciarAberto = null;
+function abrirGerenciarProduto(productId) {
+  _produtoGerenciarAberto = productId;
+  const p = produtosCache.find((x) => x.id === productId);
+  openModal(
+    '<div style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">' +
+      '<img src="catalogo/' + escapeHtml(p.image_path || '') + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">' +
+      '<div><h3 style="margin:0;">' + escapeHtml(p.name) + '</h3>' +
+      '<div style="font-size:12px; color:var(--muted);">' + escapeHtml(p.catalog_code) + ' · ' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + ' · ' + fmtMoney(p.sale_price) + '</div></div>' +
+    '</div>' +
+    '<div style="display:flex; flex-direction:column; gap:10px;">' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Dados do produto (nome, preço, foto...)</span>' +
+        '<button class="btn ghost" onclick="closeModal(); openProdutoForm(\'' + p.id + '\');">Editar</button>' +
+      '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Receita de custo</span>' +
+        '<button class="btn ghost" onclick="closeModal(); openCustoForm(\'' + p.id + '\');">Custo</button>' +
+      '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Arquivo 3D' + (p.model_file_path ? ' <span class="badge on">anexado</span>' : ' <span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>' +
+        '<button class="btn ghost" onclick="closeModal(); openModelo3DForm(\'' + p.id + '\');">' + (p.model_file_path ? '📦 Trocar' : '+ Anexar') + '</button>' +
+      '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Fatiamento e colinha IA — ' + renderFatiamentoCell(p) + '</span>' +
+        '<span class="row-actions">' + renderFatiamentoBtns(p) + '</span>' +
+      '</div>' +
+    '</div>' +
+    '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>',
+    { wide: true }
+  );
 }
 
 async function solicitarAbrirFatiador(productId) {
@@ -1369,6 +1426,7 @@ async function solicitarAbrirFatiador(productId) {
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');
   await renderProdutos();
+  if (_produtoGerenciarAberto === productId) abrirGerenciarProduto(productId);
 }
 
 async function solicitarAnaliseIA(productId) {
@@ -1378,6 +1436,7 @@ async function solicitarAnaliseIA(productId) {
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Análise pedida — o agente local processa em instantes.');
   await renderProdutos();
+  if (_produtoGerenciarAberto === productId) abrirGerenciarProduto(productId);
 }
 
 function formatarColinha(texto) {
