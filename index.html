@@ -580,7 +580,7 @@ function abrirNovoProjeto() {
     '<label>Contato (WhatsApp)</label><input id="projContato" type="text" placeholder="(11) 90000-0000">' +
     '<label>O que o cliente quer</label>' +
     '<textarea id="projDescricao" rows="3" placeholder="Descreva o que o cliente pediu..." style="width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit;"></textarea>' +
-    '<label>Foto de referência</label><input id="projFoto" type="file" accept="image/*">' +
+    '<label>Foto de referência (opcional)</label><input id="projFoto" type="file" accept="image/*">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="criarProjeto()">Criar Projeto</button>' +
@@ -631,9 +631,12 @@ async function abrirGerenciarProjeto(lineItemId) {
   }
 
   let html = '<div style="display:flex; gap:14px; margin-bottom:16px;">';
+  html += '<div style="flex:none;">';
   html += fotoUrl
     ? '<img src="' + fotoUrl + '" style="width:110px; height:110px; object-fit:cover; border-radius:12px; border:1px solid var(--border);">'
-    : '<div style="width:110px; height:110px; border-radius:12px; background:#f3f4f7; flex:none;"></div>';
+    : '<div style="width:110px; height:110px; border-radius:12px; background:#f3f4f7;"></div>';
+  html += '<button class="btn ghost" style="width:110px; margin-top:6px; font-size:11px; padding:5px;" onclick="abrirAnexarFotoProjeto(\'' + li.id + '\')">' + (fotoUrl ? '🔁 Trocar foto' : '📷 Anexar foto') + '</button>';
+  html += '</div>';
   html += '<div><h3 style="margin:0 0 4px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</h3>' +
     '<div style="font-size:12px; color:var(--muted); margin-bottom:6px;">' + escapeHtml(li.requester_contact || '') + ' · ' + escapeHtml(li.orders ? li.orders.order_number : '') + '</div>' +
     '<div style="font-size:13px;">' + escapeHtml(li.custom_description || '') + '</div></div>';
@@ -644,7 +647,7 @@ async function abrirGerenciarProjeto(lineItemId) {
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
   html += '<span>1. Modelo 3D — ' + (li.model_file_path ? '<span class="badge on">' + (li.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (li.meshy_status === 'queued' || li.meshy_status === 'processing') ? '<span class="badge off">gerando…</span>' : li.meshy_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
   html += '<span class="row-actions">';
-  if (li.meshy_status !== 'queued' && li.meshy_status !== 'processing') {
+  if (li.meshy_status !== 'queued' && li.meshy_status !== 'processing' && li.custom_reference_image_path) {
     html += '<button class="btn ghost" onclick="solicitarGerarModelo3D(\'' + li.id + '\')">🧬 Gerar por IA</button>';
   }
   html += '<button class="btn ghost" onclick="abrirAnexarModeloProjeto(\'' + li.id + '\')">+ Anexar</button>';
@@ -689,6 +692,35 @@ async function solicitarAbrirFatiadorProjeto(lineItemId) {
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');
   await renderProjetos();
   if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+function abrirAnexarFotoProjeto(lineItemId) {
+  openModal(
+    '<h3>Anexar foto de referência</h3>' +
+    '<label>Foto</label>' +
+    '<input id="projFotoArquivo" type="file" accept="image/*">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+      '<button class="btn" onclick="uploadFotoProjeto(\'' + lineItemId + '\')">Enviar</button>' +
+    '</div>'
+  );
+}
+
+async function uploadFotoProjeto(lineItemId) {
+  const fileInput = document.getElementById('projFotoArquivo');
+  const file = fileInput.files[0];
+  if (!file) { toast('Escolhe uma foto.'); return; }
+  const ext = file.name.split('.').pop();
+  const path = lineItemId + '/foto.' + ext;
+  const { error: upErr } = await SUPA.storage.from('projetos-fotos').upload(path, file, { upsert: true });
+  if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
+  const { error: dbErr } = await SUPA.from('order_line_items').update({
+    custom_reference_image_path: path, updated_at: new Date().toISOString(),
+  }).eq('id', lineItemId);
+  if (dbErr) { toast('Erro: ' + dbErr.message); return; }
+  toast('Foto anexada.');
+  await renderProjetos();
+  abrirGerenciarProjeto(lineItemId);
 }
 
 function abrirAnexarModeloProjeto(lineItemId) {
