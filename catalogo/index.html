@@ -24,6 +24,7 @@
     img { display: block; }
   </style>
   <script src="image-slot.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </helmet>
 
 <div style="width:1080px; margin:0 auto; background:#eceef2; background-image:radial-gradient(rgba(11,23,51,0.045) 1.2px, transparent 1.2px); background-size:24px 24px; font-family:'Manrope',sans-serif; color:#0e1626; position:relative;">
@@ -86,6 +87,13 @@
       <span>Ótimas para<br>presentear</span>
     </div>
   </div>
+
+  <sc-if value="{{ !catalogLoaded }}">
+    <div style="padding:50px 40px; text-align:center; color:#8ea0c0; font-family:'Space Grotesk',sans-serif; font-weight:600; letter-spacing:1px;">Carregando catálogo...</div>
+  </sc-if>
+  <sc-if value="{{ catalogError }}">
+    <div style="padding:16px 40px; text-align:center; color:#c0392b; background:#fdeaea; font-size:13px;">Não foi possível carregar os produtos agora. Tenta recarregar a página em alguns instantes.</div>
+  </sc-if>
 
   <!-- ===================== ÍNDICE DE CATEGORIAS ===================== -->
   <div style="padding:26px 40px 0;">
@@ -647,8 +655,18 @@
   &quot;showNumbers&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot; },
   &quot;columns&quot;:     { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;5&quot;,&quot;4&quot;,&quot;3&quot;], &quot;default&quot;: &quot;5&quot;, &quot;tsType&quot;: &quot;string&quot; }
 }">
+// Mesmo projeto Supabase do sistema de gestão — anon key é segura de
+// expor aqui, a proteção real é a RLS (só produto ativo, só leitura).
+const SB_URL = 'https://zaoyqjzvwuhsqcgigppu.supabase.co';
+const SB_ANON = 'sb_publishable_UPFqlHbmOH84eYiF6ZRfsw_L_31GOqy';
+const CATALOG_CATEGORY_KEYS = ['products', 'cars', 'holders', 'utils', 'wines', 'keychains', 'phoneStands', 'deskOrganizers', 'books', 'minis'];
+
 class Component extends DCLogic {
-  state = { cart: {}, cartOpen: false, scrollY: 0, viewportH: (typeof window !== 'undefined' ? window.innerHeight : 800) };
+  state = {
+    cart: {}, cartOpen: false, scrollY: 0, viewportH: (typeof window !== 'undefined' ? window.innerHeight : 800),
+    products: [], cars: [], holders: [], utils: [], wines: [], keychains: [], phoneStands: [], deskOrganizers: [], books: [], minis: [],
+    catalogLoaded: false, catalogError: false,
+  };
 
   componentDidMount() {
     this._onScroll = () => this.setState({ scrollY: window.scrollY });
@@ -657,6 +675,38 @@ class Component extends DCLogic {
     window.addEventListener('resize', this._onResize);
     this._onScroll();
     this._onResize();
+    this._loadCatalog();
+  }
+
+  async _loadCatalog() {
+    try {
+      const sb = window.supabase.createClient(SB_URL, SB_ANON);
+      const { data, error } = await sb.from('products').select('*').eq('active', true).order('catalog_code');
+      if (error) throw error;
+      const byCategory = {};
+      CATALOG_CATEGORY_KEYS.forEach((k) => { byCategory[k] = []; });
+      (data || []).forEach((row) => {
+        const parts = String(row.catalog_code || '').split('.');
+        const item = {
+          n: parseInt(parts[1], 10) || 0,
+          code: row.catalog_code,
+          name: row.name,
+          h: row.height_cm ? Number(row.height_cm) + ' cm' : '',
+          hasH: !!row.height_cm,
+          price: this.fmtPrice(Number(row.sale_price)),
+          per: row.price_unit_note || '',
+          promo: row.promo_note || '',
+          nota: row.extra_note || '',
+          tipo: row.badge_label || '',
+          img: row.image_path,
+        };
+        if (byCategory[row.category]) byCategory[row.category].push(item);
+      });
+      this.setState({ ...byCategory, catalogLoaded: true, catalogError: false });
+    } catch (e) {
+      console.error('[catalogo] falha ao carregar produtos do banco:', e);
+      this.setState({ catalogLoaded: true, catalogError: true });
+    }
   }
   componentWillUnmount() {
     window.removeEventListener('scroll', this._onScroll);
@@ -701,36 +751,11 @@ class Component extends DCLogic {
   }
 
   renderVals() {
-    const products = [
-      { n:1,  name:"Vaso Bloom",                     h:"18 cm", price:"R$ 47,90", per:"" },
-      { n:2,  name:"Vaso Torcido de Folha",          h:"18 cm", price:"R$ 47,90", per:"" },
-      { n:3,  name:"Vaso de Parede (Cálice)",        h:"13 cm", price:"R$ 49,90", per:"cada" },
-      { n:4,  name:"Vaso Serenora em Espiral (Elegante)",h:"20 cm", price:"R$ 54,90", per:"" },
-      { n:5,  name:"Laço Quadrado (Vaso Canelado)",  h:"18 cm", price:"R$ 91,90", per:"" },
-      { n:6,  name:"Vaso Decorativo (Duplo)",        h:"20 cm", price:"R$ 79,90", per:"" },
-      { n:7,  name:"Vaso Torcido em Espiral (Cobre)",h:"20 cm", price:"R$ 49,90", per:"" },
-      { n:8,  name:"Jarro Beija-flor Decorativo",    h:"18 cm", price:"R$ 84,90", per:"" },
-      { n:9,  name:"Vaso de Folha",                  h:"20 cm", price:"R$ 47,90", per:"cada" },
-      { n:10, name:"Miniatura de Tartaruga (Vaso)",  h:"10 cm", price:"R$ 89,90", per:"" },
-      { n:11, name:"Vaso de Flores (Ondulado)",      h:"18 cm", price:"R$ 44,90", per:"" },
-      { n:12, name:"Vaso Octogonal Espiralado",      h:"20 cm", price:"R$ 47,90", per:"" },
-      { n:13, name:"Vaso em Formato de Pinha",       h:"18 cm", price:"R$ 47,90", per:"cada" },
-      { n:14, name:"Vaso Vórtice (Decoração de Escritório)",h:"18 cm", price:"R$ 44,90", per:"" },
-      { n:15, name:"Vaso com Folhas Decorativas",    h:"20 cm", price:"R$ 52,90", per:"" },
-      { n:16, name:"Vaso para Planta Artificial (Encaixe)", h:"", price:"R$ 42,90", per:"" },
-      { n:17, name:"Vaso de Planta Dachshund",       h:"",      price:"R$ 49,90", per:"" },
-      { n:18, name:"Vaso Filo — Elegância Moderna",  h:"",      price:"R$ 47,90", per:"" },
-      { n:19, name:"Vaso Kairos Flux (Jarra)",       h:"",      price:"R$ 46,90", per:"" },
-      { n:20, name:"Vaso Design Moderno",            h:"",      price:"R$ 47,90", per:"" },
-      { n:21, name:"Vaso Espiral",                   h:"",      price:"R$ 39,90", per:"" },
-      { n:22, name:"Plantador Ninho",                            h:"",      price:"R$ 59,90", per:"cada", promo:"3 por R$ 149,90" },
-      { n:23, name:"Suporte de Planta Parede Minimalista",       h:"",      price:"R$ 46,90", per:"" },
-      { n:24, name:"Vaso de Decoração Ousada",                   h:"20 cm", price:"R$ 69,90", per:"" },
-      { n:25, name:"Vaso Moderno em Espirais",                   h:"15 cm", price:"R$ 54,90", per:"" },
-      { n:26, name:"Bandeja Decorativa em Formato de Folha",     h:"",      price:"R$ 32,90", per:"" },
-      { n:27, name:"Árvore do Amor",                             h:"",      price:"R$ 14,90", per:"", img:"assets/car19.png" },
-      { n:28, name:"Expositor Home",                             h:"",      price:"R$ 14,90", per:"", img:"assets/car20.png" },
-    ].map(p => ({ ...p, img: p.img || "assets/p" + p.n + ".png", hasH: !!p.h }));
+    // Os 10 arrays de categoria vêm do Supabase (carregados em componentDidMount
+    // via _loadCatalog(), guardados em this.state) — não são mais fixos aqui.
+    // Cada item já sai pronto (n, code, name, h, hasH, price formatado, per,
+    // promo, nota, tipo, img) — ver _loadCatalog().
+    const products = this.state.products || [];
 
     const gloss = (c) => "radial-gradient(circle at 33% 27%, rgba(255,255,255,0.55), rgba(255,255,255,0) 42%), " + c;
     const filaments = [
@@ -772,171 +797,21 @@ class Component extends DCLogic {
       { name:"Caucasiano (Cor da Pele)", bg: gloss("#d9a878") },
     ];
 
-    const cars = [
-      { n:1, name:"Carro AE86 Divertido", tipo:"Brinquedo", price:"R$ 64,90", per:"" },
-      { n:2, name:"Edição Futurista",     tipo:"Expositor", price:"R$ 39,90", per:"" },
-      { n:3, name:"Cubo Antiestresse",    tipo:"Brinquedo", price:"R$ 14,90", per:"" },
-      { n:4, name:"Conjunto Impossível de Passagem", tipo:"Brinquedo", price:"R$ 9,90", per:"cada", nota:"escolha a letra" },
-      { n:5, name:"Katana Retrátil",      tipo:"Brinquedo", price:"R$ 34,90", per:"" },
-      { n:6, name:"Sapo Saltador",        tipo:"Brinquedo", price:"R$ 9,90",  per:"cada" },
-      { n:7, name:"Cubo Infinito",        tipo:"Brinquedo", price:"R$ 19,90", per:"cada" },
-      { n:8, name:"Cone Espiral Antiestresse", tipo:"Brinquedo", price:"R$ 19,90", per:"" },
-      { n:9, name:"Estrela Sensorial",    tipo:"Brinquedo", price:"R$ 14,90", per:"" },
-      { n:10, name:"Jogo da Forca",       tipo:"Brinquedo", price:"R$ 14,90", per:"" },
-      { n:11, name:"Pião Mágico Ilusório", tipo:"Brinquedo", price:"R$ 9,90", per:"" },
-      { n:12, name:"Polvo Articulado",    tipo:"Brinquedo", price:"R$ 22,90", per:"cada" },
-      { n:13, name:"Disco de Mesa",       tipo:"Brinquedo", price:"R$ 39,90", per:"" },
-      { n:14, name:"Giroscópio e Mini Lançador", tipo:"Brinquedo", price:"R$ 39,90", per:"" },
-      { n:15, name:"Foguete de Pressão de Ar", tipo:"Brinquedo", price:"R$ 64,90", per:"" },
-      { n:16, name:"Jogo da Velha",       tipo:"Brinquedo", price:"R$ 9,90",  per:"" },
-      { n:17, name:"Suporte de Copos Articulado de Tartaruga", tipo:"Expositor", price:"R$ 59,90", per:"" },
-    ].map(c => ({ ...c, img: c.img || "assets/car" + c.n + ".png" }));
-
-    const holders = [
-      { n:1, name:"Porta Card Pokémon (Branco e Vermelho)", price:"R$ 49,90", per:"", img:"assets/holder2.png" },
-      { n:2, name:"Porta Card Pokémon (Dourado, Vermelho e Branco)", price:"R$ 89,90", per:"", img:"assets/holder3.png" },
-      { n:3, name:"Porta Card Pokémon (50 a 125 figurinhas)", price:"R$ 44,90", per:"", img:"assets/holder7.png" },
-      { n:4, name:"Porta Card Pokémon (Formato Pokébola Quadrada)", price:"R$ 49,90", per:"cada", img:"assets/holder8.png" },
-      { n:5, name:"Porta Card Pokémon Gaole", price:"R$ 79,90", per:"", img:"assets/holder9.png" },
-      { n:6, name:"Porta Pokémon Grande (200 ou mais figurinhas)", price:"R$ 19,90", per:"", img:"assets/holder10.png" },
-      { n:7, name:"Porta Card Pokémon Magro", price:"R$ 39,90", per:"", img:"assets/holder11.png" },
-      { n:8, name:"Porta Card Pokémon com Trava", price:"R$ 39,90", per:"", img:"assets/holder12.png" },
-      { n:9, name:"Porta Card Pokémon Clássico", price:"R$ 69,90", per:"", img:"assets/holder13.png" },
-    ];
-
-    const utils = [
-      { n:1, name:"Suporte Parafone e Controle de Videogame (PS5)", price:"R$ 24,90", per:"", img:"assets/util1.png" },
-      { n:2, name:"Suporte para Fone de Ouvido e Controle", price:"R$ 64,90", per:"", img:"assets/util2.png" },
-      { n:3, name:"Suporte Alexa Greifer", price:"R$ 19,90", per:"", img:"assets/util3.png" },
-      { n:4, name:"Suporte de Parede para Alexa", price:"R$ 14,90", per:"", img:"assets/util4.png" },
-      { n:5, name:"Suporte de Escova de Dentes (Formato de Dente)", price:"R$ 24,90", per:"", img:"assets/util5.png" },
-      { n:6, name:"Suporte para Papel Higiênico", price:"R$ 59,90", per:"", img:"assets/util6.png" },
-      { n:7, name:"Suporte de Gato para Alexa", price:"R$ 124,90", per:"", img:"assets/util7.png" },
-      { n:8, name:"Suporte para Carregador", price:"R$ 9,90", per:"", img:"assets/util8.png" },
-      { n:9, name:"Caixa Organizadora de Controle Remoto com Laço", price:"R$ 74,90", per:"", img:"assets/util9.png" },
-      { n:10, name:"Organizador de Controle Remoto", price:"R$ 74,90", per:"", img:"assets/util10.png" },
-      { n:11, name:"Organizador de Controle Remoto II", price:"R$ 44,90", per:"", img:"assets/util11.png" },
-      { n:12, name:"Organizador de Controle Remoto III", price:"R$ 39,90", per:"", img:"assets/util12.png" },
-      { n:13, name:"Organizador de Controle Remoto IV", price:"R$ 99,90", per:"", img:"assets/util13.png" },
-      { n:14, name:"Suporte de Canecas", price:"R$ 79,90", per:"", img:"assets/util15.png" },
-      { n:15, name:"Suporte de Garrafas de Geladeira (Par, para 2 garrafas)", price:"R$ 19,90", per:"", img:"assets/util16.png" },
-      { n:16, name:"Gancho de Parede Resistente", price:"R$ 19,90", per:"", img:"assets/util17.png" },
-      { n:17, name:"Cine-Companion", price:"R$ 84,90", per:"", img:"assets/util18.png" },
-      { n:18, name:"Descanso de Utensílios Minimalista", price:"R$ 19,90", per:"", img:"assets/util19.png" },
-      { n:19, name:"Porta Esponja (Somente o Suporte)", price:"R$ 64,90", per:"", img:"assets/util20.png" },
-      { n:20, name:"Dispensador de Ovos", price:"R$ 79,90", per:"", img:"assets/util21.png" },
-      { n:21, name:"Grampo em G", price:"R$ 24,90", per:"cada", img:"assets/util22.png" },
-      { n:22, name:"Transportador de Sacola de Supermercado", price:"R$ 19,90", per:"", img:"assets/util23.png" },
-      { n:23, name:"Lavador Inteligente de Frutas e Legumes (HydroBowl)", price:"R$ 134,90", per:"", img:"assets/util25.png" },
-      { n:24, name:"Porta Guardanapo I", price:"R$ 29,90", per:"", img:"assets/util31.png" },
-      { n:25, name:"Suporte de Aranha para Alexa", price:"R$ 29,90", per:"", img:"assets/car18.png" },
-    ];
+    const cars = this.state.cars || [];
+    const holders = this.state.holders || [];
+    const utils = this.state.utils || [];
     const utilCount = utils.length;
-
-    const books = [
-      { n:1, name:"Marca Páginas Coleção", price:"R$ 19,90", per:"cada", img:"assets/util32.png" },
-      { n:2, name:"Marca Páginas de Zíper", price:"R$ 19,90", per:"", img:"assets/book2.png" },
-      { n:3, name:"Marcador de Páginas de Homenzinho II", price:"R$ 19,90", per:"", img:"assets/book3.png" },
-      { n:4, name:"Marca Páginas de Gato III", price:"R$ 19,90", per:"", img:"assets/book4.png" },
-      { n:5, name:"Suporte para Páginas de Livros", price:"R$ 12,90", per:"", img:"assets/book5.png" },
-      { n:6, name:"Prateleira de Parede para Livros Inclinada (Par)", price:"R$ 59,90", per:"", img:"assets/util24.png" },
-    ];
+    const books = this.state.books || [];
     const bookCount = books.length;
-
-    const minis = [
-      { n:1, name:"Action Figure do Batman", price:"R$ 34,90", per:"", img:"assets/mini1.png" },
-      { n:2, name:"Action Figure do Pantera Negra", price:"R$ 34,90", per:"", img:"assets/mini2.png" },
-      { n:3, name:"Todas as Formas do Mecha Chameleon", price:"R$ 39,90", per:"", img:"assets/mini3.png" },
-      { n:4, name:"Action Figure do Cão Covarde", price:"R$ 84,90", per:"", img:"assets/mini_cao_covarde.jpg" },
-      { n:5, name:"Action Figure da Pantera Cor-de-Rosa", price:"R$ 39,90", per:"", img:"assets/mini_pantera_rosa.jpg" },
-      { n:6, name:"Action Figure do Scooby Doo", price:"R$ 89,90", per:"", img:"assets/mini_scooby_doo.jpg" },
-      { n:7, name:"Action Figure da Hornet", price:"R$ 39,90", per:"", img:"assets/mini_hornet.jpg" },
-      { n:8, name:"Action Figure do Pluto", price:"R$ 64,90", per:"", img:"assets/mini_pluto.jpg" },
-      { n:9, name:"Action Figure do Patolino", price:"R$ 64,90", per:"", img:"assets/mini_patolino.jpg" },
-      { n:10, name:"Action Figure do Pinky", price:"R$ 54,90", per:"", img:"assets/mini_pinky.jpg" },
-      { n:11, name:"Action Figure do Cérebro", price:"R$ 54,90", per:"", img:"assets/mini_cerebro.jpg" },
-      { n:12, name:"Action Figure do Lula Molusco", price:"R$ 39,90", per:"", img:"assets/mini_lula_molusco.jpg" },
-      { n:13, name:"Action Figure do Plankton", price:"R$ 39,90", per:"", img:"assets/mini_plankton.jpg" },
-      { n:14, name:"Action Figure de Patrick", price:"R$ 39,90", per:"", img:"assets/mini_patrick.jpg" },
-      { n:15, name:"Action Figure do Jake", price:"R$ 39,90", per:"", img:"assets/mini_jake.jpg" },
-      { n:16, name:"Action Figure do Tio Patinhas", price:"R$ 44,90", per:"", img:"assets/mini_tio_patinhas.jpg" },
-      { n:17, name:"Action Figure do Gary", price:"R$ 44,90", per:"", img:"assets/mini_gary.jpg" },
-      { n:18, name:"Action Figure do Bob Esponja", price:"R$ 39,90", per:"", img:"assets/mini_bob_esponja.jpg" },
-    ];
+    const minis = this.state.minis || [];
     const miniCount = minis.length;
-
-    const phoneStands = [
-      { n:1, name:"Suporte de Carregamento de Celular de Parede", price:"R$ 14,90", per:"", img:"assets/util26.png" },
-      { n:2, name:"Suporte de Celular", price:"R$ 14,90", per:"", img:"assets/util27.png" },
-      { n:3, name:"Suporte para Celular III", price:"R$ 16,90", per:"", img:"assets/util28.png" },
-      { n:4, name:"Suporte de Celular IV", price:"R$ 39,90", per:"", img:"assets/util29.png" },
-      { n:5, name:"Suporte para Celular V", price:"R$ 64,90", per:"cada", img:"assets/util30.png" },
-    ];
+    const phoneStands = this.state.phoneStands || [];
     const phoneStandCount = phoneStands.length;
-
-    const deskOrganizers = [
-      { n:1, name:"Organizador de Mesa I", price:"R$ 54,90", per:"", img:"assets/desk1.png" },
-      { n:2, name:"Organizador de Mesa II (Post-it)", price:"R$ 29,90", per:"", img:"assets/desk2.png" },
-      { n:3, name:"Organizador de Mesa III (Giratório)", price:"R$ 39,90", per:"", img:"assets/desk3.png" },
-      { n:4, name:"Porta Caneta em Formato de Saco de Papel", price:"R$ 24,90", per:"", img:"assets/desk4.png" },
-    ];
+    const deskOrganizers = this.state.deskOrganizers || [];
     const deskOrganizerCount = deskOrganizers.length;
-
-    const wines = [
-      { n:1, name:"Suporte de Lagartixa para Vinho", price:"R$ 29,90", per:"", img:"assets/car21.png" },
-      { n:2, name:"Suporte de Gato para Vinho", price:"R$ 34,90", per:"", img:"assets/car22.png" },
-      { n:3, name:"Suporte de Vinhos", price:"R$ 89,90", per:"", img:"assets/wine3.png" },
-      { n:4, name:"Suporte de Coelho para Vinho", price:"R$ 99,90", per:"", img:"assets/wine4.png" },
-      { n:5, name:"Suporte de Vinho em Formato de Chama", price:"R$ 64,90", per:"", img:"assets/wine5.png" },
-      { n:6, name:"Suporte para Vinhos", price:"R$ 139,90", per:"", img:"assets/wine6.png" },
-      { n:7, name:"Porta Latas Monster", price:"R$ 64,90", per:"", img:"assets/util14.png" },
-      { n:8, name:"Suporte de Lata I", price:"R$ 64,90", per:"", img:"assets/wine8.png" },
-      { n:9, name:"Suporte de Cavalo para Vinho", price:"R$ 119,90", per:"", img:"assets/wine9.png" },
-    ];
+    const wines = this.state.wines || [];
     const wineCount = wines.length;
-
-    const keychains = [
-      { n:1, name:"Chaveiro de Porquinho", price:"R$ 27,90", per:"", img:"assets/key1.png" },
-      { n:2, name:"Chaveiro de Coelhinho", price:"R$ 27,90", per:"", img:"assets/key2.png" },
-      { n:3, name:"Chaveiro de Patinho (com ou sem perninha)", price:"R$ 29,90", per:"", img:"assets/key3.png" },
-      { n:4, name:"Chaveiro de Ovelhinha", price:"R$ 27,90", per:"", img:"assets/key4.png" },
-      { n:5, name:"Chaveiro de Sapinho", price:"R$ 27,90", per:"", img:"assets/key5.png" },
-      { n:6, name:"Chaveiro de Caranguejinho", price:"R$ 24,90", per:"", img:"assets/key6.png" },
-      { n:7, name:"Chaveiro de Dinossaurinho", price:"R$ 24,90", per:"", img:"assets/key7.png" },
-      { n:8, name:"Chaveiro de Raposinha", price:"R$ 29,90", per:"", img:"assets/key8.png" },
-      { n:9, name:"Chaveiro de Axolote", price:"R$ 27,90", per:"", img:"assets/key9.png" },
-      { n:10, name:"Chaveiro de Jacaré", price:"R$ 27,90", per:"cada", img:"assets/key10.png" },
-      { n:11, name:"Chaveiro de Tartaruga", price:"R$ 32,90", per:"cada", img:"assets/key11.png" },
-      { n:12, name:"Chaveiro de Cavalinho", price:"R$ 24,90", per:"cada", img:"assets/key12.png" },
-      { n:13, name:"Chaveiro de Lobinho", price:"R$ 32,90", per:"cada", img:"assets/key13.png" },
-      { n:14, name:"Chaveiro de Orca", price:"R$ 27,90", per:"cada", img:"assets/key14.png" },
-      { n:15, name:"Chaveiro de Crocodilo", price:"R$ 24,90", per:"", img:"assets/key15.png" },
-      { n:16, name:"Chaveiro de Cavalo", price:"R$ 24,90", per:"", img:"assets/key16.png" },
-      { n:17, name:"Chaveiro de Dragãozinho", price:"R$ 24,90", per:"", img:"assets/key17.png" },
-      { n:18, name:"Chaveiro de Axolote I", price:"R$ 14,90", per:"", img:"assets/key18.png" },
-      { n:19, name:"Chaveiro de Bola de Futebol", price:"R$ 19,90", per:"", img:"assets/key19.png" },
-      { n:20, name:"Chaveiro de Bola de Basquete", price:"R$ 19,90", per:"cada", img:"assets/key20.png" },
-      { n:21, name:"Chaveiro de Bola de Vôlei", price:"R$ 19,90", per:"", img:"assets/key21.png" },
-      { n:22, name:"Chaveiro de Bola de Tênis", price:"R$ 19,90", per:"", img:"assets/key22.png" },
-      { n:23, name:"Chaveiro de Bola de Beisebol", price:"R$ 24,90", per:"", img:"assets/key23.png" },
-      { n:24, name:"Chaveiro de Bola de Golfe", price:"R$ 14,90", per:"", img:"assets/key24.png" },
-      { n:25, name:"Chaveiro de Bola de Futebol Americano", price:"R$ 14,90", per:"cada", img:"assets/key25.png" },
-      { n:26, name:"Chaveiro de Bola de Sinuca", price:"R$ 19,90", per:"", img:"assets/key26.png" },
-      { n:27, name:"Chaveiro do Mew", price:"R$ 19,90", per:"", img:"assets/key27.png" },
-      { n:28, name:"Chaveiro do Charmander", price:"R$ 24,90", per:"cada", img:"assets/key28.png" },
-      { n:29, name:"Chaveiro de Pokébola", price:"R$ 15,90", per:"", img:"assets/key29.png" },
-      { n:30, name:"Chaveiro do Pikachu", price:"R$ 19,90", per:"", img:"assets/key30.png" },
-      { n:31, name:"Chaveiro do Lucario (70mm)", price:"R$ 24,90", per:"", img:"assets/key31.png" },
-      { n:32, name:"Chaveiro das Evoluções do Eevee", price:"R$ 14,90", per:"cada", img:"assets/key32.png" },
-      { n:33, name:"Chaveiro do Mewtwo", price:"R$ 24,90", per:"", img:"assets/key33.png" },
-      { n:34, name:"Chaveiro de Chapéu do Luffy", price:"R$ 14,90", per:"", img:"assets/key34.png" },
-      { n:35, name:"Chaveiros de One Piece Coleção", price:"R$ 14,90", per:"cada", img:"assets/key35.png" },
-      { n:36, name:"Chaveiro de Dragon Ball", price:"R$ 15,90", per:"", img:"assets/key36.png" },
-      { n:37, name:"Chaveiro de Dragon Ball Coleção", price:"R$ 14,90", per:"cada", img:"assets/key37.png" },
-      { n:38, name:"Chaveiro do Naruto Comendo", price:"R$ 16,90", per:"", img:"assets/key38.png" },
-      { n:39, name:"Chaveiro do Naruto Coleção", price:"R$ 12,90", per:"cada", img:"assets/key39.png" },
-      { n:40, name:"Chaveiro de Café", price:"R$ 14,90", per:"", img:"assets/key40.png" },
-    ];
+    const keychains = this.state.keychains || [];
     const keychainCount = keychains.length;
 
     const FORM_BASE = "https://docs.google.com/forms/d/e/1FAIpQLSdxdpmc0IhRFkgv_bpykD2llUt2isEQxos09S-Nu8Xce-5Svw/viewform?usp=pp_url";
@@ -948,7 +823,8 @@ class Component extends DCLogic {
     const buildWaUrl = (code, name, price) => "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent("Olá! Tenho interesse no item: " + code + " - " + name + " (" + price + "). Pode me passar mais detalhes?");
     const sectionCodes = [["01", products], ["02", cars], ["03", holders], ["04", utils], ["05", wines], ["06", keychains], ["07", phoneStands], ["08", deskOrganizers], ["09", books], ["10", minis]];
     sectionCodes.forEach(([sec, list]) => list.forEach((item, idx) => {
-      item.code = sec + "." + String(idx + 1).padStart(2, '0');
+      // code já vem do banco (catalog_code), congelado — não recalcula mais pela posição
+      item.code = item.code || (sec + "." + String(idx + 1).padStart(2, '0'));
       item.orderUrl = buildOrderUrl(item.code, item.name, 1, item.price);
       item.waUrl = buildWaUrl(item.code, item.name, item.price);
       item.addToCart = () => this.addToCart(item);
@@ -977,6 +853,8 @@ class Component extends DCLogic {
     const cartWaUrl = "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent(cartWaText);
 
     return {
+      catalogLoaded: this.state.catalogLoaded,
+      catalogError: this.state.catalogError,
       products,
       productsCount: products.length,
       cars,

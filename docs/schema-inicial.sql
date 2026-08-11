@@ -103,6 +103,7 @@ create table if not exists products (
   price_unit_note text, -- ex: "cada"
   promo_note text,
   extra_note text,
+  badge_label text, -- selo pequeno no card (ex: "Brinquedo"/"Expositor"), opcional, qualquer categoria pode usar
   image_path text,
   active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -266,6 +267,12 @@ grant usage, select on all sequences in schema public to authenticated;
 alter default privileges in schema public grant select, insert, update, delete on tables to authenticated;
 alter default privileges in schema public grant usage, select on sequences to authenticated;
 
+-- catálogo público (index.html em /catalogo/) é visitado sem login —
+-- só products precisa ser lido por anon, e só leitura (RLS acima
+-- restringe a active = true).
+grant usage on schema public to anon;
+grant select on products to anon;
+
 -- =====================================================================
 -- Row Level Security
 -- =====================================================================
@@ -319,6 +326,8 @@ create policy printers_update on printers for update to authenticated using (is_
 -- products: leitura liberada (preço de venda é informação que o helper
 -- precisa pra conversar com cliente); escrita só pro owner.
 create policy products_select on products for select to authenticated using (true);
+-- catálogo público (visitante sem login) só lê produto ativo
+create policy products_select_public on products for select to anon using (active = true);
 create policy products_insert on products for insert to authenticated with check (is_owner());
 create policy products_update on products for update to authenticated using (is_owner()) with check (is_owner());
 
