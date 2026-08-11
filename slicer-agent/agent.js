@@ -336,6 +336,12 @@ async function meshyCriarTarefa(imagemBuf, mediaType) {
       image_url: 'data:' + mediaType + ';base64,' + imagemBuf.toString('base64'),
       target_formats: ['stl'],
       should_texture: false,
+      // Sem isso, a Meshy manda malha de altíssimo detalhe (chegou a 99MB num
+      // teste, pra um chaveiro) — muito além do que qualquer impressora FDM
+      // consegue aproveitar, e estoura o limite de upload do Supabase.
+      // 30k triângulos é bem mais que suficiente pra peça pequena/média.
+      should_remesh: true,
+      target_polycount: 30000,
     }),
   });
   if (!res.ok) {
