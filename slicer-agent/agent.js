@@ -9,6 +9,10 @@ const AdmZip = require('adm-zip');
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const ORCA_PATH = process.env.ORCA_PATH || 'C:\\Program Files\\OrcaSlicer\\orca-slicer.exe';
+// Programa que abre quando clica "Abrir no Fatiador" — separado do ORCA_PATH
+// (que só é usado pelo fatiamento automático via linha de comando, hoje sem
+// botão na tela). O Rafa 3D usa Bambu Studio no dia a dia, não OrcaSlicer.
+const SLICER_APP_PATH = process.env.SLICER_APP_PATH || 'C:\\Program Files\\Bambu Studio\\bambu-studio.exe';
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
 const BUCKET = 'modelos-3d';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -22,9 +26,8 @@ if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('[agente] Faltam SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no .env. Copie .env.example para .env e preencha.');
   process.exit(1);
 }
-if (!fs.existsSync(ORCA_PATH)) {
-  console.error('[agente] OrcaSlicer não encontrado em: ' + ORCA_PATH + ' — ajuste ORCA_PATH no .env.');
-  process.exit(1);
+if (!fs.existsSync(SLICER_APP_PATH)) {
+  log('AVISO: fatiador não encontrado em: ' + SLICER_APP_PATH + ' — "Abrir no Fatiador" vai falhar até ajustar SLICER_APP_PATH no .env.');
 }
 if (!ANTHROPIC_API_KEY) {
   log('Sem ANTHROPIC_API_KEY no .env — a análise por IA fica desligada, mas o fatiamento continua funcionando normalmente.');
@@ -243,11 +246,13 @@ async function tickAI() {
   await analisarUm(product);
 }
 
-// "Abrir no Fatiador": baixa o arquivo e já abre no OrcaSlicer, sem clicar
+// "Abrir no Fatiador": baixa o arquivo e já abre no Bambu Studio, sem clicar
 // em nada dentro do programa — só isso, sem automação de tela nenhuma, por
 // isso não tem o risco de segurança que a automação de clique tinha.
 async function abrirNoFatiador(product) {
   try {
+    if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
+
     log('Baixando modelo de "' + product.name + '" pra abrir no fatiador...');
     const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(product.model_file_path);
     if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
@@ -259,8 +264,8 @@ async function abrirNoFatiador(product) {
     const localPath = path.join(downloadsDir, nomeSeguro + ext);
     fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
 
-    log('Abrindo "' + product.name + '" no OrcaSlicer...');
-    const child = spawn(ORCA_PATH, [localPath], { detached: true, stdio: 'ignore' });
+    log('Abrindo "' + product.name + '" no fatiador...');
+    const child = spawn(SLICER_APP_PATH, [localPath], { detached: true, stdio: 'ignore' });
     child.unref();
 
     await supabase.from('products').update({ open_slicer_status: 'done', open_slicer_error: null }).eq('id', product.id);
