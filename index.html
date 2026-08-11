@@ -1346,7 +1346,7 @@ function desenharProdutos() {
   if (produtos.length === 0) {
     html += '<div class="empty">Nenhum produto encontrado' + (produtosFiltroTexto || produtosFiltroCategoria ? ' com esse filtro.' : ' ainda.') + '</div>';
   } else {
-    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th></th>' : '') + '</tr>';
+    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th>Arquivo 3D</th><th></th>' : '') + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
       html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
@@ -1366,6 +1366,9 @@ function desenharProdutos() {
       }
       html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativo' : 'Inativo') + '</span></td>';
       if (isOwner) {
+        html += '<td>' + (p.model_file_path
+          ? '<span class="badge on" title="Tem arquivo 3D anexado">📦 Tem 3D</span>'
+          : '<span class="badge off" title="Ainda sem arquivo 3D">✖️ Sem 3D</span>') + '</td>';
         html += '<td><button class="btn" onclick="abrirGerenciarProduto(\'' + p.id + '\')">⚙️ Gerenciar</button></td>';
       }
       html += '</tr>';
