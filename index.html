@@ -1304,6 +1304,7 @@ async function renderProdutos() {
         html += '<td class="row-actions">';
         html += '<button class="btn ghost" onclick="openProdutoForm(\'' + p.id + '\')">Editar</button>';
         html += '<button class="btn ghost" onclick="openCustoForm(\'' + p.id + '\')">Custo</button>';
+        html += '<button class="btn ghost" onclick="openModelo3DForm(\'' + p.id + '\')">' + (p.model_file_path ? '📦 Arquivo 3D' : '+ Arquivo 3D') + '</button>';
         html += '</td>';
       }
       html += '</tr>';
@@ -1312,6 +1313,58 @@ async function renderProdutos() {
   }
   html += '</div>';
   el.innerHTML = html;
+}
+
+function openModelo3DForm(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  openModal(
+    '<h3>Arquivo 3D — ' + escapeHtml(p.name) + '</h3>' +
+    (p.model_file_path
+      ? '<p style="font-size:13px;">Arquivo atual: <strong>' + escapeHtml(p.model_file_path.split('/').pop()) + '</strong>' +
+        (p.model_source === 'meshy_generated' ? ' <span style="color:var(--muted);font-size:11px;">(gerado por IA)</span>' : '') + '</p>' +
+        '<button class="btn ghost" onclick="baixarModelo3D(\'' + productId + '\')">Baixar</button> ' +
+        '<button class="btn ghost" onclick="removerModelo3D(\'' + productId + '\')">Remover</button>'
+      : '<p style="color:var(--muted); font-size:13px;">Nenhum arquivo 3D cadastrado ainda.</p>') +
+    '<label style="margin-top:16px;">Enviar arquivo (.stl ou .3mf)</label>' +
+    '<input id="md3dArquivo" type="file" accept=".stl,.3mf">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Fechar</button>' +
+      '<button class="btn" onclick="uploadModelo3D(\'' + productId + '\')">Enviar</button>' +
+    '</div>'
+  );
+}
+
+async function uploadModelo3D(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  const fileInput = document.getElementById('md3dArquivo');
+  const file = fileInput.files[0];
+  if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
+  const path = p.catalog_code + '/' + file.name;
+  const { error: upErr } = await SUPA.storage.from('modelos-3d').upload(path, file, { upsert: true });
+  if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
+  const { error: dbErr } = await SUPA.from('products').update({ model_file_path: path, model_source: 'manual_upload', updated_at: new Date().toISOString() }).eq('id', productId);
+  if (dbErr) { toast('Erro: ' + dbErr.message); return; }
+  closeModal();
+  toast('Arquivo 3D enviado.');
+  await renderProdutos();
+}
+
+async function baixarModelo3D(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  const { data, error } = await SUPA.storage.from('modelos-3d').createSignedUrl(p.model_file_path, 60);
+  if (error) { toast('Erro: ' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
+}
+
+async function removerModelo3D(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  if (!confirm('Remover o arquivo 3D deste produto?')) return;
+  await SUPA.storage.from('modelos-3d').remove([p.model_file_path]);
+  const { error } = await SUPA.from('products').update({ model_file_path: null, model_source: null, updated_at: new Date().toISOString() }).eq('id', productId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Arquivo removido.');
+  await renderProdutos();
 }
 
 function openCustoForm(productId) {
