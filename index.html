@@ -560,6 +560,10 @@ async function renderProjetos() {
     });
   });
 
+  if (_projetoGerenciarAberto && document.getElementById('modalRoot').classList.contains('show')) {
+    abrirGerenciarProjeto(_projetoGerenciarAberto);
+  }
+
   clearTimeout(_projetosPollTimer);
   const emAndamento = projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
@@ -660,7 +664,9 @@ async function abrirGerenciarProjeto(lineItemId) {
   }
   html += '</div>';
 
-  html += '</div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
+  html += '</div><div class="modal-actions">' +
+    '<button class="btn ghost" style="color:var(--text-danger, #c0392b); border-color:#f0c9c9;" onclick="excluirProjeto(\'' + li.id + '\', \'' + (li.order_id || '') + '\')">🗑️ Excluir Projeto</button>' +
+    '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
 }
@@ -733,6 +739,22 @@ async function aprovarProjeto(lineItemId) {
   if (error) { toast('Erro: ' + error.message); return; }
   closeModal();
   toast('Projeto aprovado! Já entrou no fluxo de pedidos e fila de impressão.');
+  await renderProjetos();
+}
+
+async function excluirProjeto(lineItemId, orderId) {
+  if (!confirm('Excluir esse projeto de vez? Não tem como desfazer.')) return;
+  const { data: liData } = await SUPA.from('order_line_items').select('custom_reference_image_path, model_file_path').eq('id', lineItemId).maybeSingle();
+  if (liData) {
+    if (liData.custom_reference_image_path) await SUPA.storage.from('projetos-fotos').remove([liData.custom_reference_image_path]);
+    if (liData.model_file_path) await SUPA.storage.from('modelos-3d').remove([liData.model_file_path]);
+  }
+  const { error } = orderId
+    ? await SUPA.from('orders').delete().eq('id', orderId)
+    : await SUPA.from('order_line_items').delete().eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Projeto excluído.');
   await renderProjetos();
 }
 
