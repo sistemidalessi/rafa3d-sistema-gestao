@@ -236,7 +236,6 @@ async function analisarUm(product) {
 }
 
 async function tickAI() {
-  if (!ANTHROPIC_API_KEY) return;
   const { data: queued, error } = await supabase
     .from('products')
     .select('id, name, catalog_code, model_file_path')
@@ -247,6 +246,12 @@ async function tickAI() {
   if (!queued || queued.length === 0) return;
 
   const product = queued[0];
+  if (!ANTHROPIC_API_KEY) {
+    await supabase.from('products').update({
+      ai_analysis_status: 'error', ai_analysis_error: 'ANTHROPIC_API_KEY não configurada no agente local (.env) — a análise por IA está desligada.',
+    }).eq('id', product.id);
+    return;
+  }
   await supabase.from('products').update({ ai_analysis_status: 'processing' }).eq('id', product.id);
   await analisarUm(product);
 }
@@ -309,103 +314,16 @@ async function tickAbrirFatiador() {
 
 /* ============================================================
    PROJETOS — pedido personalizado (order_line_items, line_type='custom')
-   Mesma ideia dos produtos do catálogo (viabilidade por IA, geração de
-   modelo, abrir no fatiador), só que a origem é uma foto de referência
-   que o cliente mandou, não um .3mf já preparado.
+   Mesma ideia dos produtos do catálogo (geração de modelo, abrir no
+   fatiador), só que a origem é uma foto de referência que o cliente
+   mandou, não um .3mf já preparado.
    ============================================================ */
-
-const PROMPT_VIABILIDADE = 'Você é um consultor técnico sênior de uma empresa de impressão 3D FDM (Bambu Lab A1, ' +
-  'PLA/PETG), avaliando se dá pra imprimir o que um cliente pediu, a partir de uma foto de referência que ele mandou ' +
-  '(pode ser foto de um objeto real, print de rede social, desenho, brinquedo quebrado que quer replicar, etc — não é ' +
-  'necessariamente um modelo 3D pronto). Sua resposta orienta o dono do negócio a decidir se aceita o pedido e por ' +
-  'quanto. Seja direto, prático e honesto — se for inviável ou arriscado, diga isso claramente, não amenize.\n\n' +
-  'Responda nesse formato exato (títulos ## e itens com traço), sem introdução nem conclusão:\n\n' +
-  '## Viabilidade\nDá pra imprimir em FDM? (sim / sim com ressalvas / não recomendo) — por quê\n\n' +
-  '## O que precisa ser modelado\nDescreva em poucas linhas o que vai precisar ser criado como modelo 3D a partir ' +
-  'dessa referência (é um objeto sólido simples, tem partes móveis, tem texto/logo, é caracter/personagem com ' +
-  'direito autoral a considerar, etc.)\n\n' +
-  '## Complexidade e tamanho\nComplexidade estimada (baixa/média/alta) e por quê — tamanho sugerido pra imprimir bem ' +
-  '(pequeno demais perde detalhe, grande demais gasta muito material)\n\n' +
-  '## Riscos e cuidados\nO que pode dar errado ou exigir atenção (partes finas que quebram, overhangs difíceis, ' +
-  'peça multi-parte que precisa montagem, referência ambígua que precisa confirmar com o cliente antes de começar)\n\n' +
-  '## Sugestão de preço\nFaixa de preço sugerida em reais pra esse tipo de peça, considerando a complexidade (não ' +
-  'precisa ser exato, é só um norte pro dono decidir)';
-
-async function chamarClaudeTexto(prompt, imagemBuf, mediaType) {
-  const res = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 4000,
-      messages: [{
-        role: 'user',
-        content: [
-          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imagemBuf.toString('base64') } },
-          { type: 'text', text: prompt },
-        ],
-      }],
-    }),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error('API da Anthropic respondeu ' + res.status + ': ' + body.slice(0, 300));
-  }
-  const json = await res.json();
-  const texto = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
-  if (!texto) throw new Error('resposta da IA veio vazia.');
-  return texto;
-}
 
 function mediaTypeFromPath(p) {
   const ext = path.extname(p).toLowerCase();
   if (ext === '.png') return 'image/png';
   if (ext === '.webp') return 'image/webp';
   return 'image/jpeg';
-}
-
-async function analisarViabilidadeUm(li) {
-  const nomeRef = li.requester_name || li.id;
-  try {
-    if (!li.custom_reference_image_path) throw new Error('projeto não tem foto de referência anexada.');
-    log('Baixando foto do projeto de "' + nomeRef + '" pra analisar viabilidade...');
-    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(li.custom_reference_image_path);
-    if (dlErr) throw new Error('download da foto falhou: ' + dlErr.message);
-    const fileBuf = Buffer.from(await fileData.arrayBuffer());
-
-    log('Analisando viabilidade do projeto de "' + nomeRef + '"...');
-    const notas = await chamarClaudeTexto(PROMPT_VIABILIDADE, fileBuf, mediaTypeFromPath(li.custom_reference_image_path));
-
-    await supabase.from('order_line_items').update({
-      ai_viability_status: 'done', ai_viability_notes: notas, ai_viability_done_at: new Date().toISOString(), ai_viability_error: null,
-      line_status: 'orcamento_pendente',
-    }).eq('id', li.id);
-    log('✅ Viabilidade do projeto de "' + nomeRef + '" pronta.');
-  } catch (e) {
-    log('❌ Viabilidade do projeto de "' + nomeRef + '" falhou: ' + e.message);
-    await supabase.from('order_line_items').update({
-      ai_viability_status: 'error', ai_viability_error: String(e.message).slice(0, 2000),
-    }).eq('id', li.id);
-  }
-}
-
-async function tickViabilidade() {
-  if (!ANTHROPIC_API_KEY) return;
-  const { data: queued, error } = await supabase
-    .from('order_line_items')
-    .select('id, requester_name, custom_reference_image_path')
-    .eq('line_type', 'custom').eq('ai_viability_status', 'queued')
-    .order('ai_viability_requested_at', { ascending: true })
-    .limit(1);
-  if (error) { log('Erro consultando a fila de viabilidade: ' + error.message); return; }
-  if (!queued || queued.length === 0) return;
-  const li = queued[0];
-  await supabase.from('order_line_items').update({ ai_viability_status: 'processing' }).eq('id', li.id);
-  await analisarViabilidadeUm(li);
 }
 
 // Geração de modelo 3D via Meshy (Image-to-3D). Pede STL direto (evita
@@ -489,7 +407,6 @@ async function gerarModeloMeshyUm(li) {
 }
 
 async function tickMeshy() {
-  if (!MESHY_API_KEY) return;
   const { data: queued, error } = await supabase
     .from('order_line_items')
     .select('id, requester_name, custom_reference_image_path')
@@ -499,6 +416,12 @@ async function tickMeshy() {
   if (error) { log('Erro consultando a fila da Meshy: ' + error.message); return; }
   if (!queued || queued.length === 0) return;
   const li = queued[0];
+  if (!MESHY_API_KEY) {
+    await supabase.from('order_line_items').update({
+      meshy_status: 'error', meshy_error: 'MESHY_API_KEY não configurada no agente local (.env) — a geração de modelo por IA está desligada.',
+    }).eq('id', li.id);
+    return;
+  }
   await supabase.from('order_line_items').update({ meshy_status: 'processing' }).eq('id', li.id);
   await gerarModeloMeshyUm(li);
 }
@@ -564,7 +487,6 @@ async function main() {
     try { await tick(); } catch (e) { log('Erro inesperado (fatiamento): ' + e.message); }
     try { await tickAI(); } catch (e) { log('Erro inesperado (análise IA): ' + e.message); }
     try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
-    try { await tickViabilidade(); } catch (e) { log('Erro inesperado (viabilidade projeto): ' + e.message); }
     try { await tickMeshy(); } catch (e) { log('Erro inesperado (geração Meshy): ' + e.message); }
     try { await tickAbrirFatiadorProjeto(); } catch (e) { log('Erro inesperado (abrir no fatiador - projeto): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
