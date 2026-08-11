@@ -1,0 +1,13 @@
+# Instaladores e binários baixados — nunca fazem parte do projeto
+*.exe
+*.msi
+*.dmg
+*.AppImage
+
+# Logs soltos (ex: gerados pelo OrcaSlicer na pasta atual sem querer)
+*.log
+0*.log
+
+# Backups locais de fotos/arquivos que a Claude cria antes de substituir algo
+*_old_backup.*
+*_backup.*
