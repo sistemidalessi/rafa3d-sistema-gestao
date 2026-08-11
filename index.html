@@ -1266,6 +1266,33 @@ function calcularCustoReceita(receita) {
   };
 }
 
+let _fatiamentoPollTimer = null;
+
+function renderFatiamentoCell(p) {
+  if (!p.model_file_path) return '<span style="color:var(--muted); font-size:11px;">sem arquivo 3D</span>';
+  if (p.slice_status === 'queued') return '<span class="badge off">Na fila</span>';
+  if (p.slice_status === 'processing') return '<span class="badge off">Fatiando…</span>';
+  if (p.slice_status === 'error') {
+    return '<span class="badge off" title="' + escapeHtml(p.slice_error || '') + '" style="cursor:help;">Erro</span>';
+  }
+  if (p.slice_status === 'done' && p.sliced_file_path) return '<span class="badge on">Pronto</span>';
+  return '<span style="color:var(--muted); font-size:11px;">não fatiado</span>';
+}
+
+function renderFatiamentoBtns(p) {
+  if (!p.model_file_path) return '';
+  let out = '';
+  const emAndamento = p.slice_status === 'queued' || p.slice_status === 'processing';
+  if (!emAndamento) {
+    out += '<button class="btn ghost" onclick="solicitarFatiamento(\'' + p.id + '\')">' +
+      (p.slice_status === 'error' ? '🔁 Tentar de novo' : p.slice_status === 'done' ? '🔁 Refatiar' : '🖨️ Fatiar') + '</button>';
+  }
+  if (p.slice_status === 'done' && p.sliced_file_path) {
+    out += '<button class="btn ghost" onclick="baixarModeloFatiado(\'' + p.id + '\')">Baixar G-code</button>';
+  }
+  return out;
+}
+
 async function renderProdutos() {
   const el = document.getElementById('tab-produtos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
@@ -1280,7 +1307,7 @@ async function renderProdutos() {
   if (produtos.length === 0) {
     html += '<div class="empty">Nenhum produto importado ainda.</div>';
   } else {
-    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Custo</th><th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th></th>' : '') + '</tr>';
+    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Custo</th><th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th>Fatiamento</th><th></th>' : '') + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
       html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
@@ -1301,10 +1328,12 @@ async function renderProdutos() {
       }
       html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativo' : 'Inativo') + '</span></td>';
       if (isOwner) {
+        html += '<td>' + renderFatiamentoCell(p) + '</td>';
         html += '<td class="row-actions">';
         html += '<button class="btn ghost" onclick="openProdutoForm(\'' + p.id + '\')">Editar</button>';
         html += '<button class="btn ghost" onclick="openCustoForm(\'' + p.id + '\')">Custo</button>';
         html += '<button class="btn ghost" onclick="openModelo3DForm(\'' + p.id + '\')">' + (p.model_file_path ? '📦 Arquivo 3D' : '+ Arquivo 3D') + '</button>';
+        html += renderFatiamentoBtns(p);
         html += '</td>';
       }
       html += '</tr>';
@@ -1313,6 +1342,28 @@ async function renderProdutos() {
   }
   html += '</div>';
   el.innerHTML = html;
+
+  clearTimeout(_fatiamentoPollTimer);
+  const emAndamento = produtos.some((p) => p.slice_status === 'queued' || p.slice_status === 'processing');
+  if (emAndamento && document.getElementById('tab-produtos') && !document.getElementById('tab-produtos').classList.contains('hidden')) {
+    _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
+  }
+}
+
+async function solicitarFatiamento(productId) {
+  const { error } = await SUPA.from('products').update({
+    slice_status: 'queued', slice_requested_at: new Date().toISOString(), slice_error: null,
+  }).eq('id', productId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Fatiamento pedido — o agente local processa em instantes.');
+  await renderProdutos();
+}
+
+async function baixarModeloFatiado(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  const { data, error } = await SUPA.storage.from('modelos-3d').createSignedUrl(p.sliced_file_path, 60);
+  if (error) { toast('Erro: ' + error.message); return; }
+  window.open(data.signedUrl, '_blank');
 }
 
 function openModelo3DForm(productId) {

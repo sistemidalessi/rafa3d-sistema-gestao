@@ -11,3 +11,10 @@
 # Backups locais de fotos/arquivos que a Claude cria antes de substituir algo
 *_old_backup.*
 *_backup.*
+
+# Agente de fatiamento automático (slicer-agent): segredos e dependências
+# locais nunca vão pro repositório — cada máquina que roda o agente tem
+# seu próprio .env preenchido a partir do .env.example.
+slicer-agent/.env
+slicer-agent/node_modules/
+slicer-agent/agent.log

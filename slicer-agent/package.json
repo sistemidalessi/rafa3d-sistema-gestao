@@ -1,0 +1,15 @@
+{
+  "name": "rafa3d-slicer-agent",
+  "version": "1.0.0",
+  "description": "Agente local que fatia automaticamente os arquivos 3D dos produtos usando o OrcaSlicer, disparado pelo botao Fatiar do Sistema de Gestao.",
+  "private": true,
+  "type": "commonjs",
+  "main": "agent.js",
+  "scripts": {
+    "start": "node agent.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "dotenv": "^16.4.5"
+  }
+}
