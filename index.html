@@ -101,14 +101,15 @@
   }
   .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  th { text-align: left; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); }
-  td { text-align: left; padding: 10px; border-bottom: 1px solid var(--border); }
+  th { text-align: left; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); vertical-align: middle; }
+  td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:hover td { background: #f7f9fc; }
-  .row-actions { display: flex; gap: 6px; }
+  .row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .prod-name { font-weight: 700; }
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
   .badge.on { background: #e5f6ea; color: #1f8a3b; }
   .badge.off { background: #fdeaea; color: #c0392b; }
-  .thumb { width: 72px; height: 72px; object-fit: contain; background: #f3f4f7; border-radius: 10px; border: 1px solid var(--border); }
+  .thumb { width: 88px; height: 88px; object-fit: cover; object-position: center; background: #f3f4f7; border-radius: 50%; border: 1px solid var(--border); }
 
   /* ---- modal ---- */
   #modalRoot {
@@ -1320,7 +1321,7 @@ async function renderProdutos() {
       html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
       html += '<td>' + escapeHtml(p.catalog_code) + '</td>';
       html += '<td>' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + '</td>';
-      html += '<td>' + escapeHtml(p.name) + '</td>';
+      html += '<td class="prod-name">' + escapeHtml(p.name) + '</td>';
       html += '<td>' + fmtMoney(p.sale_price) + (p.price_unit_note ? ' <span style="color:var(--muted);font-size:11px;">' + escapeHtml(p.price_unit_note) + '</span>' : '') + '</td>';
       if (isOwner) {
         const receita = receitasCache.find((r) => r.product_id === p.id);
