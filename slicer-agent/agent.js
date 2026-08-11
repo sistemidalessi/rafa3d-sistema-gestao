@@ -180,7 +180,7 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   'Responda só com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
   'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.';
 
-async function chamarClaude(imagemBuf) {
+async function chamarClaude(imagemBuf, mediaType) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -194,7 +194,7 @@ async function chamarClaude(imagemBuf) {
       messages: [{
         role: 'user',
         content: [
-          { type: 'image', source: { type: 'base64', media_type: 'image/png', data: imagemBuf.toString('base64') } },
+          { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imagemBuf.toString('base64') } },
           { type: 'text', text: PROMPT_ANALISE },
         ],
       }],
@@ -399,9 +399,27 @@ async function gerarModeloMeshyUm(li) {
     const { error: upErr } = await supabase.storage.from(BUCKET).upload(modeloPath, stlBuf, { upsert: true });
     if (upErr) throw new Error('upload do modelo gerado falhou: ' + upErr.message);
 
+    // Miniatura renderizada pela própria Meshy — não é obrigatória (se
+    // falhar, a análise por IA depois cai de volta pra foto de referência),
+    // por isso só loga o erro em vez de derrubar a geração inteira.
+    let thumbnailPath = null;
+    if (tarefaPronta.thumbnail_url) {
+      try {
+        const thumbRes = await fetch(tarefaPronta.thumbnail_url);
+        if (thumbRes.ok) {
+          const thumbBuf = Buffer.from(await thumbRes.arrayBuffer());
+          thumbnailPath = li.id + '/meshy_thumb.png';
+          const { error: thumbUpErr } = await supabase.storage.from(FOTOS_BUCKET).upload(thumbnailPath, thumbBuf, { upsert: true });
+          if (thumbUpErr) { thumbnailPath = null; log('AVISO: upload da miniatura da Meshy falhou: ' + thumbUpErr.message); }
+        }
+      } catch (e) {
+        log('AVISO: não consegui baixar a miniatura da Meshy: ' + e.message);
+      }
+    }
+
     await supabase.from('order_line_items').update({
       meshy_status: 'done', model_file_path: modeloPath, model_source: 'meshy_generated', meshy_error: null,
-      updated_at: new Date().toISOString(),
+      meshy_thumbnail_path: thumbnailPath, updated_at: new Date().toISOString(),
     }).eq('id', li.id);
     log('✅ Modelo 3D de "' + nomeRef + '" gerado com sucesso.');
   } catch (e) {
@@ -430,6 +448,57 @@ async function tickMeshy() {
   }
   await supabase.from('order_line_items').update({ meshy_status: 'processing' }).eq('id', li.id);
   await gerarModeloMeshyUm(li);
+}
+
+// Colinha de fatiamento por IA pro projeto — mesma ficha técnica dos
+// produtos do catálogo. Como .stl não carrega miniatura embutida (ao
+// contrário do .3mf), usa a miniatura que a própria Meshy renderizou
+// (capturada em gerarModeloMeshyUm); se o modelo foi anexado à mão sem
+// passar pela Meshy, cai de volta pra foto de referência do cliente.
+async function analisarProjetoUm(li) {
+  const nomeRef = li.requester_name || li.id;
+  try {
+    const imagemPath = li.meshy_thumbnail_path || li.custom_reference_image_path;
+    if (!imagemPath) throw new Error('projeto não tem miniatura do modelo nem foto de referência pra analisar.');
+
+    log('Baixando imagem do projeto de "' + nomeRef + '" pra analisar...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(imagemPath);
+    if (dlErr) throw new Error('download da imagem falhou: ' + dlErr.message);
+    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+
+    log('Analisando projeto de "' + nomeRef + '" com IA...');
+    const tips = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath));
+
+    await supabase.from('order_line_items').update({
+      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
+    }).eq('id', li.id);
+    log('✅ Análise do projeto de "' + nomeRef + '" pronta.');
+  } catch (e) {
+    log('❌ Análise do projeto de "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('order_line_items').update({
+      ai_analysis_status: 'error', ai_analysis_error: String(e.message).slice(0, 2000),
+    }).eq('id', li.id);
+  }
+}
+
+async function tickAIProjeto() {
+  const { data: queued, error } = await supabase
+    .from('order_line_items')
+    .select('id, requester_name, meshy_thumbnail_path, custom_reference_image_path')
+    .eq('line_type', 'custom').eq('ai_analysis_status', 'queued')
+    .order('ai_analysis_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila de análise (projetos): ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const li = queued[0];
+  if (!ANTHROPIC_API_KEY) {
+    await supabase.from('order_line_items').update({
+      ai_analysis_status: 'error', ai_analysis_error: 'ANTHROPIC_API_KEY não configurada no agente local (.env).',
+    }).eq('id', li.id);
+    return;
+  }
+  await supabase.from('order_line_items').update({ ai_analysis_status: 'processing' }).eq('id', li.id);
+  await analisarProjetoUm(li);
 }
 
 // "Abrir no Fatiador" pra projeto — igual ao dos produtos do catálogo,
@@ -495,6 +564,7 @@ async function main() {
     try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
     try { await tickMeshy(); } catch (e) { log('Erro inesperado (geração Meshy): ' + e.message); }
     try { await tickAbrirFatiadorProjeto(); } catch (e) { log('Erro inesperado (abrir no fatiador - projeto): ' + e.message); }
+    try { await tickAIProjeto(); } catch (e) { log('Erro inesperado (análise IA - projeto): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }

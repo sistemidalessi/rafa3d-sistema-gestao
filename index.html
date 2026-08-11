@@ -567,6 +567,7 @@ async function renderProjetos() {
   clearTimeout(_projetosPollTimer);
   const emAndamento = projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
+    li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
     li.open_slicer_status === 'queued');
   if (emAndamento && !el.classList.contains('hidden')) {
     _projetosPollTimer = setTimeout(() => { renderProjetos(); }, 4000);
@@ -654,14 +655,29 @@ async function abrirGerenciarProjeto(lineItemId) {
   html += '</span></div>';
 
   if (li.model_file_path) {
+    html += '<div style="padding:10px 0; border-top:1px solid var(--border);">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    const emAndamentoIAProj = li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing';
+    html += '<span>2. Colinha de Fatiamento (IA) — ' + (li.ai_analysis_status === 'done' ? '<span class="badge on">pronta</span>' : li.ai_analysis_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.ai_analysis_error || '') + '">erro</span>' : emAndamentoIAProj ? '<span class="badge off">analisando…</span>' : '<span style="color:var(--muted); font-size:11px;">não pedida</span>') + '</span>';
+    if (li.ai_analysis_status === 'done') {
+      html += '<button class="btn ghost" onclick="solicitarAnaliseIAProjeto(\'' + li.id + '\')">🔁 Analisar de novo</button>';
+    } else if (!emAndamentoIAProj) {
+      html += '<button class="btn ghost" onclick="solicitarAnaliseIAProjeto(\'' + li.id + '\')">🤖 Analisar com IA</button>';
+    }
+    html += '</div>';
+    if (li.ai_analysis_status === 'done') {
+      html += '<div class="card" style="background:#f7f9fc; margin-top:8px; font-size:13px; line-height:1.55;">' + formatarColinha(li.ai_slicing_tips) + '</div>';
+    }
+    html += '</div>';
+
     html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-    html += '<span>2. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge off">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
+    html += '<span>3. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge off">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
     html += '<button class="btn ghost" onclick="solicitarAbrirFatiadorProjeto(\'' + li.id + '\')" ' + (li.open_slicer_status === 'queued' ? 'disabled' : '') + '>🖥️ Abrir no Fatiador</button>';
     html += '</div>';
   }
 
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-  html += '<span>3. Aprovação — ' + (li.line_status === 'orcamento_aprovado' ? '<span class="badge on">aprovado, ' + fmtMoney(li.unit_price) + '</span>' : '<span style="color:var(--muted); font-size:11px;">aguardando preço</span>') + '</span>';
+  html += '<span>4. Aprovação — ' + (li.line_status === 'orcamento_aprovado' ? '<span class="badge on">aprovado, ' + fmtMoney(li.unit_price) + '</span>' : '<span style="color:var(--muted); font-size:11px;">aguardando preço</span>') + '</span>';
   if (li.line_status !== 'orcamento_aprovado' && li.line_status !== 'cancelado') {
     html += '<button class="btn" onclick="abrirAprovarProjeto(\'' + li.id + '\')">💰 Aprovar e Definir Preço</button>';
   }
@@ -680,6 +696,16 @@ async function solicitarGerarModelo3D(lineItemId) {
   }).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Geração de modelo 3D pedida — pode levar alguns minutos.');
+  await renderProjetos();
+  if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+async function solicitarAnaliseIAProjeto(lineItemId) {
+  const { error } = await SUPA.from('order_line_items').update({
+    ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Análise pedida — o agente local processa em instantes.');
   await renderProjetos();
   if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
 }
