@@ -645,7 +645,7 @@ async function abrirGerenciarProjeto(lineItemId) {
   html += '<div style="display:flex; flex-direction:column; gap:10px;">';
 
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-  html += '<span>1. Modelo 3D — ' + (li.model_file_path ? '<span class="badge on">' + (li.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (li.meshy_status === 'queued' || li.meshy_status === 'processing') ? '<span class="badge off">gerando…</span>' : li.meshy_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
+  html += '<span>1. Modelo 3D — ' + (li.model_file_path ? '<span class="badge on">' + (li.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (li.meshy_status === 'queued' || li.meshy_status === 'processing') ? '<span class="badge off">gerando…</span>' : (li.meshy_status === 'error' && li.custom_reference_image_path) ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || '') + '">erro</span>' : !li.custom_reference_image_path ? '<span style="color:var(--muted); font-size:11px;">sem foto — anexe uma foto ou o modelo manualmente</span>' : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
   html += '<span class="row-actions">';
   if (li.meshy_status !== 'queued' && li.meshy_status !== 'processing' && li.custom_reference_image_path) {
     html += '<button class="btn ghost" onclick="solicitarGerarModelo3D(\'' + li.id + '\')">🧬 Gerar por IA</button>';
