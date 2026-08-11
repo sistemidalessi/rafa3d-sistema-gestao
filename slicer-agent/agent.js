@@ -1,6 +1,6 @@
 require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const { createClient } = require('@supabase/supabase-js');
-const { execFile } = require('child_process');
+const { execFile, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -243,6 +243,48 @@ async function tickAI() {
   await analisarUm(product);
 }
 
+// "Abrir no Fatiador": baixa o arquivo e já abre no OrcaSlicer, sem clicar
+// em nada dentro do programa — só isso, sem automação de tela nenhuma, por
+// isso não tem o risco de segurança que a automação de clique tinha.
+async function abrirNoFatiador(product) {
+  try {
+    log('Baixando modelo de "' + product.name + '" pra abrir no fatiador...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(product.model_file_path);
+    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+
+    const downloadsDir = path.join(__dirname, 'downloads');
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    const ext = path.extname(product.model_file_path) || '.3mf';
+    const nomeSeguro = (product.catalog_code + '-' + product.name).replace(/[^a-z0-9À-ÿ]+/gi, '_');
+    const localPath = path.join(downloadsDir, nomeSeguro + ext);
+    fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
+
+    log('Abrindo "' + product.name + '" no OrcaSlicer...');
+    const child = spawn(ORCA_PATH, [localPath], { detached: true, stdio: 'ignore' });
+    child.unref();
+
+    await supabase.from('products').update({ open_slicer_status: 'done', open_slicer_error: null }).eq('id', product.id);
+    log('✅ "' + product.name + '" aberto no fatiador.');
+  } catch (e) {
+    log('❌ Abrir "' + product.name + '" no fatiador falhou: ' + e.message);
+    await supabase.from('products').update({
+      open_slicer_status: 'error', open_slicer_error: String(e.message).slice(0, 2000),
+    }).eq('id', product.id);
+  }
+}
+
+async function tickAbrirFatiador() {
+  const { data: queued, error } = await supabase
+    .from('products')
+    .select('id, name, catalog_code, model_file_path')
+    .eq('open_slicer_status', 'queued')
+    .order('open_slicer_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando fila de abrir-no-fatiador: ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  await abrirNoFatiador(queued[0]);
+}
+
 async function main() {
   log('Agente de fatiamento iniciado.');
   log('OrcaSlicer: ' + ORCA_PATH);
@@ -250,6 +292,7 @@ async function main() {
   for (;;) {
     try { await tick(); } catch (e) { log('Erro inesperado (fatiamento): ' + e.message); }
     try { await tickAI(); } catch (e) { log('Erro inesperado (análise IA): ' + e.message); }
+    try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }

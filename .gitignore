@@ -18,3 +18,4 @@
 slicer-agent/.env
 slicer-agent/node_modules/
 slicer-agent/agent.log
+slicer-agent/downloads/

@@ -108,7 +108,7 @@
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
   .badge.on { background: #e5f6ea; color: #1f8a3b; }
   .badge.off { background: #fdeaea; color: #c0392b; }
-  .thumb { width: 40px; height: 40px; object-fit: contain; background: #f3f4f7; border-radius: 8px; }
+  .thumb { width: 72px; height: 72px; object-fit: contain; background: #f3f4f7; border-radius: 10px; border: 1px solid var(--border); }
 
   /* ---- modal ---- */
   #modalRoot {
@@ -116,7 +116,8 @@
     align-items: center; justify-content: center; z-index: 500;
   }
   #modalRoot.show { display: flex; }
-  .modal-box { background: #fff; border-radius: 18px; padding: 26px; width: 380px; max-width: 92vw; box-shadow: 0 30px 70px rgba(0,0,0,0.35); }
+  .modal-box { background: #fff; border-radius: 18px; padding: 26px; width: 380px; max-width: 92vw; max-height: 82vh; overflow-y: auto; box-shadow: 0 30px 70px rgba(0,0,0,0.35); }
+  .modal-box.wide { width: 560px; }
   .modal-box h3 { margin: 0 0 16px; font-size: 17px; }
   .modal-box label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 5px; color: var(--muted); }
   .modal-box input, .modal-box select {
@@ -379,9 +380,10 @@ function emptyState(el, msg) {
   el.innerHTML = '<div class="card"><div class="empty">' + escapeHtml(msg) + '</div></div>';
 }
 
-function openModal(html) {
+function openModal(html, opts) {
   const root = document.getElementById('modalRoot');
-  root.innerHTML = '<div class="modal-box">' + html + '</div>';
+  const wide = opts && opts.wide ? ' wide' : '';
+  root.innerHTML = '<div class="modal-box' + wide + '">' + html + '</div>';
   root.classList.add('show');
   root.onclick = (e) => { if (e.target === root) closeModal(); };
 }
@@ -1270,37 +1272,30 @@ let _fatiamentoPollTimer = null;
 
 function renderFatiamentoCell(p) {
   if (!p.model_file_path) return '<span style="color:var(--muted); font-size:11px;">sem arquivo 3D</span>';
-  if (p.slice_status === 'queued') return '<span class="badge off">Na fila</span>';
-  if (p.slice_status === 'processing') return '<span class="badge off">Fatiando…</span>';
-  if (p.slice_status === 'error') {
-    return '<span class="badge off" title="' + escapeHtml(p.slice_error || '') + '" style="cursor:help;">Erro</span>' +
-      '<div style="font-size:11px; color:var(--muted); margin-top:3px; max-width:220px;">' + escapeHtml(p.slice_error || '') + '</div>';
+  if (p.open_slicer_status === 'queued') return '<span class="badge off">Abrindo…</span>';
+  if (p.open_slicer_status === 'error') {
+    return '<span class="badge off" title="' + escapeHtml(p.open_slicer_error || '') + '" style="cursor:help;">Erro</span>' +
+      '<div style="font-size:11px; color:var(--muted); margin-top:3px; max-width:220px;">' + escapeHtml(p.open_slicer_error || '') + '</div>';
   }
-  if (p.slice_status === 'done' && p.sliced_file_path) return '<span class="badge on">Pronto</span>';
-  return '<span style="color:var(--muted); font-size:11px;">não fatiado</span>';
+  return '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>';
 }
 
 function renderFatiamentoBtns(p) {
   if (!p.model_file_path) return '';
   let out = '';
-  const emAndamento = p.slice_status === 'queued' || p.slice_status === 'processing';
+  const emAndamento = p.open_slicer_status === 'queued';
   if (!emAndamento) {
-    out += '<button class="btn ghost" onclick="solicitarFatiamento(\'' + p.id + '\')">' +
-      (p.slice_status === 'error' ? '🔁 Tentar de novo' : p.slice_status === 'done' ? '🔁 Refatiar' : '🖨️ Fatiar') + '</button>';
+    out += '<button class="btn ghost" onclick="solicitarAbrirFatiador(\'' + p.id + '\')">' +
+      (p.open_slicer_status === 'error' ? '🔁 Tentar de novo' : '🖥️ Abrir no Fatiador') + '</button>';
   }
-  if (p.slice_status === 'done' && p.sliced_file_path) {
-    out += '<button class="btn ghost" onclick="baixarModeloFatiado(\'' + p.id + '\')">Baixar G-code</button>';
-  }
-  if (p.model_file_path) {
-    const emAndamentoIA = p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing';
-    if (p.ai_analysis_status === 'done') {
-      out += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">🤖 Ver colinha</button>';
-    } else if (!emAndamentoIA) {
-      out += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\')">' +
-        (p.ai_analysis_status === 'error' ? '🔁 Tentar IA de novo' : '🤖 Analisar com IA') + '</button>';
-    } else {
-      out += '<span class="badge off">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
-    }
+  const emAndamentoIA = p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing';
+  if (p.ai_analysis_status === 'done') {
+    out += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">🤖 Ver colinha</button>';
+  } else if (!emAndamentoIA) {
+    out += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\')">' +
+      (p.ai_analysis_status === 'error' ? '🔁 Tentar IA de novo' : '🤖 Analisar com IA') + '</button>';
+  } else {
+    out += '<span class="badge off">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
   }
   return out;
 }
@@ -1359,27 +1354,20 @@ async function renderProdutos() {
 
   clearTimeout(_fatiamentoPollTimer);
   const emAndamento = produtos.some((p) =>
-    p.slice_status === 'queued' || p.slice_status === 'processing' ||
+    p.open_slicer_status === 'queued' ||
     p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   if (emAndamento && document.getElementById('tab-produtos') && !document.getElementById('tab-produtos').classList.contains('hidden')) {
     _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
   }
 }
 
-async function solicitarFatiamento(productId) {
+async function solicitarAbrirFatiador(productId) {
   const { error } = await SUPA.from('products').update({
-    slice_status: 'queued', slice_requested_at: new Date().toISOString(), slice_error: null,
+    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
-  toast('Fatiamento pedido — o agente local processa em instantes.');
+  toast('Abrindo no fatiador — o agente local faz isso em instantes.');
   await renderProdutos();
-}
-
-async function baixarModeloFatiado(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
-  const { data, error } = await SUPA.storage.from('modelos-3d').createSignedUrl(p.sliced_file_path, 60);
-  if (error) { toast('Erro: ' + error.message); return; }
-  window.open(data.signedUrl, '_blank');
 }
 
 async function solicitarAnaliseIA(productId) {
@@ -1391,18 +1379,36 @@ async function solicitarAnaliseIA(productId) {
   await renderProdutos();
 }
 
+function formatarColinha(texto) {
+  const linhas = (texto || '(sem conteúdo)').split('\n');
+  let html = '';
+  for (const linha of linhas) {
+    if (/^##\s+/.test(linha)) {
+      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:13.5px; color:var(--blue); margin:14px 0 4px;">' + escapeHtml(linha.replace(/^##\s+/, '')) + '</div>';
+    } else if (/^-\s+/.test(linha)) {
+      html += '<div style="padding-left:14px; margin:2px 0;">• ' + escapeHtml(linha.replace(/^-\s+/, '')) + '</div>';
+    } else if (linha.trim() === '') {
+      html += '';
+    } else {
+      html += '<div style="margin:2px 0;">' + escapeHtml(linha) + '</div>';
+    }
+  }
+  return html;
+}
+
 function verAnaliseIA(productId) {
   const p = produtosCache.find((x) => x.id === productId);
   openModal(
     '<h3>Colinha de fatiamento — ' + escapeHtml(p.name) + '</h3>' +
-    '<div class="card" style="background:#f7f9fc; white-space:pre-wrap; font-size:13.5px; line-height:1.6;">' +
-      escapeHtml(p.ai_slicing_tips || '(sem conteúdo)') +
+    '<div class="card" style="background:#f7f9fc; font-size:13.5px; line-height:1.55;">' +
+      formatarColinha(p.ai_slicing_tips) +
     '</div>' +
     '<p style="font-size:11px; color:var(--muted); margin-top:8px;">Sugestão gerada por IA a partir da miniatura do arquivo — confira antes de imprimir, não substitui seu julgamento.</p>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Fechar</button>' +
       '<button class="btn" onclick="solicitarAnaliseIA(\'' + productId + '\'); closeModal();">🔁 Analisar de novo</button>' +
-    '</div>'
+    '</div>',
+    { wide: true }
   );
 }
 
