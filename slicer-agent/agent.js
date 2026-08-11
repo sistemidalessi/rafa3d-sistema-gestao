@@ -12,7 +12,7 @@ const ORCA_PATH = process.env.ORCA_PATH || 'C:\\Program Files\\OrcaSlicer\\orca-
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
 const BUCKET = 'modelos-3d';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-haiku-4-5-20251001';
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 
 function log(msg) {
   console.log('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + msg);
@@ -86,7 +86,16 @@ async function sliceOne(product) {
     }
 
     if (!fs.existsSync(outputLocal)) {
-      throw new Error(combined.trim().slice(0, 500) || 'OrcaSlicer não gerou o arquivo de saída (motivo desconhecido).');
+      const bruto = combined.trim();
+      // "Slic3r::CLI::run found error, exit" sozinho, sem mais detalhe, é a
+      // assinatura de um bug conhecido do OrcaSlicer: a CLI dele falha em
+      // projetos com vários objetos/partes/troca de filamento mesmo quando a
+      // interface gráfica do mesmo programa fatia sem problema. Não é algo
+      // que dá pra corrigir por parâmetro — a peça precisa ser fatiada à mão.
+      const mensagemAmigavel = /^Slic3r::CLI::run found error, exit\.?$/i.test(bruto)
+        ? 'Peça complexa demais pra fatiar sozinho (provavelmente tem vários objetos, partes ou trocas de filamento) — limitação conhecida do OrcaSlicer em modo automático. Fatie esta manualmente no programa.'
+        : (bruto || 'OrcaSlicer não gerou o arquivo de saída (motivo desconhecido).');
+      throw new Error(mensagemAmigavel);
     }
 
     const slicedPath = product.catalog_code + '/sliced.3mf';
@@ -139,14 +148,29 @@ function extrairMiniatura(fileBuf) {
   return null;
 }
 
-const PROMPT_ANALISE = 'Você é um técnico experiente de impressão 3D FDM, especialista em Bambu Lab A1 e OrcaSlicer. ' +
-  'Olhe a imagem desta peça (miniatura de dentro do arquivo de projeto) e escreva uma "colinha" curta e prática, ' +
-  'em português, com o que ajustar no fatiador antes de imprimir. Cubra, quando fizer sentido pra essa peça: ' +
-  '(1) precisa de suporte? de que tipo (normal/árvore) e onde; (2) precisa de brim/aba de adesão, e de que tamanho; ' +
-  '(3) alguma sugestão de orientação da peça na mesa; (4) se parecer multi-cor/AMS, algum cuidado com troca de ' +
-  'filamento; (5) qualquer outro risco que você enxergue (parede fina, ponte longa, peça alta e fina, etc). ' +
-  'Seja direto e objetivo — formato de lista curta, sem introdução nem conclusão, pronto pra alguém ler rápido ' +
-  'e já digitar no fatiador. Se a peça for simples e não precisar de nada especial, diga isso em uma frase só.';
+const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializado em impressão 3D FDM profissional, ' +
+  'consultor de uma empresa que vende peças impressas (Bambu Lab A1, bico 0.4mm, perfil base "0.20mm Standard @BBL A1", ' +
+  'filamentos PLA/PETG). Um funcionário vai olhar sua resposta e digitar os valores direto no OrcaSlicer antes de ' +
+  'imprimir uma peça pra vender — a resposta precisa ser uma ficha técnica de verdade, com números específicos, ' +
+  'não recomendações vagas ou faixas genéricas. Nunca responda "ajuste conforme necessário" ou similar — decida um ' +
+  'valor e diga esse valor.\n\n' +
+  'Olhe a imagem desta peça (miniatura renderizada de dentro do arquivo de projeto) e produza a ficha nesta estrutura ' +
+  'exata, preenchendo cada campo com um valor concreto (pode marcar "não se aplica" só quando genuinely não fizer ' +
+  'sentido pra essa peça, nunca por preguiça de decidir):\n\n' +
+  '## Perfil\nAltura de camada (mm) — Número de paredes/contornos — Padrão e % de preenchimento\n\n' +
+  '## Temperatura e velocidade\nBico e mesa (°C, considerando PLA salvo se a peça pedir PETG) — Velocidade parede ' +
+  'externa/interna/preenchimento (mm/s) — Velocidade reduzida em algum trecho específico da peça, se aplicável\n\n' +
+  '## Suporte\nPrecisa? (sim/não) — Tipo (normal ou árvore) e por quê — Densidade (%) — Distância Z do topo/base ' +
+  '(mm) — Ângulo limite de overhang (°) — Onde exatamente na peça (descreva a região)\n\n' +
+  '## Aderência à mesa\nBrim, raft ou nenhum — Largura/altura (mm) e número de loops se for brim — Por quê, dado o ' +
+  'formato de contato da peça com a mesa\n\n' +
+  '## Orientação sugerida\nComo posicionar na mesa e por quê (reduz suporte, melhora acabamento em superfície ' +
+  'visível, evita peça soltar)\n\n' +
+  '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
+  'seção fina que quebra, peça alta e estreita que tomba, troca excessiva de filamento em AMS, etc.) e a mitigação ' +
+  'pra cada um\n\n' +
+  'Responda só com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
+  'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.';
 
 async function chamarClaude(imagemBuf) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -158,7 +182,7 @@ async function chamarClaude(imagemBuf) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 700,
+      max_tokens: 4000,
       messages: [{
         role: 'user',
         content: [
