@@ -1290,6 +1290,17 @@ function renderFatiamentoBtns(p) {
   if (p.slice_status === 'done' && p.sliced_file_path) {
     out += '<button class="btn ghost" onclick="baixarModeloFatiado(\'' + p.id + '\')">Baixar G-code</button>';
   }
+  if (p.model_file_path) {
+    const emAndamentoIA = p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing';
+    if (p.ai_analysis_status === 'done') {
+      out += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">🤖 Ver colinha</button>';
+    } else if (!emAndamentoIA) {
+      out += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\')">' +
+        (p.ai_analysis_status === 'error' ? '🔁 Tentar IA de novo' : '🤖 Analisar com IA') + '</button>';
+    } else {
+      out += '<span class="badge off">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
+    }
+  }
   return out;
 }
 
@@ -1344,7 +1355,9 @@ async function renderProdutos() {
   el.innerHTML = html;
 
   clearTimeout(_fatiamentoPollTimer);
-  const emAndamento = produtos.some((p) => p.slice_status === 'queued' || p.slice_status === 'processing');
+  const emAndamento = produtos.some((p) =>
+    p.slice_status === 'queued' || p.slice_status === 'processing' ||
+    p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   if (emAndamento && document.getElementById('tab-produtos') && !document.getElementById('tab-produtos').classList.contains('hidden')) {
     _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
   }
@@ -1364,6 +1377,30 @@ async function baixarModeloFatiado(productId) {
   const { data, error } = await SUPA.storage.from('modelos-3d').createSignedUrl(p.sliced_file_path, 60);
   if (error) { toast('Erro: ' + error.message); return; }
   window.open(data.signedUrl, '_blank');
+}
+
+async function solicitarAnaliseIA(productId) {
+  const { error } = await SUPA.from('products').update({
+    ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+  }).eq('id', productId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Análise pedida — o agente local processa em instantes.');
+  await renderProdutos();
+}
+
+function verAnaliseIA(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  openModal(
+    '<h3>Colinha de fatiamento — ' + escapeHtml(p.name) + '</h3>' +
+    '<div class="card" style="background:#f7f9fc; white-space:pre-wrap; font-size:13.5px; line-height:1.6;">' +
+      escapeHtml(p.ai_slicing_tips || '(sem conteúdo)') +
+    '</div>' +
+    '<p style="font-size:11px; color:var(--muted); margin-top:8px;">Sugestão gerada por IA a partir da miniatura do arquivo — confira antes de imprimir, não substitui seu julgamento.</p>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Fechar</button>' +
+      '<button class="btn" onclick="solicitarAnaliseIA(\'' + productId + '\'); closeModal();">🔁 Analisar de novo</button>' +
+    '</div>'
+  );
 }
 
 function openModelo3DForm(productId) {
