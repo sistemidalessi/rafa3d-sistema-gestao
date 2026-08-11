@@ -150,6 +150,7 @@
       <div class="brand-txt">Rafa 3D<small>Sistema de Gestão</small></div>
     </div>
     <div class="nav-item" data-tab="dashboard"><span class="ic">📊</span> Dashboard</div>
+    <div class="nav-item" data-tab="projetos"><span class="ic">🪄</span> Projetos</div>
     <div class="nav-item" data-tab="pedidos"><span class="ic">🧾</span> Pedidos</div>
     <div class="nav-item" data-tab="fila"><span class="ic">🖨️</span> Fila de Impressão</div>
     <div class="nav-item" data-tab="filamentos"><span class="ic">🧵</span> Filamentos</div>
@@ -167,6 +168,7 @@
       <h2 id="pageTitle">Dashboard</h2>
     </div>
     <div id="tab-dashboard" class="tab-panel"></div>
+    <div id="tab-projetos" class="tab-panel hidden"></div>
     <div id="tab-pedidos" class="tab-panel hidden"></div>
     <div id="tab-fila" class="tab-panel hidden"></div>
     <div id="tab-filamentos" class="tab-panel hidden"></div>
@@ -287,10 +289,11 @@ async function enterApp() {
 // Ajudante não vê custo/margem — essas telas (Filamentos, Impressoras com
 // custo, relatório de margem) ficam reservadas ao owner. As demais abas
 // operacionais (pedidos, fila, clientes) são liberadas pros dois.
-const HELPER_ALLOWED_TABS = ['dashboard', 'pedidos', 'fila', 'clientes'];
+const HELPER_ALLOWED_TABS = ['dashboard', 'projetos', 'pedidos', 'fila', 'clientes'];
 
 const TAB_TITLES = {
   dashboard: '📊 Dashboard',
+  projetos: '🪄 Projetos',
   pedidos: '🧾 Pedidos',
   fila: '🖨️ Fila de Impressão',
   filamentos: '🧵 Filamentos',
@@ -322,6 +325,7 @@ async function showTab(name) {
 
 async function renderTab(name) {
   if (name === 'dashboard') await renderDashboard();
+  if (name === 'projetos') await renderProjetos();
   if (name === 'pedidos') await renderPedidos();
   if (name === 'fila') await renderFila();
   if (name === 'filamentos') await renderFilamentos();
@@ -393,6 +397,7 @@ function closeModal() {
   root.classList.remove('show');
   root.innerHTML = '';
   _produtoGerenciarAberto = null;
+  _projetoGerenciarAberto = null;
 }
 
 /* ============================================================
@@ -494,6 +499,268 @@ const PAYMENT_STATUS_LABELS = {
   sinal_pago: 'Sinal pago',
   quitado: 'Quitado',
 };
+
+/* ============================================================
+   PROJETOS — pedido personalizado com foto do cliente + IA
+   (reaproveita order_line_items com line_type='custom'; não é
+   tabela separada, é uma tela dedicada pra esse fluxo específico)
+   ============================================================ */
+let _projetosPollTimer = null;
+let _projetoGerenciarAberto = null;
+
+function projetoStatusBadge(li) {
+  if (li.line_status === 'orcamento_aprovado' || li.line_status === 'fila_impressao' || li.line_status === 'imprimindo' || li.line_status === 'pos_processamento') {
+    return '<span class="badge on">Aprovado — virou pedido</span>';
+  }
+  if (li.line_status === 'cancelado') return '<span class="badge off">Cancelado</span>';
+  if (li.ai_viability_status === 'queued' || li.ai_viability_status === 'processing') return '<span class="badge off">Analisando viabilidade…</span>';
+  if (li.meshy_status === 'queued' || li.meshy_status === 'processing') return '<span class="badge off">Gerando modelo 3D…</span>';
+  if (li.model_file_path) return '<span class="badge on">Modelo pronto — falta aprovar preço</span>';
+  if (li.ai_viability_status === 'done') return '<span class="badge on">Viabilidade pronta</span>';
+  if (li.ai_viability_status === 'error') return '<span class="badge off">Erro na análise</span>';
+  return '<span style="color:var(--muted); font-size:11px;">Recebido — aguardando análise</span>';
+}
+
+async function renderProjetos() {
+  const el = document.getElementById('tab-projetos');
+  const scrollY = window.scrollY;
+  const projetos = await q(SUPA.from('order_line_items').select('*, orders(order_number)').eq('line_type', 'custom').order('created_at', { ascending: false }));
+
+  let html = '<div class="card">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
+  html += '<strong>' + projetos.length + ' projetos</strong>';
+  html += '<button class="btn" onclick="abrirNovoProjeto()">+ Novo Projeto</button>';
+  html += '</div>';
+  if (projetos.length === 0) {
+    html += '<div class="empty">Nenhum projeto ainda. Cliente mandou foto pedindo uma peça? Clica em "+ Novo Projeto".</div>';
+  } else {
+    html += '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px;">';
+    projetos.forEach((li) => {
+      html += '<div style="border:1px solid var(--border); border-radius:12px; overflow:hidden; cursor:pointer;" onclick="abrirGerenciarProjeto(\'' + li.id + '\')">';
+      if (li.custom_reference_image_path) {
+        html += '<div id="projfoto-' + li.id + '" style="width:100%; aspect-ratio:1; background:#f3f4f7; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px;">carregando foto…</div>';
+      } else {
+        html += '<div style="width:100%; aspect-ratio:1; background:#f3f4f7; display:flex; align-items:center; justify-content:center; color:var(--muted); font-size:12px;">sem foto</div>';
+      }
+      html += '<div style="padding:10px 12px;">';
+      html += '<div style="font-weight:700; font-size:13.5px; margin-bottom:2px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</div>';
+      html += '<div style="font-size:12px; color:var(--muted); margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;">' + escapeHtml(li.custom_description || '') + '</div>';
+      html += projetoStatusBadge(li);
+      html += '</div></div>';
+    });
+    html += '</div>';
+  }
+  html += '</div>';
+  el.innerHTML = html;
+  window.scrollTo(0, scrollY);
+  requestAnimationFrame(() => window.scrollTo(0, scrollY));
+
+  projetos.forEach((li) => {
+    if (!li.custom_reference_image_path) return;
+    SUPA.storage.from('projetos-fotos').createSignedUrl(li.custom_reference_image_path, 300).then(({ data }) => {
+      const div = document.getElementById('projfoto-' + li.id);
+      if (div && data) div.outerHTML = '<img src="' + data.signedUrl + '" style="width:100%; aspect-ratio:1; object-fit:cover; display:block;">';
+    });
+  });
+
+  clearTimeout(_projetosPollTimer);
+  const emAndamento = projetos.some((li) =>
+    li.ai_viability_status === 'queued' || li.ai_viability_status === 'processing' ||
+    li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
+    li.open_slicer_status === 'queued');
+  if (emAndamento && !el.classList.contains('hidden')) {
+    _projetosPollTimer = setTimeout(() => { renderProjetos(); }, 4000);
+  }
+}
+
+function abrirNovoProjeto() {
+  openModal(
+    '<h3>Novo Projeto</h3>' +
+    '<label>Nome de quem pediu</label><input id="projNome" type="text" placeholder="Nome do cliente">' +
+    '<label>Contato (WhatsApp)</label><input id="projContato" type="text" placeholder="(11) 90000-0000">' +
+    '<label>O que o cliente quer</label>' +
+    '<textarea id="projDescricao" rows="3" placeholder="Descreva o que o cliente pediu..." style="width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit;"></textarea>' +
+    '<label>Foto de referência</label><input id="projFoto" type="file" accept="image/*">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="criarProjeto()">Criar Projeto</button>' +
+    '</div>'
+  );
+}
+
+async function criarProjeto() {
+  const requester_name = document.getElementById('projNome').value.trim();
+  const requester_contact = document.getElementById('projContato').value.trim();
+  const custom_description = document.getElementById('projDescricao').value.trim();
+  const fileInput = document.getElementById('projFoto');
+  const file = fileInput.files[0];
+  if (!requester_name || !custom_description) { toast('Preenche pelo menos o nome e a descrição.'); return; }
+
+  const order_number = 'PRJ-' + Date.now().toString(36).toUpperCase();
+  const { data: order, error: orderErr } = await SUPA.from('orders').insert([{
+    order_number, order_type: 'sob_encomenda', status: 'orcamento', channel: 'whatsapp', created_by: currentUser.id,
+  }]).select().maybeSingle();
+  if (orderErr) { toast('Erro: ' + orderErr.message); return; }
+
+  const { data: li, error: liErr } = await SUPA.from('order_line_items').insert([{
+    order_id: order.id, line_type: 'custom', custom_description, requester_name, requester_contact,
+    quantity: 1, line_status: 'recebido',
+  }]).select().maybeSingle();
+  if (liErr) { toast('Erro: ' + liErr.message); return; }
+
+  if (file) {
+    const ext = file.name.split('.').pop();
+    const path = li.id + '/foto.' + ext;
+    const { error: upErr } = await SUPA.storage.from('projetos-fotos').upload(path, file, { upsert: true });
+    if (upErr) { toast('Projeto criado, mas a foto falhou: ' + upErr.message); }
+    else await SUPA.from('order_line_items').update({ custom_reference_image_path: path }).eq('id', li.id);
+  }
+
+  closeModal();
+  toast('Projeto criado!');
+  await renderProjetos();
+}
+
+async function abrirGerenciarProjeto(lineItemId) {
+  _projetoGerenciarAberto = lineItemId;
+  const li = await q(SUPA.from('order_line_items').select('*, orders(order_number, status)').eq('id', lineItemId).maybeSingle());
+  let fotoUrl = null;
+  if (li.custom_reference_image_path) {
+    const { data } = await SUPA.storage.from('projetos-fotos').createSignedUrl(li.custom_reference_image_path, 300);
+    fotoUrl = data ? data.signedUrl : null;
+  }
+
+  let html = '<div style="display:flex; gap:14px; margin-bottom:16px;">';
+  html += fotoUrl
+    ? '<img src="' + fotoUrl + '" style="width:110px; height:110px; object-fit:cover; border-radius:12px; border:1px solid var(--border);">'
+    : '<div style="width:110px; height:110px; border-radius:12px; background:#f3f4f7; flex:none;"></div>';
+  html += '<div><h3 style="margin:0 0 4px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</h3>' +
+    '<div style="font-size:12px; color:var(--muted); margin-bottom:6px;">' + escapeHtml(li.requester_contact || '') + ' · ' + escapeHtml(li.orders ? li.orders.order_number : '') + '</div>' +
+    '<div style="font-size:13px;">' + escapeHtml(li.custom_description || '') + '</div></div>';
+  html += '</div>';
+
+  html += '<div style="display:flex; flex-direction:column; gap:10px;">';
+
+  html += '<div style="padding:10px 0; border-top:1px solid var(--border);">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+  html += '<span>1. Viabilidade — ' + (li.ai_viability_status === 'done' ? '<span class="badge on">pronta</span>' : li.ai_viability_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.ai_viability_error || '') + '">erro</span>' : (li.ai_viability_status === 'queued' || li.ai_viability_status === 'processing') ? '<span class="badge off">analisando…</span>' : '<span style="color:var(--muted); font-size:11px;">não pedida</span>') + '</span>';
+  if (li.ai_viability_status !== 'queued' && li.ai_viability_status !== 'processing') {
+    html += '<button class="btn ghost" onclick="solicitarAnaliseViabilidade(\'' + li.id + '\')">' + (li.ai_viability_status ? '🔁 Analisar de novo' : '🔍 Analisar Viabilidade') + '</button>';
+  }
+  html += '</div>';
+  if (li.ai_viability_status === 'done') {
+    html += '<div class="card" style="background:#f7f9fc; margin-top:8px; font-size:13px; line-height:1.55;">' + formatarColinha(li.ai_viability_notes) + '</div>';
+  }
+  html += '</div>';
+
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
+  html += '<span>2. Modelo 3D — ' + (li.model_file_path ? '<span class="badge on">' + (li.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (li.meshy_status === 'queued' || li.meshy_status === 'processing') ? '<span class="badge off">gerando…</span>' : li.meshy_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
+  html += '<span class="row-actions">';
+  if (li.meshy_status !== 'queued' && li.meshy_status !== 'processing') {
+    html += '<button class="btn ghost" onclick="solicitarGerarModelo3D(\'' + li.id + '\')">🧬 Gerar por IA</button>';
+  }
+  html += '<button class="btn ghost" onclick="abrirAnexarModeloProjeto(\'' + li.id + '\')">+ Anexar</button>';
+  html += '</span></div>';
+
+  if (li.model_file_path) {
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
+    html += '<span>3. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge off">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
+    html += '<button class="btn ghost" onclick="solicitarAbrirFatiadorProjeto(\'' + li.id + '\')" ' + (li.open_slicer_status === 'queued' ? 'disabled' : '') + '>🖥️ Abrir no Fatiador</button>';
+    html += '</div>';
+  }
+
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
+  html += '<span>4. Aprovação — ' + (li.line_status === 'orcamento_aprovado' ? '<span class="badge on">aprovado, ' + fmtMoney(li.unit_price) + '</span>' : '<span style="color:var(--muted); font-size:11px;">aguardando preço</span>') + '</span>';
+  if (li.line_status !== 'orcamento_aprovado' && li.line_status !== 'cancelado') {
+    html += '<button class="btn" onclick="abrirAprovarProjeto(\'' + li.id + '\')">💰 Aprovar e Definir Preço</button>';
+  }
+  html += '</div>';
+
+  html += '</div><div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
+
+  openModal(html, { wide: true });
+}
+
+async function solicitarAnaliseViabilidade(lineItemId) {
+  const { error } = await SUPA.from('order_line_items').update({
+    ai_viability_status: 'queued', ai_viability_requested_at: new Date().toISOString(), ai_viability_error: null,
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Análise de viabilidade pedida — o agente local processa em instantes.');
+  await renderProjetos();
+  if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+async function solicitarGerarModelo3D(lineItemId) {
+  const { error } = await SUPA.from('order_line_items').update({
+    meshy_status: 'queued', meshy_requested_at: new Date().toISOString(), meshy_error: null,
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Geração de modelo 3D pedida — pode levar alguns minutos.');
+  await renderProjetos();
+  if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+async function solicitarAbrirFatiadorProjeto(lineItemId) {
+  const { error } = await SUPA.from('order_line_items').update({
+    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null,
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Abrindo no fatiador — o agente local faz isso em instantes.');
+  await renderProjetos();
+  if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+function abrirAnexarModeloProjeto(lineItemId) {
+  openModal(
+    '<h3>Anexar arquivo 3D</h3>' +
+    '<label>Arquivo (.stl ou .3mf)</label>' +
+    '<input id="projModeloArquivo" type="file" accept=".stl,.3mf">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+      '<button class="btn" onclick="uploadModeloProjeto(\'' + lineItemId + '\')">Enviar</button>' +
+    '</div>'
+  );
+}
+
+async function uploadModeloProjeto(lineItemId) {
+  const fileInput = document.getElementById('projModeloArquivo');
+  const file = fileInput.files[0];
+  if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
+  const path = 'projetos/' + lineItemId + '/' + file.name;
+  const { error: upErr } = await SUPA.storage.from('modelos-3d').upload(path, file, { upsert: true });
+  if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
+  const { error: dbErr } = await SUPA.from('order_line_items').update({
+    model_file_path: path, model_source: 'manual_upload', updated_at: new Date().toISOString(),
+  }).eq('id', lineItemId);
+  if (dbErr) { toast('Erro: ' + dbErr.message); return; }
+  toast('Arquivo 3D anexado.');
+  await renderProjetos();
+  abrirGerenciarProjeto(lineItemId);
+}
+
+function abrirAprovarProjeto(lineItemId) {
+  openModal(
+    '<h3>Aprovar e definir preço</h3>' +
+    '<label>Preço (R$)</label><input id="projPreco" type="number" step="0.01" placeholder="0,00">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+      '<button class="btn" onclick="aprovarProjeto(\'' + lineItemId + '\')">Aprovar</button>' +
+    '</div>'
+  );
+}
+
+async function aprovarProjeto(lineItemId) {
+  const preco = parseFloat(document.getElementById('projPreco').value);
+  if (!preco || preco <= 0) { toast('Informa um preço válido.'); return; }
+  const { error } = await SUPA.from('order_line_items').update({
+    unit_price: preco, line_status: 'orcamento_aprovado', updated_at: new Date().toISOString(),
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Projeto aprovado! Já entrou no fluxo de pedidos e fila de impressão.');
+  await renderProjetos();
+}
 
 let pedidoDetalheId = null;
 

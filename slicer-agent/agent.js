@@ -15,8 +15,10 @@ const ORCA_PATH = process.env.ORCA_PATH || 'C:\\Program Files\\OrcaSlicer\\orca-
 const SLICER_APP_PATH = process.env.SLICER_APP_PATH || 'C:\\Program Files\\Bambu Studio\\bambu-studio.exe';
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
 const BUCKET = 'modelos-3d';
+const FOTOS_BUCKET = 'projetos-fotos';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+const MESHY_API_KEY = process.env.MESHY_API_KEY;
 
 function log(msg) {
   console.log('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + msg);
@@ -31,6 +33,9 @@ if (!fs.existsSync(SLICER_APP_PATH)) {
 }
 if (!ANTHROPIC_API_KEY) {
   log('Sem ANTHROPIC_API_KEY no .env — a análise por IA fica desligada, mas o fatiamento continua funcionando normalmente.');
+}
+if (!MESHY_API_KEY) {
+  log('Sem MESHY_API_KEY no .env — a geração de modelo 3D por IA (aba Projetos) fica desligada até configurar.');
 }
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
@@ -302,6 +307,255 @@ async function tickAbrirFatiador() {
   await abrirNoFatiador(queued[0]);
 }
 
+/* ============================================================
+   PROJETOS — pedido personalizado (order_line_items, line_type='custom')
+   Mesma ideia dos produtos do catálogo (viabilidade por IA, geração de
+   modelo, abrir no fatiador), só que a origem é uma foto de referência
+   que o cliente mandou, não um .3mf já preparado.
+   ============================================================ */
+
+const PROMPT_VIABILIDADE = 'Você é um consultor técnico sênior de uma empresa de impressão 3D FDM (Bambu Lab A1, ' +
+  'PLA/PETG), avaliando se dá pra imprimir o que um cliente pediu, a partir de uma foto de referência que ele mandou ' +
+  '(pode ser foto de um objeto real, print de rede social, desenho, brinquedo quebrado que quer replicar, etc — não é ' +
+  'necessariamente um modelo 3D pronto). Sua resposta orienta o dono do negócio a decidir se aceita o pedido e por ' +
+  'quanto. Seja direto, prático e honesto — se for inviável ou arriscado, diga isso claramente, não amenize.\n\n' +
+  'Responda nesse formato exato (títulos ## e itens com traço), sem introdução nem conclusão:\n\n' +
+  '## Viabilidade\nDá pra imprimir em FDM? (sim / sim com ressalvas / não recomendo) — por quê\n\n' +
+  '## O que precisa ser modelado\nDescreva em poucas linhas o que vai precisar ser criado como modelo 3D a partir ' +
+  'dessa referência (é um objeto sólido simples, tem partes móveis, tem texto/logo, é caracter/personagem com ' +
+  'direito autoral a considerar, etc.)\n\n' +
+  '## Complexidade e tamanho\nComplexidade estimada (baixa/média/alta) e por quê — tamanho sugerido pra imprimir bem ' +
+  '(pequeno demais perde detalhe, grande demais gasta muito material)\n\n' +
+  '## Riscos e cuidados\nO que pode dar errado ou exigir atenção (partes finas que quebram, overhangs difíceis, ' +
+  'peça multi-parte que precisa montagem, referência ambígua que precisa confirmar com o cliente antes de começar)\n\n' +
+  '## Sugestão de preço\nFaixa de preço sugerida em reais pra esse tipo de peça, considerando a complexidade (não ' +
+  'precisa ser exato, é só um norte pro dono decidir)';
+
+async function chamarClaudeTexto(prompt, imagemBuf, mediaType) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: ANTHROPIC_MODEL,
+      max_tokens: 4000,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: imagemBuf.toString('base64') } },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error('API da Anthropic respondeu ' + res.status + ': ' + body.slice(0, 300));
+  }
+  const json = await res.json();
+  const texto = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
+  if (!texto) throw new Error('resposta da IA veio vazia.');
+  return texto;
+}
+
+function mediaTypeFromPath(p) {
+  const ext = path.extname(p).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
+
+async function analisarViabilidadeUm(li) {
+  const nomeRef = li.requester_name || li.id;
+  try {
+    if (!li.custom_reference_image_path) throw new Error('projeto não tem foto de referência anexada.');
+    log('Baixando foto do projeto de "' + nomeRef + '" pra analisar viabilidade...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(li.custom_reference_image_path);
+    if (dlErr) throw new Error('download da foto falhou: ' + dlErr.message);
+    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+
+    log('Analisando viabilidade do projeto de "' + nomeRef + '"...');
+    const notas = await chamarClaudeTexto(PROMPT_VIABILIDADE, fileBuf, mediaTypeFromPath(li.custom_reference_image_path));
+
+    await supabase.from('order_line_items').update({
+      ai_viability_status: 'done', ai_viability_notes: notas, ai_viability_done_at: new Date().toISOString(), ai_viability_error: null,
+      line_status: 'orcamento_pendente',
+    }).eq('id', li.id);
+    log('✅ Viabilidade do projeto de "' + nomeRef + '" pronta.');
+  } catch (e) {
+    log('❌ Viabilidade do projeto de "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('order_line_items').update({
+      ai_viability_status: 'error', ai_viability_error: String(e.message).slice(0, 2000),
+    }).eq('id', li.id);
+  }
+}
+
+async function tickViabilidade() {
+  if (!ANTHROPIC_API_KEY) return;
+  const { data: queued, error } = await supabase
+    .from('order_line_items')
+    .select('id, requester_name, custom_reference_image_path')
+    .eq('line_type', 'custom').eq('ai_viability_status', 'queued')
+    .order('ai_viability_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila de viabilidade: ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const li = queued[0];
+  await supabase.from('order_line_items').update({ ai_viability_status: 'processing' }).eq('id', li.id);
+  await analisarViabilidadeUm(li);
+}
+
+// Geração de modelo 3D via Meshy (Image-to-3D). Pede STL direto (evita
+// converter formato depois — o fatiador importa .stl sem problema).
+async function meshyCriarTarefa(imagemBuf, mediaType) {
+  const res = await fetch('https://api.meshy.ai/openapi/v1/image-to-3d', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', Authorization: 'Bearer ' + MESHY_API_KEY },
+    body: JSON.stringify({
+      image_url: 'data:' + mediaType + ';base64,' + imagemBuf.toString('base64'),
+      target_formats: ['stl'],
+      should_texture: false,
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    throw new Error('Meshy (criar tarefa) respondeu ' + res.status + ': ' + body.slice(0, 300));
+  }
+  const json = await res.json();
+  if (!json.result) throw new Error('Meshy não retornou id de tarefa.');
+  return json.result;
+}
+
+async function meshyEsperarTarefa(taskId) {
+  const deadline = Date.now() + 10 * 60 * 1000; // Meshy costuma levar de 1 a alguns minutos
+  while (Date.now() < deadline) {
+    const res = await fetch('https://api.meshy.ai/openapi/v1/image-to-3d/' + taskId, {
+      headers: { Authorization: 'Bearer ' + MESHY_API_KEY },
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error('Meshy (consultar tarefa) respondeu ' + res.status + ': ' + body.slice(0, 300));
+    }
+    const json = await res.json();
+    if (json.status === 'SUCCEEDED') return json;
+    if (json.status === 'FAILED' || json.status === 'CANCELED') {
+      throw new Error('Meshy não conseguiu gerar o modelo (status ' + json.status + ').');
+    }
+    await new Promise((r) => setTimeout(r, 8000));
+  }
+  throw new Error('Meshy demorou demais pra gerar o modelo (mais de 10 minutos) — tente de novo.');
+}
+
+async function gerarModeloMeshyUm(li) {
+  const nomeRef = li.requester_name || li.id;
+  try {
+    if (!li.custom_reference_image_path) throw new Error('projeto não tem foto de referência anexada.');
+    log('Baixando foto do projeto de "' + nomeRef + '" pra gerar modelo 3D...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(li.custom_reference_image_path);
+    if (dlErr) throw new Error('download da foto falhou: ' + dlErr.message);
+    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+
+    log('Pedindo pra Meshy gerar o modelo 3D de "' + nomeRef + '"...');
+    const taskId = await meshyCriarTarefa(fileBuf, mediaTypeFromPath(li.custom_reference_image_path));
+    await supabase.from('order_line_items').update({ meshy_task_id: taskId }).eq('id', li.id);
+
+    log('Aguardando a Meshy terminar (pode levar alguns minutos)...');
+    const tarefaPronta = await meshyEsperarTarefa(taskId);
+    const stlUrl = tarefaPronta.model_urls && tarefaPronta.model_urls.stl;
+    if (!stlUrl) throw new Error('Meshy terminou mas não veio um arquivo .stl na resposta.');
+
+    const stlRes = await fetch(stlUrl);
+    if (!stlRes.ok) throw new Error('não consegui baixar o .stl gerado pela Meshy (HTTP ' + stlRes.status + ').');
+    const stlBuf = Buffer.from(await stlRes.arrayBuffer());
+
+    const modeloPath = 'projetos/' + li.id + '/meshy.stl';
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(modeloPath, stlBuf, { upsert: true });
+    if (upErr) throw new Error('upload do modelo gerado falhou: ' + upErr.message);
+
+    await supabase.from('order_line_items').update({
+      meshy_status: 'done', model_file_path: modeloPath, model_source: 'meshy_generated', meshy_error: null,
+      updated_at: new Date().toISOString(),
+    }).eq('id', li.id);
+    log('✅ Modelo 3D de "' + nomeRef + '" gerado com sucesso.');
+  } catch (e) {
+    log('❌ Geração de modelo de "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('order_line_items').update({
+      meshy_status: 'error', meshy_error: String(e.message).slice(0, 2000),
+    }).eq('id', li.id);
+  }
+}
+
+async function tickMeshy() {
+  if (!MESHY_API_KEY) return;
+  const { data: queued, error } = await supabase
+    .from('order_line_items')
+    .select('id, requester_name, custom_reference_image_path')
+    .eq('line_type', 'custom').eq('meshy_status', 'queued')
+    .order('meshy_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila da Meshy: ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const li = queued[0];
+  await supabase.from('order_line_items').update({ meshy_status: 'processing' }).eq('id', li.id);
+  await gerarModeloMeshyUm(li);
+}
+
+// "Abrir no Fatiador" pra projeto — igual ao dos produtos do catálogo,
+// só que lendo/gravando em order_line_items em vez de products.
+async function abrirNoFatiadorProjeto(li) {
+  const nomeRef = li.requester_name || li.id;
+  try {
+    if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
+
+    log('Baixando modelo do projeto de "' + nomeRef + '" pra abrir no fatiador...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(li.model_file_path);
+    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+
+    const downloadsDir = path.join(__dirname, 'downloads');
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    const ext = path.extname(li.model_file_path) || '.stl';
+    const nomeSeguro = ('projeto-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
+    const localPath = path.join(downloadsDir, nomeSeguro + ext);
+    fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
+
+    log('Abrindo projeto de "' + nomeRef + '" no fatiador...');
+    const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
+    const psResult = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript,
+        '-ExePath', SLICER_APP_PATH, '-FilePath', localPath,
+      ], { timeout: 30000, windowsHide: true }, (err, stdout, stderr) => {
+        resolve({ stdout: stdout || '', stderr: stderr || '', err });
+      });
+    });
+    if (psResult.err) throw new Error('não consegui abrir o fatiador: ' + (psResult.stderr || psResult.err.message).slice(0, 300));
+    log(psResult.stdout.trim() || 'fatiador aberto.');
+
+    await supabase.from('order_line_items').update({ open_slicer_status: 'done', open_slicer_error: null }).eq('id', li.id);
+    log('✅ Projeto de "' + nomeRef + '" aberto no fatiador.');
+  } catch (e) {
+    log('❌ Abrir projeto de "' + nomeRef + '" no fatiador falhou: ' + e.message);
+    await supabase.from('order_line_items').update({
+      open_slicer_status: 'error', open_slicer_error: String(e.message).slice(0, 2000),
+    }).eq('id', li.id);
+  }
+}
+
+async function tickAbrirFatiadorProjeto() {
+  const { data: queued, error } = await supabase
+    .from('order_line_items')
+    .select('id, requester_name, model_file_path')
+    .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
+    .order('open_slicer_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando fila de abrir-no-fatiador (projetos): ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  await abrirNoFatiadorProjeto(queued[0]);
+}
+
 async function main() {
   log('Agente de fatiamento iniciado.');
   log('OrcaSlicer: ' + ORCA_PATH);
@@ -310,6 +564,9 @@ async function main() {
     try { await tick(); } catch (e) { log('Erro inesperado (fatiamento): ' + e.message); }
     try { await tickAI(); } catch (e) { log('Erro inesperado (análise IA): ' + e.message); }
     try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
+    try { await tickViabilidade(); } catch (e) { log('Erro inesperado (viabilidade projeto): ' + e.message); }
+    try { await tickMeshy(); } catch (e) { log('Erro inesperado (geração Meshy): ' + e.message); }
+    try { await tickAbrirFatiadorProjeto(); } catch (e) { log('Erro inesperado (abrir no fatiador - projeto): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }
