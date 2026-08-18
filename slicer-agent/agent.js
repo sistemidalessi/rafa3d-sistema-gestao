@@ -40,6 +40,17 @@ if (!MESHY_API_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
+/* ============================================================
+   FATIAMENTO AUTOMÁTICO — fila slice_status em products
+   Nada na tela enfileira isso hoje: o botão "Fatiar" foi substituído
+   por "Abrir no Fatiador" no commit b4e0aa2, porque a CLI do OrcaSlicer
+   falha em peça com vários objetos ou troca de filamento (o detalhe
+   está na sliceOne, logo abaixo). O código fica de propósito, pronto
+   pra voltar se a CLI melhorar — pra religar, basta um botão na tela
+   que grave slice_status = 'queued'. Enquanto isso, a tick() só faz
+   uma consulta que sempre volta vazia.
+   ============================================================ */
+
 function runOrca(args) {
   return new Promise((resolve) => {
     execFile(ORCA_PATH, args, { timeout: 5 * 60 * 1000, windowsHide: true }, (err, stdout, stderr) => {

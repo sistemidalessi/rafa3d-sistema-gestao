@@ -48,7 +48,8 @@ O agente usa `service_role`, então tabela nova ou coluna nova precisa do
   miniatura que a Meshy devolveu (ou cai pra foto do cliente).
 - **Projeto não é tabela própria.** É `order_line_items` com
   `line_type = 'custom'` — sempre filtre por isso ao consultar projetos.
-- **Colunas mortas:** `ai_viability_*` (patch 09) sobraram no banco depois que
-  a etapa de Viabilidade foi removida da tela. Não use, não são alimentadas.
+- **Colunas mortas:** `ai_viability_*` (patch 09) ficaram órfãs quando a etapa
+  de Viabilidade saiu da tela. O patch 12 apaga elas — se ainda estiverem no
+  banco, é porque ele não foi rodado. Não use, nunca são alimentadas.
 - **O OrcaSlicer sai com código 0 mesmo falhando.** A única checagem confiável
   é ver se o arquivo de saída existe.

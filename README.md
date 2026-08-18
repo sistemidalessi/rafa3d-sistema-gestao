@@ -90,7 +90,12 @@ docs/patch-08-abrir-no-fatiador.sql
 docs/patch-09-projetos-personalizados.sql
 docs/patch-10-permissao-excluir-projeto.sql
 docs/patch-11-analise-ia-projetos.sql
+docs/patch-12-limpeza-colunas-mortas.sql
 ```
+
+O patch 12 é o único que não se roda de olhos fechados: ele apaga colunas, e
+`drop column` não tem desfazer. O arquivo é dividido em dois passos — o passo 1
+mostra se há algo guardado ali, o passo 2 apaga. Leia o cabeçalho dele antes.
 
 Depois, os dados iniciais (opcional, só num banco novo):
 
