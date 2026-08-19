@@ -867,7 +867,7 @@ async function abrirAprovarProjeto(lineItemId) {
   await getFilamentos();
   await getImpressoras();
   _recalcularPrecoAtivo = atualizarPrecoProjeto;
-  custoMargemDesejada = 60;
+  custoMultiplicador = 2.5;
 
   openModal(
     '<h3>Quanto cobrar por esse projeto?</h3>' +
@@ -899,7 +899,7 @@ async function aprovarProjeto(lineItemId, comCalculadora) {
   if (comCalculadora) {
     const form = lerFormularioCusto();
     const custo = calcularCustoReceita(form);
-    const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+    const preco = precoAPartirDoCusto(custo.total, custoMultiplicador);
     if (!preco) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return; }
     payload.unit_price = preco;
     // Guarda o custo junto: é ele que a aba Margem vai usar pra saber se
@@ -1771,10 +1771,11 @@ function calcularCustoReceita(receita) {
   const impressora = impressorasCache.find((p) => p.id === receita.printer_id);
   const custoMaterial = cor ? (receita.estimated_grams / 1000) * cor.cost_per_kg : 0;
   const custoMaquina = impressora && impressora.hourly_cost ? receita.estimated_print_hours * impressora.hourly_cost : 0;
-  const custoMaoObra = receita.post_processing_labor_rate ? (receita.post_processing_minutes / 60) * receita.post_processing_labor_rate : 0;
+  // Pintura soma 20% em cima do filamento+luz — igual à planilha que já era usada antes desse sistema existir.
+  const custoPintura = receita.has_painting ? (custoMaterial + custoMaquina) * 0.2 : 0;
   return {
-    custoMaterial, custoMaquina, custoMaoObra,
-    total: custoMaterial + custoMaquina + custoMaoObra,
+    custoMaterial, custoMaquina, custoPintura,
+    total: custoMaterial + custoMaquina + custoPintura,
     corFaltando: !cor, impressoraFaltando: !impressora,
   };
 }
@@ -2067,7 +2068,7 @@ async function removerModelo3D(productId) {
    passa o próprio botão.
    ------------------------------------------------------------ */
 
-let custoMargemDesejada = 60;
+let custoMultiplicador = 2.5;
 let _custoProdutoAberto = null;
 let _custoReceitaAberta = null;
 let _projetoPrecoAberto = null;
@@ -2079,8 +2080,8 @@ function recalcularPreco() {
   if (_recalcularPrecoAtivo) _recalcularPrecoAtivo();
 }
 
-function setMargemDesejada(pct) {
-  custoMargemDesejada = pct;
+function setMultiplicador(valor) {
+  custoMultiplicador = parseFloat(valor) || 0;
   recalcularPreco();
 }
 
@@ -2092,12 +2093,11 @@ function arredondarPrecoNoventa(valor) {
   return candidato >= valor ? candidato : base + 1.9;
 }
 
-// Margem é sobre o preço, não sobre o custo: "60" quer dizer que 60
-// centavos de cada real que o cliente paga sobram. Por isso é dividir
-// por (1 - margem), e não multiplicar o custo por 1,6.
-function precoAPartirDoCusto(custo, margemPercentual) {
-  if (!custo || custo <= 0 || margemPercentual >= 100) return null;
-  return arredondarPrecoNoventa(custo / (1 - margemPercentual / 100));
+// Preço = custo vezes um multiplicador (2,5 é o padrão de sempre, na
+// planilha antiga) — não é mais "margem sobre o preço final".
+function precoAPartirDoCusto(custo, multiplicador) {
+  if (!custo || custo <= 0 || !multiplicador || multiplicador <= 0) return null;
+  return arredondarPrecoNoventa(custo * multiplicador);
 }
 
 function dicaCampo(texto) {
@@ -2138,32 +2138,29 @@ function perguntasImpressora(r) {
     '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="recalcularPreco()">';
 }
 
-function perguntasSeuTrabalho(r) {
-  return '<label class="pergunta">Depois de pronta, quantos minutos você mexe nela?</label>' +
-    dicaCampo('Tirar o suporte, lixar, colar, montar. Se não mexe, deixa 0.') +
-    '<input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="recalcularPreco()">' +
-
-    '<label class="pergunta">Quanto vale uma hora do seu trabalho? (R$)</label>' +
-    dicaCampo('O que você acha justo ganhar por hora mexendo nas peças.') +
-    '<input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="recalcularPreco()">';
+function perguntaPintura(r) {
+  return '<label class="pergunta">Essa peça tem pintura?</label>' +
+    dicaCampo('Se tiver, soma 20% em cima do filamento e da luz, pra cobrir a tinta e o trabalho a mais.') +
+    '<select id="rcPintura" onchange="recalcularPreco()">' +
+      '<option value="false"' + (!r.has_painting ? ' selected' : '') + '>Não</option>' +
+      '<option value="true"' + (r.has_painting ? ' selected' : '') + '>Sim</option>' +
+    '</select>';
 }
 
 function perguntasDeCustoHtml(r) {
-  return perguntasImpressora(r) + perguntasSeuTrabalho(r);
+  return perguntasImpressora(r) + perguntaPintura(r);
+}
+
+function campoMultiplicador() {
+  return '<label class="pergunta">Multiplicar o custo por quanto?</label>' +
+    dicaCampo('2,5 é o de sempre — o preço fica duas vezes e meia o custo. Só muda se quiser um número diferente.') +
+    '<input id="rcMultiplicador" type="number" step="0.1" value="' + custoMultiplicador + '" oninput="setMultiplicador(this.value)">';
 }
 
 function passoHtml(numero, titulo, explicacao) {
   return '<div class="passo"><div class="passo-num">' + numero + '</div>' +
     '<div class="passo-txt">' + escapeHtml(titulo) + '</div></div>' +
     '<div class="passo-sub">' + escapeHtml(explicacao) + '</div>';
-}
-
-function botoesQuantoQuerGanhar() {
-  let html = '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
-  [40, 50, 60, 70].forEach((m) => {
-    html += '<button class="btn ' + (custoMargemDesejada === m ? '' : 'ghost') + '" onclick="setMargemDesejada(' + m + ')">R$ ' + m + '</button>';
-  });
-  return html + '</div>';
 }
 
 /* ---- Tela de dar preço num produto do catálogo ----
@@ -2179,7 +2176,7 @@ function abrirPrecificar(productId) {
   _custoProdutoAberto = productId;
   _custoReceitaAberta = r.id || null;
   _recalcularPrecoAtivo = atualizarContaPrecificar;
-  custoMargemDesejada = 60;
+  custoMultiplicador = 2.5;
   desenharProdutos();
   window.scrollTo(0, 0);
 }
@@ -2211,13 +2208,13 @@ function desenharPrecificar(el) {
   html += passoHtml(1, 'O que a impressora gasta', 'Esses números o fatiador te dá quando termina de fatiar a peça.');
   html += perguntasImpressora(r);
   html += '<hr class="passo-sep">';
-  html += passoHtml(2, 'O que você faz depois', 'O tempo que você fica mexendo na peça depois que ela sai da impressora.');
-  html += perguntasSeuTrabalho(r);
+  html += passoHtml(2, 'Acabamento', 'Se você pintou ou caprichou no acabamento da peça, isso entra na conta.');
+  html += perguntaPintura(r);
   html += '</div>';
 
   html += '<div class="card">';
-  html += passoHtml(3, 'Quanto você quer ganhar', 'De cada R$ 100 que o cliente pagar, escolhe quanto você quer que sobre.');
-  html += '<div id="precoMargemBotoes"></div>';
+  html += passoHtml(3, 'Qual multiplicador usar', 'O preço final é o custo vezes esse número.');
+  html += campoMultiplicador();
   html += '</div>';
 
   html += '<div class="card"><button class="btn ghost full" onclick="saveReceita(false)">Guardar a conta sem mexer no preço</button></div>';
@@ -2233,15 +2230,13 @@ function desenharPrecificar(el) {
 function atualizarContaPrecificar() {
   const p = produtosCache.find((x) => x.id === produtoPrecificarId);
   const custo = calcularCustoReceita(lerFormularioCusto());
-  const botoes = document.getElementById('precoMargemBotoes');
-  if (botoes) botoes.innerHTML = botoesQuantoQuerGanhar();
 
   const el = document.getElementById('precoConta');
   if (!el) return;
 
   if (!custo || custo.total <= 0) {
     el.innerHTML = '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700;">A conta</div>' +
-      '<div class="empty">Responde o passo 1 e o passo 2 que a conta aparece aqui, e vai mudando sozinha conforme você digita.</div>';
+      '<div class="empty">Responde o passo 1 que a conta aparece aqui, e vai mudando sozinha conforme você digita.</div>';
     return;
   }
 
@@ -2249,7 +2244,7 @@ function atualizarContaPrecificar() {
   html += '<div style="margin-top:10px; font-size:13px; line-height:2;">';
   html += '<div style="display:flex; justify-content:space-between;"><span>🧵 O filamento</span><strong>' + fmtMoney(custo.custoMaterial) + '</strong></div>';
   html += '<div style="display:flex; justify-content:space-between;"><span>⚡ A luz</span><strong>' + fmtMoney(custo.custoMaquina) + '</strong></div>';
-  html += '<div style="display:flex; justify-content:space-between;"><span>✋ O seu trabalho</span><strong>' + fmtMoney(custo.custoMaoObra) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between;"><span>🎨 A pintura</span><strong>' + fmtMoney(custo.custoPintura) + '</strong></div>';
   html += '</div>';
   if (custo.corFaltando || custo.impressoraFaltando) {
     html += '<div style="color:var(--muted); font-size:11px;">Falta escolher ' +
@@ -2257,23 +2252,25 @@ function atualizarContaPrecificar() {
       (custo.impressoraFaltando ? 'a impressora' : '') + ' lá no passo 1.</div>';
   }
 
-  html += '<hr class="passo-sep" style="margin:12px 0;">';
-  html += '<div style="display:flex; justify-content:space-between; font-weight:700;"><span>Fazer ela custa</span><span>' + fmtMoney(custo.total) + '</span></div>';
-
-  const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+  const preco = precoAPartirDoCusto(custo.total, custoMultiplicador);
   if (!preco) {
-    html += '<div class="empty">Escolhe no passo 3 quanto você quer ganhar.</div>';
+    html += '<hr class="passo-sep" style="margin:12px 0;">';
+    html += '<div class="empty">Escolhe no passo 3 o multiplicador pra eu calcular o preço.</div>';
     el.innerHTML = html;
     return;
   }
 
-  html += '<div style="color:var(--muted); font-size:12px; margin-top:6px;">Você quer que sobrem R$ ' +
-    custoMargemDesejada + ' de cada R$ 100.</div>';
+  const lucro = preco - custo.total;
   html += '<hr class="passo-sep" style="margin:12px 0;">';
   html += '<div style="color:var(--muted); font-size:12px;">Então cobra</div>';
   html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:30px; line-height:1.2;">' + fmtMoney(preco) + '</div>';
+  html += '<div style="margin-top:10px; font-size:13px; line-height:2;">';
+  html += '<div style="display:flex; justify-content:space-between;"><span>Preço de venda</span><strong>' + fmtMoney(preco) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between;"><span>Custo total</span><strong>' + fmtMoney(custo.total) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between; color:#1f8a3b;"><span>Lucro total</span><strong>' + fmtMoney(lucro) + '</strong></div>';
+  html += '</div>';
   html += '<div style="color:var(--muted); font-size:12px; margin-top:6px;">' +
-    fmtMoney(custo.total) + ' pagam o filamento, a luz e o seu tempo. ' + fmtMoney(preco - custo.total) + ' sobram pra você.</div>';
+    fmtMoney(custo.total) + ' voltam pra comprar material, pagar a luz e o resto do que entrou na conta. ' + fmtMoney(lucro) + ' ficam com você.</div>';
 
   if (p && p.sale_price) {
     const dif = preco - p.sale_price;
@@ -2292,8 +2289,7 @@ function lerFormularioCusto() {
     printer_id: document.getElementById('rcImpressora').value || null,
     estimated_grams: parseFloat(document.getElementById('rcGramas').value) || 0,
     estimated_print_hours: parseFloat(document.getElementById('rcHoras').value) || 0,
-    post_processing_minutes: parseFloat(document.getElementById('rcMinutos').value) || 0,
-    post_processing_labor_rate: parseFloat(document.getElementById('rcMaoObra').value) || 0,
+    has_painting: document.getElementById('rcPintura').value === 'true',
   };
 }
 
@@ -2314,24 +2310,23 @@ function blocoCustoEPrecoHtml(custo, opts) {
     (custo.corFaltando ? ' <span style="color:var(--muted);">(escolhe o filamento pra eu contar isso)</span>' : '') + '</div>';
   html += '<div>⚡ A luz da impressora: <strong>' + fmtMoney(custo.custoMaquina) + '</strong>' +
     (custo.impressoraFaltando ? ' <span style="color:var(--muted);">(escolhe a impressora pra eu contar isso)</span>' : '') + '</div>';
-  html += '<div>✋ O seu trabalho: <strong>' + fmtMoney(custo.custoMaoObra) + '</strong></div>';
+  html += '<div>🎨 A pintura: <strong>' + fmtMoney(custo.custoPintura) + '</strong></div>';
   html += '</div>';
 
   html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">';
-  html += '<div style="font-weight:700;">De cada R$ 100 que o cliente pagar, quanto você quer que sobre?</div>';
-  html += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">';
-  [40, 50, 60, 70].forEach((m) => {
-    html += '<button class="btn ' + (custoMargemDesejada === m ? '' : 'ghost') + '" onclick="setMargemDesejada(' + m + ')">R$ ' + m + '</button>';
-  });
+  html += campoMultiplicador();
   html += '</div>';
 
-  const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+  const preco = precoAPartirDoCusto(custo.total, custoMultiplicador);
   if (preco) {
+    const lucro = preco - custo.total;
     html += '<div style="margin-top:14px; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px;">' +
       'Então cobra ' + fmtMoney(preco) + '</div>';
-    html += '<div style="color:var(--muted); font-size:13px; margin-top:4px;">' +
-      'Desses ' + fmtMoney(preco) + ', ' + fmtMoney(custo.total) + ' pagam o filamento, a luz e o seu tempo — e ' +
-      fmtMoney(preco - custo.total) + ' sobram pra você.</div>';
+    html += '<div style="margin-top:8px; font-size:13px; line-height:1.9;">';
+    html += '<div style="display:flex; justify-content:space-between;"><span>Preço de venda</span><strong>' + fmtMoney(preco) + '</strong></div>';
+    html += '<div style="display:flex; justify-content:space-between;"><span>Custo total</span><strong>' + fmtMoney(custo.total) + '</strong></div>';
+    html += '<div style="display:flex; justify-content:space-between; color:#1f8a3b;"><span>Lucro total</span><strong>' + fmtMoney(lucro) + '</strong></div>';
+    html += '</div>';
     if (opts.precoAtual) {
       const dif = preco - opts.precoAtual;
       html += '<div style="color:var(--muted); font-size:13px; margin-top:6px;">Hoje ele está ' + fmtMoney(opts.precoAtual) + ' — ' +
@@ -2360,7 +2355,7 @@ async function saveReceita(aplicarPreco) {
   if (error) { toast('Erro: ' + error.message); return; }
 
   if (aplicarPreco) {
-    const preco = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMargemDesejada);
+    const preco = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMultiplicador);
     if (preco) {
       const { error: e2 } = await SUPA.from('products')
         .update({ sale_price: preco, updated_at: new Date().toISOString() }).eq('id', productId);
@@ -2614,9 +2609,9 @@ async function saveCliente(id) {
 
    1. real           — filamento realmente baixado do estoque (já inclui
                        o desperdício das tentativas que falharam), mais
-                       máquina e mão de obra da receita de custo
+                       máquina e pintura da receita de custo
    2. real (parcial) — tem baixa de estoque, mas o produto não tem
-                       receita cadastrada: máquina e mão de obra ficam
+                       receita cadastrada: máquina e pintura ficam
                        de fora, então o custo sai por baixo
    3. estimado       — o número que o dono digitou ao aprovar o orçamento
    4. receita        — a estimativa da receita de custo do produto
@@ -2684,12 +2679,12 @@ function calcularMargemFamilia(principal, reimpressoes, ctx) {
   const custoReceita = receitaProduto ? calcularCustoReceita(receitaProduto) : null;
 
   if (temBaixaDeEstoque) {
-    // Máquina e mão de obra são por peça produzida — uma reimpressão
+    // Máquina e pintura são por peça produzida — uma reimpressão
     // ocupa a impressora de novo, então conta de novo.
     const pecas = membros.reduce((soma, m) => soma + Number(m.quantity || 1), 0);
-    const maquinaMaoObra = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoMaoObra) * pecas : 0;
+    const maquinaPintura = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoPintura) * pecas : 0;
     return Object.assign(base, {
-      custo: materialReal + maquinaMaoObra,
+      custo: materialReal + maquinaPintura,
       fonte: custoReceita ? 'real' : 'real_parcial',
     });
   }
