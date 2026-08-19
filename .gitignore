@@ -19,3 +19,8 @@ slicer-agent/.env
 slicer-agent/node_modules/
 slicer-agent/agent.log
 slicer-agent/downloads/
+
+# Configuração local do Claude Code (histórico de permissões de comando) —
+# é por máquina/sessão, não faz sentido compartilhar. launch.json (servidor
+# de preview local) continua indo pro repo, esse é o único que não vai.
+.claude/settings.local.json

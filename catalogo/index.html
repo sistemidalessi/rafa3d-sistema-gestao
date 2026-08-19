@@ -638,7 +638,7 @@
             <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#7b879c; margin-bottom:14px;">
               <span>Sinal (50% via PIX)</span><span>{{ cartHalf }}</span>
             </div>
-            <a href="{{ cartFormUrl }}" target="_blank" style="display:block; text-align:center; text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:#fff; background:#0b1733; padding:12px; border-radius:10px;">Finalizar a Compra</a>
+            <button onClick="{{ abrirCheckout }}" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:#fff; background:#0b1733; padding:12px; border-radius:10px;">Finalizar a Compra</button>
           </div>
         </sc-if>
       </div>
@@ -887,6 +887,7 @@ class Component extends DCLogic {
       cartOpen: this.state.cartOpen,
       cartFormUrl,
       cartWaUrl,
+      abrirCheckout: () => window.abrirCheckoutModal(cartItems, () => this.setState({ cart: {}, cartOpen: false })),
       toggleCart: () => this.toggleCart(),
       stopClick: (e) => e.stopPropagation(),
       cartEmpty: cartCount === 0,
@@ -896,6 +897,240 @@ class Component extends DCLogic {
     };
   }
 }
+</script>
+
+<!-- ===================== FINALIZAR COMPRA ======================
+     Fora do <x-dc> de propósito: o catálogo acima é montado por um
+     framework de template próprio (dc/support.js) que eu não conheço
+     por dentro, e ele re-renderiza a página inteira a cada scroll (pro
+     botão do carrinho flutuar). Um formulário dentro dele arriscava
+     perder o que a pessoa tivesse digitado no meio da digitação. Essa
+     parte aqui é JavaScript puro, sem framework nenhum — o botão
+     "Finalizar a Compra" só chama window.abrirCheckoutModal(). ===== -->
+<div id="checkoutOverlay" style="display:none; position:fixed; inset:0; background:rgba(0,8,23,0.6); z-index:2000; align-items:center; justify-content:center; padding:16px; font-family:'Manrope',sans-serif;">
+  <div style="width:420px; max-width:100%; max-height:90vh; overflow-y:auto; background:#fff; border-radius:16px; box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+    <div style="padding:18px 22px; border-bottom:1px solid #e7e9ef; display:flex; align-items:center; justify-content:space-between;">
+      <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Finalizar compra</div>
+      <button onclick="fecharCheckoutModal()" style="border:none; background:none; cursor:pointer; font-size:22px; color:#7b879c; line-height:1;">&#10005;</button>
+    </div>
+    <div id="checkoutBody" style="padding:20px 22px;"></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var SB_FUNC_URL = 'https://zaoyqjzvwuhsqcgigppu.supabase.co/functions/v1/';
+  var SB_ANON = 'sb_publishable_UPFqlHbmOH84eYiF6ZRfsw_L_31GOqy';
+  var WA_NUMBER = '5511987190466';
+
+  var CK = { cartItems: [], onSucesso: null, passo: 'dados', combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
+
+  function fmtMoney(n) { return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ','); }
+  function totalProdutos() { return CK.cartItems.reduce(function (s, it) { return s + it.qty * it.priceNum; }, 0); }
+  function totalGeral() {
+    var frete = CK.combinar ? 0 : (CK.freteEscolhido ? CK.freteEscolhido.preco : 0);
+    return totalProdutos() + frete;
+  }
+
+  window.abrirCheckoutModal = function (cartItems, onSucesso) {
+    if (!cartItems || !cartItems.length) return;
+    CK = { cartItems: cartItems, onSucesso: onSucesso, passo: 'dados', combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
+    document.getElementById('checkoutOverlay').style.display = 'flex';
+    ckRender();
+  };
+  window.fecharCheckoutModal = function () {
+    document.getElementById('checkoutOverlay').style.display = 'none';
+  };
+
+  function ckRender() {
+    var el = document.getElementById('checkoutBody');
+    if (CK.passo === 'dados') el.innerHTML = ckHtmlDados();
+    else if (CK.passo === 'frete') el.innerHTML = ckHtmlFrete();
+    else if (CK.passo === 'resumo') el.innerHTML = ckHtmlResumo();
+    else if (CK.passo === 'pago') el.innerHTML = ckHtmlPago();
+  }
+
+  function ckHtmlErro() {
+    return CK.erro ? '<div style="background:#fdeaea; color:#c0392b; padding:9px 12px; border-radius:8px; font-size:12.5px; margin-bottom:10px;">' + CK.erro + '</div>' : '';
+  }
+  function ckLabel(txt) {
+    return '<label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#7b879c; margin:12px 0 5px;">' + txt + '</label>';
+  }
+  function ckInputStyle() {
+    return 'width:100%; padding:10px 12px; border:1.5px solid #dde1e8; border-radius:9px; font-size:13.5px; font-family:inherit; box-sizing:border-box;';
+  }
+
+  function ckHtmlDados() {
+    var e = CK.endereco;
+    return ckHtmlErro() +
+      ckLabel('Seu nome') + '<input id="ckNome" style="' + ckInputStyle() + '" value="' + (e.nome || '') + '">' +
+      ckLabel('Seu WhatsApp') + '<input id="ckContato" style="' + ckInputStyle() + '" placeholder="(11) 90000-0000" value="' + (e.contato || '') + '">' +
+      '<div style="margin-top:16px; padding-top:14px; border-top:1px solid #f0f1f4;">' +
+      '<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#0b1733; cursor:pointer;">' +
+      '<input type="checkbox" id="ckCombinar" onchange="ckToggleCombinar()"' + (CK.combinar ? ' checked' : '') + '> Prefiro combinar a entrega (retirar, Uber, moro perto...)' +
+      '</label></div>' +
+      '<div id="ckEnderecoFields" style="display:' + (CK.combinar ? 'none' : 'block') + ';">' +
+      ckLabel('CEP') + '<input id="ckCep" style="' + ckInputStyle() + '" placeholder="00000-000" value="' + (e.cep || '') + '">' +
+      ckLabel('Rua') + '<input id="ckRua" style="' + ckInputStyle() + '" value="' + (e.rua || '') + '">' +
+      '<div style="display:flex; gap:8px;">' +
+      '<div style="flex:1;">' + ckLabel('Número') + '<input id="ckNumero" style="' + ckInputStyle() + '" value="' + (e.numero || '') + '"></div>' +
+      '<div style="flex:2;">' + ckLabel('Complemento (opcional)') + '<input id="ckComplemento" style="' + ckInputStyle() + '" value="' + (e.complemento || '') + '"></div>' +
+      '</div>' +
+      ckLabel('Bairro') + '<input id="ckBairro" style="' + ckInputStyle() + '" value="' + (e.bairro || '') + '">' +
+      '<div style="display:flex; gap:8px;">' +
+      '<div style="flex:2;">' + ckLabel('Cidade') + '<input id="ckCidade" style="' + ckInputStyle() + '" value="' + (e.cidade || '') + '"></div>' +
+      '<div style="flex:1;">' + ckLabel('UF') + '<input id="ckEstado" maxlength="2" style="' + ckInputStyle() + '" value="' + (e.estado || '') + '"></div>' +
+      '</div>' +
+      '</div>' +
+      '<button onclick="ckAvancarDados()" style="width:100%; margin-top:18px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' +
+      (CK.carregando ? 'Calculando...' : (CK.combinar ? 'Continuar' : 'Calcular frete')) + '</button>';
+  }
+
+  window.ckToggleCombinar = function () {
+    CK.combinar = document.getElementById('ckCombinar').checked;
+    document.getElementById('ckEnderecoFields').style.display = CK.combinar ? 'none' : 'block';
+  };
+
+  function ckSalvarDadosDoForm() {
+    CK.endereco = {
+      nome: document.getElementById('ckNome').value.trim(),
+      contato: document.getElementById('ckContato').value.trim(),
+      cep: CK.combinar ? '' : document.getElementById('ckCep').value.trim(),
+      rua: CK.combinar ? '' : document.getElementById('ckRua').value.trim(),
+      numero: CK.combinar ? '' : document.getElementById('ckNumero').value.trim(),
+      complemento: CK.combinar ? '' : document.getElementById('ckComplemento').value.trim(),
+      bairro: CK.combinar ? '' : document.getElementById('ckBairro').value.trim(),
+      cidade: CK.combinar ? '' : document.getElementById('ckCidade').value.trim(),
+      estado: CK.combinar ? '' : document.getElementById('ckEstado').value.trim(),
+    };
+  }
+
+  window.ckAvancarDados = function () {
+    ckSalvarDadosDoForm();
+    var e = CK.endereco;
+    if (!e.nome) { CK.erro = 'Preenche seu nome.'; ckRender(); return; }
+    if (!e.contato) { CK.erro = 'Preenche seu WhatsApp.'; ckRender(); return; }
+    if (!CK.combinar && (!e.cep || !e.rua || !e.numero || !e.bairro || !e.cidade || !e.estado)) {
+      CK.erro = 'Preenche o endereço todo, ou marca "combinar a entrega".';
+      ckRender();
+      return;
+    }
+    CK.erro = '';
+    if (CK.combinar) { CK.passo = 'resumo'; ckRender(); return; }
+
+    CK.carregando = true;
+    ckRender();
+    var qtdTotal = CK.cartItems.reduce(function (s, it) { return s + it.qty; }, 0);
+    fetch(SB_FUNC_URL + 'calcular-frete', {
+      method: 'POST',
+      headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ cep_destino: e.cep, quantidade_itens: qtdTotal }),
+    }).then(function (r) { return r.json(); }).then(function (resp) {
+      CK.carregando = false;
+      if (resp.error || !resp.opcoes || !resp.opcoes.length) {
+        CK.erro = resp.error || 'Não achei opção de frete pra esse CEP.';
+        ckRender();
+        return;
+      }
+      CK.fretes = resp.opcoes;
+      CK.passo = 'frete';
+      ckRender();
+    }).catch(function () {
+      CK.carregando = false;
+      CK.erro = 'Não consegui calcular o frete agora. Tenta de novo.';
+      ckRender();
+    });
+  };
+
+  function ckHtmlFrete() {
+    var html = ckHtmlErro() + '<div style="font-size:13px; color:#7b879c; margin-bottom:10px;">Escolhe como quer receber:</div>';
+    CK.fretes.forEach(function (f, i) {
+      var sel = CK.freteEscolhido && CK.freteEscolhido.id === f.id;
+      html += '<div onclick="ckEscolherFrete(' + i + ')" style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border:1.5px solid ' + (sel ? '#0061f7' : '#e7e9ef') + '; background:' + (sel ? '#eef4ff' : '#fff') + '; border-radius:10px; margin-bottom:8px; cursor:pointer;">' +
+        '<div><div style="font-weight:700; font-size:13.5px; color:#0b1733;">' + f.transportadora + ' · ' + f.servico + '</div>' +
+        '<div style="font-size:12px; color:#7b879c;">' + (f.prazo_dias ? 'chega em até ' + f.prazo_dias + ' dias úteis' : '') + '</div></div>' +
+        '<div style="font-weight:700; font-family:\'Space Grotesk\',sans-serif;">' + fmtMoney(f.preco) + '</div></div>';
+    });
+    html += '<button onclick="ckVoltarPara(\'dados\')" style="width:100%; margin-top:6px; padding:10px; border:1.5px solid #dde1e8; border-radius:10px; background:#fff; color:#0b1733; font-weight:700; font-size:13px; cursor:pointer;">&larr; Voltar</button>';
+    html += '<button onclick="ckAvancarFrete()" style="width:100%; margin-top:8px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">Continuar</button>';
+    return html;
+  }
+
+  window.ckEscolherFrete = function (i) { CK.freteEscolhido = CK.fretes[i]; ckRender(); };
+  window.ckVoltarPara = function (passo) { CK.passo = passo; CK.erro = ''; ckRender(); };
+  window.ckAvancarFrete = function () {
+    if (!CK.freteEscolhido) { CK.erro = 'Escolhe uma opção de frete.'; ckRender(); return; }
+    CK.erro = '';
+    CK.passo = 'resumo';
+    ckRender();
+  };
+
+  function ckHtmlResumo() {
+    var html = ckHtmlErro();
+    html += '<div style="font-size:13px; line-height:1.9;">';
+    CK.cartItems.forEach(function (it) {
+      html += '<div style="display:flex; justify-content:space-between;"><span>' + it.qty + 'x ' + it.name + '</span><strong>' + fmtMoney(it.qty * it.priceNum) + '</strong></div>';
+    });
+    html += '<div style="display:flex; justify-content:space-between;"><span>Frete</span><strong>' + (CK.combinar ? 'a combinar' : fmtMoney(CK.freteEscolhido.preco)) + '</strong></div>';
+    html += '</div><hr style="border:none; border-top:1px solid #e7e9ef; margin:12px 0;">';
+    html += '<div style="display:flex; justify-content:space-between; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:18px;"><span>Total</span><span>' + (CK.combinar ? fmtMoney(totalProdutos()) + ' + frete' : fmtMoney(totalGeral())) + '</span></div>';
+    html += '<button onclick="ckVoltarPara(\'' + (CK.combinar ? 'dados' : 'frete') + '\')" style="width:100%; margin-top:16px; padding:10px; border:1.5px solid #dde1e8; border-radius:10px; background:#fff; color:#0b1733; font-weight:700; font-size:13px; cursor:pointer;">&larr; Voltar</button>';
+    html += '<button onclick="ckConfirmar()" style="width:100%; margin-top:8px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' + (CK.carregando ? 'Enviando...' : 'Confirmar pedido') + '</button>';
+    return html;
+  }
+
+  window.ckConfirmar = function () {
+    CK.carregando = true;
+    CK.erro = '';
+    ckRender();
+    var payload = {
+      itens: CK.cartItems.map(function (it) { return { codigo: it.code, quantidade: it.qty }; }),
+      nome_cliente: CK.endereco.nome,
+      contato_cliente: CK.endereco.contato,
+      frete_combinar: CK.combinar,
+    };
+    if (!CK.combinar) {
+      payload.endereco = { cep: CK.endereco.cep, rua: CK.endereco.rua, numero: CK.endereco.numero, complemento: CK.endereco.complemento, bairro: CK.endereco.bairro, cidade: CK.endereco.cidade, estado: CK.endereco.estado };
+      payload.frete = { transportadora: CK.freteEscolhido.transportadora, servico: CK.freteEscolhido.servico, preco: CK.freteEscolhido.preco, prazo_dias: CK.freteEscolhido.prazo_dias };
+    }
+    fetch(SB_FUNC_URL + 'finalizar-pedido', {
+      method: 'POST',
+      headers: { apikey: SB_ANON, 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    }).then(function (r) { return r.json(); }).then(function (resp) {
+      CK.carregando = false;
+      if (resp.error) { CK.erro = resp.error; ckRender(); return; }
+      CK.resultado = resp;
+      CK.passo = 'pago';
+      ckRender();
+      if (CK.onSucesso) CK.onSucesso();
+    }).catch(function () {
+      CK.carregando = false;
+      CK.erro = 'Não consegui fechar o pedido agora. Tenta de novo.';
+      ckRender();
+    });
+  };
+
+  function ckHtmlPago() {
+    var r = CK.resultado;
+    var html = '<div style="text-align:center;">';
+    html += '<div style="font-size:34px;">🎉</div>';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; margin-top:6px;">Pedido ' + r.pedido_numero + ' criado!</div>';
+    if (r.combinar) {
+      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Agora é só combinar a entrega com a gente pelo WhatsApp.</div>';
+    } else {
+      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Total a pagar: <strong>' + fmtMoney(r.total) + '</strong></div>';
+      html += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="margin:14px auto; display:block; border:1px solid #e7e9ef; border-radius:10px;">';
+      html += '<div style="font-size:11px; color:#7b879c; margin-bottom:6px;">Ou copia e cola no app do seu banco:</div>';
+      html += '<textarea readonly style="width:100%; height:60px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea>';
+    }
+    html += '<a href="' + r.whatsapp_url + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">' +
+      (r.combinar ? 'Combinar no WhatsApp' : 'Já paguei — mandar comprovante') + '</a>';
+    html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
+    html += '</div>';
+    return html;
+  }
+})();
 </script>
 </body>
 </html>
