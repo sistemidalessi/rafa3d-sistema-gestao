@@ -162,7 +162,7 @@
     <div class="nav-item" data-tab="produtos"><span class="ic">🎁</span> Produtos</div>
     <div class="nav-item" data-tab="clientes"><span class="ic">👥</span> Clientes</div>
     <div class="nav-item" data-tab="financeiro"><span class="ic">💰</span> Financeiro</div>
-    <div class="nav-item" data-tab="margem"><span class="ic">📈</span> Margem</div>
+    <div class="nav-item" data-tab="margem"><span class="ic">📈</span> Quanto sobrou</div>
     <div class="who">
       <div id="whoLabel"></div>
       <button class="btn ghost" onclick="doLogout()">Sair</button>
@@ -306,7 +306,7 @@ const TAB_TITLES = {
   produtos: '🎁 Produtos',
   clientes: '👥 Clientes',
   financeiro: '💰 Financeiro',
-  margem: '📈 Margem',
+  margem: '📈 Quanto sobrou',
 };
 
 function applyRolePermissions() {
@@ -2257,10 +2257,10 @@ async function saveCliente(id) {
 const MARGEM_STATUS_PRODUZIDO = ['imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'];
 
 const MARGEM_FONTE_LABELS = {
-  real: 'Real',
-  real_parcial: 'Real (só material)',
-  estimado: 'Estimado no pedido',
-  receita: 'Receita do produto',
+  real: 'Contei de verdade',
+  real_parcial: 'Contei só o filamento',
+  estimado: 'A conta que você digitou',
+  receita: 'A conta do produto',
 };
 
 let margemPeriodoDias = 90;
@@ -2328,9 +2328,20 @@ function margemPct(receita, custo) {
   return ((receita - custo) / receita) * 100;
 }
 
+// O selo mostra quanto sobra de cada R$ 100 que o cliente paga — em
+// reais, não em porcentagem, que é como as telas de preço perguntam.
+// Quando o custo passou do preço não existe "R$ -30 de cada R$ 100":
+// aí a frase certa é que faltou dinheiro pra pagar a peça.
 function margemBadge(pct) {
   if (pct === null) return '<span class="badge off">—</span>';
-  return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">' + pct.toFixed(0) + '%</span>';
+  if (pct < 0) return '<span class="badge off">faltou R$ ' + Math.abs(pct).toFixed(0) + '</span>';
+  return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">R$ ' + pct.toFixed(0) + '</span>';
+}
+
+// "1 vez(es)" é o tipo de coisa que faz o texto parecer escrito por
+// máquina — e quem lê tem 10 anos.
+function vezes(n) {
+  return n + (n === 1 ? ' vez' : ' vezes');
 }
 
 function margemBotoesPeriodo() {
@@ -2395,18 +2406,18 @@ async function renderMargem() {
   const pctGeral = margemPct(faturamento, custoTotal);
 
   let html = '<div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">';
-  html += '<div><strong>Período</strong><div style="color:var(--muted); font-size:12px;">Conta só item que já foi pra impressora — orçamento e fila ainda não custaram nada.</div></div>';
+  html += '<div><strong>Estou olhando</strong><div style="color:var(--muted); font-size:12px;">Só conto peça que já foi pra impressora. O que ainda está na fila não gastou nada.</div></div>';
   html += margemBotoesPeriodo() + '</div>';
 
   html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
-  html += statCard('🧾', fmtMoney(faturamento), 'Faturamento');
-  html += statCard('🧵', fmtMoney(custoTotal), 'Custo');
-  html += statCard(lucro >= 0 ? '📈' : '📉', fmtMoney(lucro), 'Lucro');
-  html += statCard('％', pctGeral === null ? '—' : pctGeral.toFixed(0) + '%', 'Margem');
+  html += statCard('🧾', fmtMoney(faturamento), 'Os clientes pagaram');
+  html += statCard('🧵', fmtMoney(custoTotal), 'Custou pra fazer');
+  html += statCard(lucro >= 0 ? '📈' : '📉', fmtMoney(lucro), 'Sobrou pra você');
+  html += statCard('💰', pctGeral === null ? '—' : 'R$ ' + pctGeral.toFixed(0), 'Sobrou de cada R$ 100');
   html += '</div>';
 
   if (comCusto.length === 0 && semCusto.length === 0) {
-    html += '<div class="card"><div class="empty">Nenhum item produzido neste período — nada pra calcular ainda.</div></div>';
+    html += '<div class="card"><div class="empty">Nenhuma peça foi feita nesse tempo. Não tem nada pra contar ainda.</div></div>';
     el.innerHTML = html;
     return;
   }
@@ -2414,12 +2425,12 @@ async function renderMargem() {
   if (semCusto.length > 0) {
     const receitaDeFora = semCusto.reduce((s, a) => s + a.receita, 0);
     html += '<div class="card">';
-    html += '<strong>⚠️ ' + semCusto.length + (semCusto.length === 1 ? ' item ficou' : ' itens ficaram') + ' fora da conta</strong>';
+    html += '<strong>⚠️ ' + semCusto.length + (semCusto.length === 1 ? ' peça que eu não' : ' peças que eu não') + ' consegui contar</strong>';
     html += '<div style="color:var(--muted); font-size:13px; margin-top:4px;">';
-    html += 'Somam ' + fmtMoney(receitaDeFora) + ' de venda, mas não têm custo nenhum registrado: nem baixa de filamento, nem receita de custo do produto, nem custo digitado na aprovação. ';
-    html += 'Entrariam como lucro puro e inflariam os números acima, então ficaram de fora. Pra trazer pra conta, cadastre a receita de custo na aba Produtos.';
+    html += 'Isso dá ' + fmtMoney(receitaDeFora) + ' de venda que eu não sei quanto custou pra fazer: ninguém baixou o filamento no estoque e não tem a conta de custo montada. ';
+    html += 'Se eu fizesse de conta que foram de graça, os números lá em cima ficariam maiores do que a verdade. Pra elas entrarem, abra a peça na aba Produtos e responda o "Quanto custa fazer".';
     html += '</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Item</th><th>Venda</th></tr>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Peça</th><th>O cliente pagou</th></tr>';
     semCusto.forEach((a) => {
       html += '<tr><td>' + escapeHtml(a.linha.orders && a.linha.orders.order_number ? a.linha.orders.order_number : '—') + '</td>';
       html += '<td>' + escapeHtml(margemNomeDoItem(a.linha, produtos)) + '</td>';
@@ -2445,14 +2456,14 @@ async function renderMargem() {
   }).sort((a, b) => b.lucro - a.lucro);
 
   if (linhasProduto.length > 0) {
-    html += '<div class="card"><strong>🎁 Por produto do catálogo</strong>';
-    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Do que mais deu lucro pro que menos deu.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Qtd</th><th>Venda</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo veio de</th></tr>';
+    html += '<div class="card"><strong>🎁 Quanto cada produto deixou</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Começa pelo que mais sobrou.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Vendidos</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>De cada R$ 100</th><th>Como eu contei</th></tr>';
     linhasProduto.forEach((r) => {
       html += '<tr>';
       html += '<td><strong>' + escapeHtml(r.nome) + '</strong>' +
         (r.codigo ? ' <span style="color:var(--muted); font-size:11px;">' + escapeHtml(r.codigo) + '</span>' : '') +
-        (r.d.reimpressoes > 0 ? '<div style="font-size:11px; color:var(--muted);">inclui ' + r.d.reimpressoes + ' reimpressão(ões)</div>' : '') + '</td>';
+        (r.d.reimpressoes > 0 ? '<div style="font-size:11px; color:var(--muted);">teve que imprimir de novo ' + vezes(r.d.reimpressoes) + '</div>' : '') + '</td>';
       html += '<td>' + r.d.qtd + '</td>';
       html += '<td>' + fmtMoney(r.d.receita) + '</td>';
       html += '<td>' + fmtMoney(r.d.custo) + '</td>';
@@ -2468,8 +2479,8 @@ async function renderMargem() {
     .sort((a, b) => (b.receita - b.custo) - (a.receita - a.custo));
   if (projetos.length > 0) {
     html += '<div class="card"><strong>🪄 Projetos personalizados</strong>';
-    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Cada um é único, então aparecem um a um em vez de agrupados por produto.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Projeto</th><th>Cliente</th><th>Venda</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo veio de</th></tr>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Cada projeto é diferente do outro, por isso eles aparecem um por um.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Projeto</th><th>Cliente</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>De cada R$ 100</th><th>Como eu contei</th></tr>';
     projetos.forEach((a) => {
       const cliente = a.linha.requester_name ||
         (a.linha.orders && a.linha.orders.customers ? a.linha.orders.customers.name : '—');
@@ -2491,13 +2502,13 @@ async function renderMargem() {
     .filter((x) => x.pct !== null && x.pct < 20)
     .sort((x, y) => x.pct - y.pct);
   if (problemas.length > 0) {
-    html += '<div class="card"><strong>🔻 Vendas que quase não deixaram nada</strong>';
-    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Margem abaixo de 20% — vale olhar o preço, o desperdício ou o tempo de máquina.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Item</th><th>Venda</th><th>Custo</th><th>Margem</th><th>Provável motivo</th></tr>';
+    html += '<div class="card"><strong>🔻 Vendas em que quase não sobrou nada</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Sobrou menos de R$ 20 de cada R$ 100. Vale ver se o preço está baixo demais, se gastou filamento demais ou se demorou muito pra imprimir.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Peça</th><th>O cliente pagou</th><th>Custou</th><th>De cada R$ 100</th><th>O que pode ter acontecido</th></tr>';
     problemas.forEach((x) => {
       const motivo = x.a.reimpressoes > 0
-        ? x.a.reimpressoes + ' reimpressão(ões) comeram o lucro'
-        : (x.pct < 0 ? 'custo passou do preço cobrado' : 'margem apertada no preço');
+        ? 'teve que imprimir de novo ' + vezes(x.a.reimpressoes)
+        : (x.pct < 0 ? 'gastou mais do que cobrou do cliente' : 'o preço está baixo pro que ela custa');
       html += '<tr>';
       html += '<td>' + escapeHtml(x.a.linha.orders && x.a.linha.orders.order_number ? x.a.linha.orders.order_number : '—') + '</td>';
       html += '<td>' + escapeHtml(margemNomeDoItem(x.a.linha, produtos)) + '</td>';
