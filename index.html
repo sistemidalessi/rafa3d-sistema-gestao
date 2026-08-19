@@ -100,6 +100,26 @@
     margin-bottom: 16px; box-shadow: 0 6px 18px rgba(11,23,51,0.06);
   }
   .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
+
+  /* Tela de dar preço no produto: os passos de um lado, a conta do
+     outro. A conta fica grudada enquanto se rola de propósito — ver o
+     número mudando enquanto digita é o que ensina que o preço nasce do
+     custo, e não o contrário. */
+  .preco-layout { display: grid; grid-template-columns: 1fr 310px; gap: 16px; align-items: start; }
+  .preco-conta { position: sticky; top: 16px; }
+  .passo { display: flex; align-items: center; gap: 10px; margin: 4px 0 2px; }
+  .passo-num {
+    width: 30px; height: 30px; border-radius: 50%; background: var(--blue); color: #fff; flex: none;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 15px;
+  }
+  .passo-txt { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 16px; }
+  .passo-sub { color: var(--muted); font-size: 12px; margin: 2px 0 6px 40px; }
+  .passo-sep { border: none; border-top: 1px solid var(--border); margin: 22px 0 6px; }
+  @media (max-width: 900px) {
+    .preco-layout { grid-template-columns: 1fr; }
+    .preco-conta { position: static; }
+  }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
   th { text-align: left; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); vertical-align: middle; }
   td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
@@ -1793,6 +1813,7 @@ function onFiltroProdutosCategoria(v) { produtosFiltroCategoria = v; desenharPro
 function desenharProdutos() {
   const el = document.getElementById('tab-produtos');
   if (!el) return;
+  if (produtoPrecificarId) { desenharPrecificar(el); return; }
   const scrollY = window.scrollY;
   const isOwner = currentProfile && currentProfile.role === 'owner';
   const produtos = produtosFiltrados();
@@ -1873,7 +1894,7 @@ function abrirGerenciarProduto(productId) {
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Receita de custo</span>' +
-        '<button class="btn ghost" onclick="closeModal(); openCustoForm(\'' + p.id + '\');">Custo</button>' +
+        '<button class="btn ghost" onclick="closeModal(); abrirPrecificar(\'' + p.id + '\');">💰 Dar preço</button>' +
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Arquivo 3D' + (p.model_file_path ? ' <span class="badge on">anexado</span>' : ' <span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>' +
@@ -2051,7 +2072,11 @@ function dicaCampo(texto) {
 // As seis perguntas que formam o custo de uma peça. Os ids são fixos
 // (rcCor, rcGramas...) porque só existe um modal aberto por vez, e assim
 // lerFormularioCusto() serve pras duas telas sem parametrizar nada.
-function perguntasDeCustoHtml(r) {
+// As perguntas vêm em dois grupos porque são dois assuntos diferentes:
+// o que a máquina gasta sozinha, e o que você faz depois com a mão. Na
+// tela de dar preço cada grupo vira um passo numerado; na janela de
+// aprovar projeto os dois aparecem seguidos, como antes.
+function perguntasImpressora(r) {
   let coresOptions = '<option value="">— escolha —</option>';
   filamentosCache.forEach((c) => {
     coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' +
@@ -2075,15 +2100,155 @@ function perguntasDeCustoHtml(r) {
 
     '<label class="pergunta">Quantas horas a impressora fica ligada fazendo ela?</label>' +
     dicaCampo('Também aparece no fatiador, junto com os gramas.') +
-    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="recalcularPreco()">' +
+    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="recalcularPreco()">';
+}
 
-    '<label class="pergunta">Depois de pronta, quantos minutos você mexe nela?</label>' +
+function perguntasSeuTrabalho(r) {
+  return '<label class="pergunta">Depois de pronta, quantos minutos você mexe nela?</label>' +
     dicaCampo('Tirar o suporte, lixar, colar, montar. Se não mexe, deixa 0.') +
     '<input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="recalcularPreco()">' +
 
     '<label class="pergunta">Quanto vale uma hora do seu trabalho? (R$)</label>' +
     dicaCampo('O que você acha justo ganhar por hora mexendo nas peças.') +
     '<input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="recalcularPreco()">';
+}
+
+function perguntasDeCustoHtml(r) {
+  return perguntasImpressora(r) + perguntasSeuTrabalho(r);
+}
+
+function passoHtml(numero, titulo, explicacao) {
+  return '<div class="passo"><div class="passo-num">' + numero + '</div>' +
+    '<div class="passo-txt">' + escapeHtml(titulo) + '</div></div>' +
+    '<div class="passo-sub">' + escapeHtml(explicacao) + '</div>';
+}
+
+function botoesQuantoQuerGanhar() {
+  let html = '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
+  [40, 50, 60, 70].forEach((m) => {
+    html += '<button class="btn ' + (custoMargemDesejada === m ? '' : 'ghost') + '" onclick="setMargemDesejada(' + m + ')">R$ ' + m + '</button>';
+  });
+  return html + '</div>';
+}
+
+/* ---- Tela de dar preço num produto do catálogo ----
+   Não é modal: ocupa a aba Produtos inteira, no mesmo esquema que a aba
+   Pedidos usa pra abrir um pedido (uma variável guarda o que está aberto
+   e o render decide o que desenhar). Modal apertava demais pra caber
+   passo numerado, explicação e a conta ao lado ao mesmo tempo. */
+let produtoPrecificarId = null;
+
+function abrirPrecificar(productId) {
+  const r = receitasCache.find((x) => x.product_id === productId) || {};
+  produtoPrecificarId = productId;
+  _custoProdutoAberto = productId;
+  _custoReceitaAberta = r.id || null;
+  _recalcularPrecoAtivo = atualizarContaPrecificar;
+  custoMargemDesejada = 60;
+  desenharProdutos();
+  window.scrollTo(0, 0);
+}
+
+function voltarProdutos() {
+  produtoPrecificarId = null;
+  renderProdutos();
+  window.scrollTo(0, 0);
+}
+
+function desenharPrecificar(el) {
+  const p = produtosCache.find((x) => x.id === produtoPrecificarId);
+  if (!p) { produtoPrecificarId = null; desenharProdutos(); return; }
+  const r = receitasCache.find((x) => x.product_id === p.id) || {};
+
+  let html = '<div class="card">';
+  html += '<button class="btn ghost" onclick="voltarProdutos()">← Voltar pros produtos</button>';
+  html += '<div style="display:flex; align-items:center; gap:14px; margin-top:14px;">';
+  html += '<img src="catalogo/' + escapeHtml(p.image_path || '') + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">';
+  html += '<div>';
+  html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:21px;">' + escapeHtml(p.name) + '</div>';
+  html += '<div style="color:var(--muted); font-size:13px;">' + escapeHtml(p.catalog_code || '') +
+    ' · hoje você cobra ' + fmtMoney(p.sale_price) + '</div>';
+  html += '</div></div></div>';
+
+  html += '<div class="preco-layout"><div>';
+
+  html += '<div class="card">';
+  html += passoHtml(1, 'O que a impressora gasta', 'Esses números o fatiador te dá quando termina de fatiar a peça.');
+  html += perguntasImpressora(r);
+  html += '<hr class="passo-sep">';
+  html += passoHtml(2, 'O que você faz depois', 'O tempo que você fica mexendo na peça depois que ela sai da impressora.');
+  html += perguntasSeuTrabalho(r);
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += passoHtml(3, 'Quanto você quer ganhar', 'De cada R$ 100 que o cliente pagar, escolhe quanto você quer que sobre.');
+  html += '<div id="precoMargemBotoes"></div>';
+  html += '</div>';
+
+  html += '<div class="card"><button class="btn ghost full" onclick="saveReceita(false)">Guardar a conta sem mexer no preço</button></div>';
+  html += '</div>';
+
+  html += '<div class="preco-conta"><div class="card" id="precoConta"></div></div>';
+  html += '</div>';
+
+  el.innerHTML = html;
+  atualizarContaPrecificar();
+}
+
+function atualizarContaPrecificar() {
+  const p = produtosCache.find((x) => x.id === produtoPrecificarId);
+  const custo = calcularCustoReceita(lerFormularioCusto());
+  const botoes = document.getElementById('precoMargemBotoes');
+  if (botoes) botoes.innerHTML = botoesQuantoQuerGanhar();
+
+  const el = document.getElementById('precoConta');
+  if (!el) return;
+
+  if (!custo || custo.total <= 0) {
+    el.innerHTML = '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700;">A conta</div>' +
+      '<div class="empty">Responde o passo 1 e o passo 2 que a conta aparece aqui, e vai mudando sozinha conforme você digita.</div>';
+    return;
+  }
+
+  let html = '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700;">A conta</div>';
+  html += '<div style="margin-top:10px; font-size:13px; line-height:2;">';
+  html += '<div style="display:flex; justify-content:space-between;"><span>🧵 O filamento</span><strong>' + fmtMoney(custo.custoMaterial) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between;"><span>⚡ A luz</span><strong>' + fmtMoney(custo.custoMaquina) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between;"><span>✋ O seu trabalho</span><strong>' + fmtMoney(custo.custoMaoObra) + '</strong></div>';
+  html += '</div>';
+  if (custo.corFaltando || custo.impressoraFaltando) {
+    html += '<div style="color:var(--muted); font-size:11px;">Falta escolher ' +
+      (custo.corFaltando ? 'o filamento' : '') + (custo.corFaltando && custo.impressoraFaltando ? ' e ' : '') +
+      (custo.impressoraFaltando ? 'a impressora' : '') + ' lá no passo 1.</div>';
+  }
+
+  html += '<hr class="passo-sep" style="margin:12px 0;">';
+  html += '<div style="display:flex; justify-content:space-between; font-weight:700;"><span>Fazer ela custa</span><span>' + fmtMoney(custo.total) + '</span></div>';
+
+  const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+  if (!preco) {
+    html += '<div class="empty">Escolhe no passo 3 quanto você quer ganhar.</div>';
+    el.innerHTML = html;
+    return;
+  }
+
+  html += '<div style="color:var(--muted); font-size:12px; margin-top:6px;">Você quer que sobrem R$ ' +
+    custoMargemDesejada + ' de cada R$ 100.</div>';
+  html += '<hr class="passo-sep" style="margin:12px 0;">';
+  html += '<div style="color:var(--muted); font-size:12px;">Então cobra</div>';
+  html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:30px; line-height:1.2;">' + fmtMoney(preco) + '</div>';
+  html += '<div style="color:var(--muted); font-size:12px; margin-top:6px;">' +
+    fmtMoney(custo.total) + ' pagam o filamento, a luz e o seu tempo. ' + fmtMoney(preco - custo.total) + ' sobram pra você.</div>';
+
+  if (p && p.sale_price) {
+    const dif = preco - p.sale_price;
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:6px;">Hoje você cobra ' + fmtMoney(p.sale_price) + ' — ' +
+      (Math.abs(dif) < 0.01 ? 'é bem esse preço mesmo.'
+        : (dif > 0 ? '<strong>' + fmtMoney(dif) + ' mais barato do que devia.</strong>'
+                   : fmtMoney(-dif) + ' mais caro do que precisa.')) + '</div>';
+  }
+  html += '<button class="btn full" style="margin-top:12px;" onclick="saveReceita(true)">✅ Usar ' + fmtMoney(preco) + ' como preço</button>';
+  el.innerHTML = html;
 }
 
 function lerFormularioCusto() {
@@ -2145,35 +2310,6 @@ function blocoCustoEPrecoHtml(custo, opts) {
   return html + '</div></div>';
 }
 
-/* ---- Tela 1: custo do produto de catálogo ---- */
-
-function openCustoForm(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
-  const r = receitasCache.find((x) => x.product_id === productId) || {};
-  _custoProdutoAberto = productId;
-  _custoReceitaAberta = r.id || null;
-  _recalcularPrecoAtivo = atualizarCustoPreview;
-  custoMargemDesejada = 60;
-
-  openModal(
-    '<h3>Quanto custa fazer o ' + escapeHtml(p.name) + '?</h3>' +
-    '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Responde as perguntas abaixo que eu calculo o preço no final.</p>' +
-    perguntasDeCustoHtml(r) +
-    '<div id="rcPreview" style="margin-top:16px;"></div>' +
-    '<div class="modal-actions">' +
-      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn ghost" onclick="saveReceita(false)">Guardar só o custo</button>' +
-    '</div>'
-  );
-  atualizarCustoPreview();
-}
-
-function atualizarCustoPreview() {
-  const p = produtosCache.find((x) => x.id === _custoProdutoAberto);
-  document.getElementById('rcPreview').innerHTML = blocoCustoEPrecoHtml(
-    calcularCustoReceita(lerFormularioCusto()),
-    { precoAtual: p ? p.sale_price : null, rotuloBotao: '✅ Usar {preco} como preço', acaoBotao: 'saveReceita(true)' });
-}
 
 async function saveReceita(aplicarPreco) {
   const productId = _custoProdutoAberto;
@@ -2196,12 +2332,14 @@ async function saveReceita(aplicarPreco) {
       if (e2) { toast('O custo foi guardado, mas o preço não: ' + e2.message); return; }
       closeModal();
       toast('Pronto! Custo guardado e preço mudado pra ' + fmtMoney(preco) + '.');
+      produtoPrecificarId = null;
       await getProdutos(true);
       await renderProdutos();
       return;
     }
   }
   closeModal();
+  produtoPrecificarId = null;
   toast('Custo guardado.');
   await renderProdutos();
 }

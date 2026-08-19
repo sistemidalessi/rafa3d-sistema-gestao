@@ -28,8 +28,11 @@ Na prática:
   fazer, depois o preço sai da conta e um botão aplica. Digitar um preço e
   conferir a margem depois exige adivinhar.
 
-`openCustoForm()` é o modelo a seguir — é a tela mais recente feita com essas
-regras.
+`desenharPrecificar()` é o modelo a seguir — a tela de dar preço num produto.
+Ela é uma tela cheia, não modal, porque passo numerado + explicação + a conta
+ao lado não cabem numa janelinha. E a conta fica grudada enquanto se rola de
+propósito: ver o número mudar enquanto digita é o que ensina de onde ele vem.
+
 ## Onde as coisas ficam
 
 [`index.html`](index.html) é o sistema inteiro em ~2000 linhas, nesta ordem:
