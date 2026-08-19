@@ -64,11 +64,13 @@ export default {
     const itens = Array.isArray(corpo.itens) ? corpo.itens : [];
     const nomeCliente = String(corpo.nome_cliente || "").trim();
     const contatoCliente = String(corpo.contato_cliente || "").trim();
+    const documentoCliente = String(corpo.documento_cliente || "").replace(/\D/g, "");
     const combinar = !!corpo.frete_combinar;
 
     if (!itens.length) return Response.json({ error: "Carrinho vazio." }, { status: 400 });
     if (!nomeCliente) return Response.json({ error: "Falta o nome de quem está comprando." }, { status: 400 });
     if (!contatoCliente) return Response.json({ error: "Falta um WhatsApp pra contato." }, { status: 400 });
+    if (documentoCliente.length !== 11) return Response.json({ error: "CPF inválido." }, { status: 400 });
     if (!combinar && (!corpo.endereco || !corpo.endereco.cep)) {
       return Response.json({ error: "Falta o endereço de entrega." }, { status: 400 });
     }
@@ -112,6 +114,7 @@ export default {
       total_amount: total,
       customer_name: nomeCliente,
       customer_contact: contatoCliente,
+      customer_document: documentoCliente,
       shipping_combinar: combinar,
     };
     if (!combinar) {
@@ -126,6 +129,7 @@ export default {
         shipping_state: end.estado || null,
         shipping_carrier: corpo.frete?.transportadora || null,
         shipping_service: corpo.frete?.servico || null,
+        shipping_service_id: corpo.frete?.servico_id || null,
         shipping_price: freteValor,
         shipping_days: corpo.frete?.prazo_dias || null,
       });

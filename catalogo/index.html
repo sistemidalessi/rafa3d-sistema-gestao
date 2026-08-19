@@ -956,6 +956,9 @@ class Component extends DCLogic {
   function ckLabel(txt) {
     return '<label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#7b879c; margin:12px 0 5px;">' + txt + '</label>';
   }
+  function dicaCheckout(txt) {
+    return '<div style="font-size:11px; color:#7b879c; margin:-2px 0 6px;">' + txt + '</div>';
+  }
   function ckInputStyle() {
     return 'width:100%; padding:10px 12px; border:1.5px solid #dde1e8; border-radius:9px; font-size:13.5px; font-family:inherit; box-sizing:border-box;';
   }
@@ -970,6 +973,8 @@ class Component extends DCLogic {
     return ckHtmlErro() +
       ckLabel('Seu nome') + '<input id="ckNome" style="' + ckInputStyle() + '" value="' + (e.nome || '') + '">' +
       ckLabel('Seu WhatsApp') + '<input id="ckContato" style="' + ckInputStyle() + '" placeholder="(11) 90000-0000" value="' + (e.contato || '') + '">' +
+      ckLabel('Seu CPF') + '<input id="ckDocumento" style="' + ckInputStyle() + '" placeholder="000.000.000-00" value="' + (e.documento || '') + '">' +
+      dicaCheckout('É exigido pra declaração da encomenda nos Correios/transportadora.') +
       '<div style="margin-top:16px; padding-top:14px; border-top:1px solid #f0f1f4;">' +
       '<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#0b1733; cursor:pointer;">' +
       '<input type="checkbox" id="ckCombinar" onchange="ckToggleCombinar()"' + (CK.combinar ? ' checked' : '') + '> Prefiro combinar a entrega (retirar, Uber, moro perto...)' +
@@ -1012,10 +1017,12 @@ class Component extends DCLogic {
   function ckCapturarCamposLivres() {
     var nome = document.getElementById('ckNome');
     var contato = document.getElementById('ckContato');
+    var documento = document.getElementById('ckDocumento');
     var numero = document.getElementById('ckNumero');
     var complemento = document.getElementById('ckComplemento');
     if (nome) CK.endereco.nome = nome.value;
     if (contato) CK.endereco.contato = contato.value;
+    if (documento) CK.endereco.documento = documento.value;
     if (numero) CK.endereco.numero = numero.value;
     if (complemento) CK.endereco.complemento = complemento.value;
   }
@@ -1051,6 +1058,7 @@ class Component extends DCLogic {
     CK.endereco = {
       nome: document.getElementById('ckNome').value.trim(),
       contato: document.getElementById('ckContato').value.trim(),
+      documento: document.getElementById('ckDocumento').value.trim(),
       cep: CK.combinar ? '' : document.getElementById('ckCep').value.trim(),
       rua: CK.combinar ? '' : document.getElementById('ckRua').value.trim(),
       numero: CK.combinar ? '' : document.getElementById('ckNumero').value.trim(),
@@ -1061,11 +1069,24 @@ class Component extends DCLogic {
     };
   }
 
+  function ckCpfValido(cpf) {
+    cpf = String(cpf).replace(/\D/g, '');
+    if (cpf.length !== 11 || /^(\d)\1{10}$/.test(cpf)) return false;
+    function digito(base) {
+      var soma = 0;
+      for (var i = 0; i < base.length; i++) soma += parseInt(base[i], 10) * (base.length + 1 - i);
+      var resto = (soma * 10) % 11;
+      return resto === 10 ? 0 : resto;
+    }
+    return digito(cpf.slice(0, 9)) === parseInt(cpf[9], 10) && digito(cpf.slice(0, 10)) === parseInt(cpf[10], 10);
+  }
+
   window.ckAvancarDados = function () {
     ckSalvarDadosDoForm();
     var e = CK.endereco;
     if (!e.nome) { CK.erro = 'Preenche seu nome.'; ckRender(); return; }
     if (!e.contato) { CK.erro = 'Preenche seu WhatsApp.'; ckRender(); return; }
+    if (!ckCpfValido(e.documento)) { CK.erro = 'Preenche um CPF válido.'; ckRender(); return; }
     if (!CK.combinar && (!e.cep || !e.rua || !e.numero || !e.bairro || !e.cidade || !e.estado)) {
       CK.erro = 'Preenche o endereço todo, ou marca "combinar a entrega".';
       ckRender();
@@ -1143,11 +1164,12 @@ class Component extends DCLogic {
       itens: CK.cartItems.map(function (it) { return { codigo: it.code, quantidade: it.qty }; }),
       nome_cliente: CK.endereco.nome,
       contato_cliente: CK.endereco.contato,
+      documento_cliente: CK.endereco.documento,
       frete_combinar: CK.combinar,
     };
     if (!CK.combinar) {
       payload.endereco = { cep: CK.endereco.cep, rua: CK.endereco.rua, numero: CK.endereco.numero, complemento: CK.endereco.complemento, bairro: CK.endereco.bairro, cidade: CK.endereco.cidade, estado: CK.endereco.estado };
-      payload.frete = { transportadora: CK.freteEscolhido.transportadora, servico: CK.freteEscolhido.servico, preco: CK.freteEscolhido.preco, prazo_dias: CK.freteEscolhido.prazo_dias };
+      payload.frete = { transportadora: CK.freteEscolhido.transportadora, servico: CK.freteEscolhido.servico, preco: CK.freteEscolhido.preco, prazo_dias: CK.freteEscolhido.prazo_dias, servico_id: CK.freteEscolhido.id };
     }
     fetch(SB_FUNC_URL + 'finalizar-pedido', {
       method: 'POST',

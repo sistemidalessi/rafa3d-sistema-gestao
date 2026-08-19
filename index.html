@@ -1042,6 +1042,35 @@ async function renderPedidoDetalhe(id) {
   html += '<span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></div>';
   html += '</div></div>';
 
+  if (order.channel === 'catalogo') {
+    html += '<div class="card">';
+    html += '<strong>📦 Entrega</strong>';
+    if (order.shipping_combinar) {
+      html += '<div style="margin-top:8px; font-size:13px;">Combinar entrega direto com o cliente (retirar, Uber, etc).</div>';
+    } else {
+      html += '<div style="margin-top:8px; font-size:13px; line-height:1.8;">';
+      html += escapeHtml(order.shipping_street || '') + ', ' + escapeHtml(order.shipping_number || '') +
+        (order.shipping_complement ? ' — ' + escapeHtml(order.shipping_complement) : '') + '<br>';
+      html += escapeHtml(order.shipping_district || '') + ' · ' + escapeHtml(order.shipping_city || '') + '/' + escapeHtml(order.shipping_state || '') +
+        ' · CEP ' + escapeHtml(order.shipping_cep || '') + '<br>';
+      html += escapeHtml(order.shipping_carrier || '') + ' ' + escapeHtml(order.shipping_service || '') + ' — ' + fmtMoney(order.shipping_price) + '</div>';
+
+      if (order.shipping_label_status === 'gerada') {
+        html += '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">';
+        html += '<span class="badge on">Etiqueta gerada</span> ';
+        if (order.shipping_tracking_code) html += '<span style="font-size:12px; color:var(--muted);">Rastreio: ' + escapeHtml(order.shipping_tracking_code) + '</span>';
+        if (order.shipping_label_url) html += '<div style="margin-top:6px;"><a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn ghost">🖨️ Abrir etiqueta pra imprimir</a></div>';
+        html += '</div>';
+      } else {
+        if (order.shipping_label_status === 'erro') {
+          html += '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); color:#c0392b; font-size:12px;">Deu erro na última tentativa: ' + escapeHtml(order.shipping_label_error || '') + '</div>';
+        }
+        html += '<button class="btn" style="margin-top:10px;" onclick="gerarEtiqueta(\'' + id + '\')" id="btnGerarEtiqueta">🏷️ ' + (order.shipping_label_status === 'erro' ? 'Tentar de novo' : 'Gerar etiqueta') + '</button>';
+      }
+    }
+    html += '</div>';
+  }
+
   html += '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
   html += '<strong>Itens</strong><button class="btn" onclick="openItemForm(\'' + id + '\')">+ Adicionar item</button>';
@@ -1094,6 +1123,28 @@ async function renderPedidoDetalhe(id) {
   html += '</div>';
 
   el.innerHTML = html;
+}
+
+async function gerarEtiqueta(orderId) {
+  const btn = document.getElementById('btnGerarEtiqueta');
+  if (btn) { btn.disabled = true; btn.textContent = 'Gerando...'; }
+  const { data: sessao } = await SUPA.auth.getSession();
+  const token = sessao && sessao.session ? sessao.session.access_token : null;
+  if (!token) { toast('Sessão expirada, entra de novo.'); return; }
+  try {
+    const resp = await fetch(DEFAULT_SB_URL + '/functions/v1/gerar-etiqueta', {
+      method: 'POST',
+      headers: { apikey: DEFAULT_SB_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const dados = await resp.json();
+    if (dados.error) { toast('Erro: ' + dados.error); if (btn) { btn.disabled = false; btn.textContent = '🏷️ Tentar de novo'; } await renderPedidoDetalhe(orderId); return; }
+    toast('Etiqueta gerada!');
+    await renderPedidoDetalhe(orderId);
+  } catch (e) {
+    toast('Não consegui gerar a etiqueta agora.');
+    if (btn) { btn.disabled = false; btn.textContent = '🏷️ Gerar etiqueta'; }
+  }
 }
 
 async function recalcularTotalPedido(orderId) {
