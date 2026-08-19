@@ -2134,8 +2134,18 @@ function perguntasImpressora(r) {
     '<input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="recalcularPreco()">' +
 
     '<label class="pergunta">Quantas horas a impressora fica ligada fazendo ela?</label>' +
-    dicaCampo('Também aparece no fatiador, junto com os gramas.') +
-    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="recalcularPreco()">';
+    dicaCampo('O fatiador mostra em horas e minutos (tipo 17h 31min) — separa aqui do jeito que ele mostrar, sem precisar converter nada.') +
+    '<div style="display:flex; gap:8px;">' +
+      '<div style="flex:1;"><input id="rcHorasH" type="number" step="1" min="0" placeholder="horas" value="' + horasParteInteira(r.estimated_print_hours) + '" oninput="recalcularPreco()"></div>' +
+      '<div style="flex:1;"><input id="rcHorasM" type="number" step="1" min="0" max="59" placeholder="minutos" value="' + horasParteMinutos(r.estimated_print_hours) + '" oninput="recalcularPreco()"></div>' +
+    '</div>';
+}
+
+function horasParteInteira(horasDecimais) {
+  return horasDecimais ? Math.floor(horasDecimais) : '';
+}
+function horasParteMinutos(horasDecimais) {
+  return horasDecimais ? Math.round((horasDecimais - Math.floor(horasDecimais)) * 60) : '';
 }
 
 function perguntaPintura(r) {
@@ -2288,7 +2298,8 @@ function lerFormularioCusto() {
     filament_color_id: document.getElementById('rcCor').value || null,
     printer_id: document.getElementById('rcImpressora').value || null,
     estimated_grams: parseFloat(document.getElementById('rcGramas').value) || 0,
-    estimated_print_hours: parseFloat(document.getElementById('rcHoras').value) || 0,
+    estimated_print_hours: (parseFloat(document.getElementById('rcHorasH').value) || 0) +
+      (parseFloat(document.getElementById('rcHorasM').value) || 0) / 60,
     has_painting: document.getElementById('rcPintura').value === 'true',
   };
 }
