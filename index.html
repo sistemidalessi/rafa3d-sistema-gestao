@@ -1493,13 +1493,56 @@ function toggleSpoolsList(colorId) {
   document.getElementById('spools-' + colorId).classList.toggle('hidden');
 }
 
+// A cor do filamento era um campo de texto pedindo código CSS
+// ("#4db8d4"). Virou o seletor de cor do navegador — mas o valor
+// continua num campo escondido, e não no seletor, por um motivo: as 30
+// cores importadas do catálogo guardam um degradê inteiro
+// (radial-gradient(...)), que é o que dá o brilho na bolinha da lista.
+// Seletor de cor só entende #rrggbb, então ele escreve por cima quando
+// alguém escolhe uma cor nova — e quem não encostar nele mantém o
+// degradê original intacto.
+function corParaSeletor(valor) {
+  const achado = (valor || '').match(/#[0-9a-fA-F]{6}/);
+  return achado ? achado[0] : '#cccccc';
+}
+
+function corEhDegrade(valor) {
+  return (valor || '').indexOf('gradient') !== -1;
+}
+
+function escolherCorFilamento(hex) {
+  document.getElementById('flCor').value = hex;
+  atualizarAmostraCor();
+}
+
+// A amostra é pintada por aqui, e não no HTML, pra não injetar o valor
+// guardado dentro de um atributo style montado por concatenação.
+function atualizarAmostraCor() {
+  const valor = document.getElementById('flCor').value.trim();
+  document.getElementById('flAmostra').style.background = valor || '#ccc';
+  document.getElementById('flAvisoDegrade').style.display = corEhDegrade(valor) ? 'block' : 'none';
+}
+
 function openFilamentoForm(id) {
   const c = id ? filamentosCache.find((x) => x.id === id) : null;
+  const corAtual = c ? (c.hex_or_gradient || '') : '';
   openModal(
     '<h3>' + (c ? 'Editar cor' : 'Nova cor de filamento') + '</h3>' +
     '<label>Nome</label><input id="flNome" value="' + (c ? escapeHtml(c.name) : '') + '" placeholder="Ex: Azul Céu">' +
     '<label>Material</label><input id="flMaterial" value="' + (c ? escapeHtml(c.material) : 'PLA') + '">' +
-    '<label>Cor (CSS, ex: #4db8d4)</label><input id="flCor" value="' + (c ? escapeHtml(c.hex_or_gradient || '') : '') + '">' +
+
+    '<label>Cor do rolo</label>' +
+    '<input type="hidden" id="flCor" value="' + escapeHtml(corAtual) + '">' +
+    '<div style="display:flex; align-items:center; gap:10px;">' +
+      '<input type="color" id="flCorPicker" value="' + corParaSeletor(corAtual) + '" oninput="escolherCorFilamento(this.value)" ' +
+        'style="width:54px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:10px; background:#fff; cursor:pointer;">' +
+      '<span id="flAmostra" style="display:inline-block; width:34px; height:34px; border-radius:50%; border:1px solid rgba(0,0,0,0.1);"></span>' +
+      '<span style="color:var(--muted); font-size:12px;">Clica no quadradinho e escolhe a cor do rolo.</span>' +
+    '</div>' +
+    '<div id="flAvisoDegrade" style="display:none; color:var(--muted); font-size:11px; margin-top:6px;">' +
+      'Essa cor tem um degradê que veio do catálogo. Se você escolher no quadradinho, ela vira uma cor sozinha.' +
+    '</div>' +
+
     '<label>Custo por kg (R$)</label><input id="flCusto" type="number" step="0.01" value="' + (c ? c.cost_per_kg : 0) + '">' +
     '<label>Alerta de estoque baixo (gramas)</label><input id="flLimite" type="number" value="' + (c ? c.low_stock_threshold_g : 200) + '">' +
     '<div class="modal-actions">' +
@@ -1507,6 +1550,7 @@ function openFilamentoForm(id) {
       '<button class="btn" onclick="saveFilamento(' + (c ? "'" + id + "'" : 'null') + ')">Salvar</button>' +
     '</div>'
   );
+  atualizarAmostraCor();
 }
 
 async function saveFilamento(id) {
