@@ -121,6 +121,10 @@
   .modal-box.wide { width: 560px; }
   .modal-box h3 { margin: 0 0 16px; font-size: 17px; }
   .modal-box label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 5px; color: var(--muted); }
+  /* Pergunta inteira em vez de rótulo curto: caixa alta de 11px serve pra
+     "NOME", não pra "Quantos gramas de filamento ela gasta?" — que é como
+     as telas de dinheiro perguntam, pra serem lidas sem esforço. */
+  .modal-box label.pergunta { font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); margin-top: 16px; }
   .modal-box input, .modal-box select {
     width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px; font-size: 13.5px;
   }
@@ -1857,66 +1861,195 @@ async function removerModelo3D(productId) {
   await renderProdutos();
 }
 
+/* ------------------------------------------------------------
+   PLANO DE CUSTO — e o preço saindo sozinho dele
+
+   A ordem aqui é de propósito: primeiro se monta quanto custa fazer a
+   peça, e o preço nasce dessa conta. O contrário (digitar um preço e
+   depois descobrir se sobrou alguma coisa) exige adivinhar, e quem
+   opera este sistema no dia a dia não tem como adivinhar.
+
+   Por isso cada campo é uma pergunta direta com a dica de onde achar o
+   número, e o resultado vem escrito por extenso ("de cada R$ 75,90 que
+   o cliente pagar, R$ 45,90 ficam pra você") em vez de só uma
+   porcentagem solta.
+   ------------------------------------------------------------ */
+
+let custoMargemDesejada = 60;
+let _custoProdutoAberto = null;
+let _custoReceitaAberta = null;
+
+// Todo preço do catálogo termina em ,90 — o sugerido sobe pro próximo
+// ,90 pra não sair um número quebrado tipo R$ 74,17 na vitrine.
+function arredondarPrecoNoventa(valor) {
+  const base = Math.floor(valor);
+  const candidato = base + 0.9;
+  return candidato >= valor ? candidato : base + 1.9;
+}
+
+// Margem é sobre o preço, não sobre o custo: "60%" quer dizer que 60
+// centavos de cada real que o cliente paga sobram. Por isso é dividir
+// por (1 - margem), e não multiplicar o custo por 1,6.
+function precoAPartirDoCusto(custo, margemPercentual) {
+  if (!custo || custo <= 0 || margemPercentual >= 100) return null;
+  return arredondarPrecoNoventa(custo / (1 - margemPercentual / 100));
+}
+
+function setMargemDesejada(pct) {
+  custoMargemDesejada = pct;
+  atualizarCustoPreview();
+}
+
+function dicaCampo(texto) {
+  return '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">' + escapeHtml(texto) + '</div>';
+}
+
 function openCustoForm(productId) {
   const p = produtosCache.find((x) => x.id === productId);
   const r = receitasCache.find((x) => x.product_id === productId) || {};
-  let coresOptions = '<option value="">— nenhuma —</option>';
-  filamentosCache.forEach((c) => { coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' + escapeHtml(c.name) + ' (' + fmtMoney(c.cost_per_kg) + '/kg)</option>'; });
-  let impOptions = '<option value="">— nenhuma —</option>';
-  impressorasCache.forEach((imp) => { impOptions += '<option value="' + imp.id + '"' + (imp.id === r.printer_id ? ' selected' : '') + '>' + escapeHtml(imp.name) + (imp.hourly_cost ? ' (' + fmtMoney(imp.hourly_cost) + '/h)' : '') + '</option>'; });
+  _custoProdutoAberto = productId;
+  _custoReceitaAberta = r.id || null;
+  custoMargemDesejada = 60;
+
+  let coresOptions = '<option value="">— escolha —</option>';
+  filamentosCache.forEach((c) => {
+    coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' +
+      escapeHtml(c.name) + ' (' + fmtMoney(c.cost_per_kg) + ' o quilo)</option>';
+  });
+  let impOptions = '<option value="">— escolha —</option>';
+  impressorasCache.forEach((imp) => {
+    impOptions += '<option value="' + imp.id + '"' + (imp.id === r.printer_id ? ' selected' : '') + '>' +
+      escapeHtml(imp.name) + (imp.hourly_cost ? ' (' + fmtMoney(imp.hourly_cost) + ' por hora ligada)' : '') + '</option>';
+  });
 
   openModal(
-    '<h3>Custo — ' + escapeHtml(p.name) + '</h3>' +
-    '<label>Cor de filamento</label><select id="rcCor" oninput="atualizarCustoPreview()" onchange="atualizarCustoPreview()">' + coresOptions + '</select>' +
-    '<label>Impressora</label><select id="rcImpressora" oninput="atualizarCustoPreview()" onchange="atualizarCustoPreview()">' + impOptions + '</select>' +
-    '<label>Peso da peça (gramas)</label><input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="atualizarCustoPreview()">' +
-    '<label>Tempo de impressão (horas)</label><input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="atualizarCustoPreview()">' +
-    '<label>Pós-processamento (minutos)</label><input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="atualizarCustoPreview()">' +
-    '<label>Valor hora de mão de obra (R$)</label><input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="atualizarCustoPreview()">' +
-    '<div class="card" id="rcPreview" style="margin-top:14px; background:#f7f9fc;"></div>' +
+    '<h3>Quanto custa fazer o ' + escapeHtml(p.name) + '?</h3>' +
+    '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Responde as perguntas abaixo que eu calculo o preço no final.</p>' +
+
+    '<label class="pergunta">Qual filamento essa peça usa?</label>' +
+    '<select id="rcCor" onchange="atualizarCustoPreview()">' + coresOptions + '</select>' +
+
+    '<label class="pergunta">Em qual impressora?</label>' +
+    '<select id="rcImpressora" onchange="atualizarCustoPreview()">' + impOptions + '</select>' +
+
+    '<label class="pergunta">Quantos gramas de filamento ela gasta?</label>' +
+    dicaCampo('O fatiador mostra esse número quando termina de fatiar a peça.') +
+    '<input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="atualizarCustoPreview()">' +
+
+    '<label class="pergunta">Quantas horas a impressora fica ligada fazendo ela?</label>' +
+    dicaCampo('Também aparece no fatiador, junto com os gramas.') +
+    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="atualizarCustoPreview()">' +
+
+    '<label class="pergunta">Depois de pronta, quantos minutos você mexe nela?</label>' +
+    dicaCampo('Tirar o suporte, lixar, colar, montar. Se não mexe, deixa 0.') +
+    '<input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="atualizarCustoPreview()">' +
+
+    '<label class="pergunta">Quanto vale uma hora do seu trabalho? (R$)</label>' +
+    dicaCampo('O que você acha justo ganhar por hora mexendo nas peças.') +
+    '<input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="atualizarCustoPreview()">' +
+
+    '<div id="rcPreview" style="margin-top:16px;"></div>' +
+
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn" onclick="saveReceita(\'' + productId + '\', ' + (r.id ? "'" + r.id + "'" : 'null') + ')">Salvar</button>' +
+      '<button class="btn ghost" onclick="saveReceita(false)">Guardar só o custo</button>' +
     '</div>'
   );
   atualizarCustoPreview();
 }
 
-function atualizarCustoPreview() {
-  const colorId = document.getElementById('rcCor').value;
-  const printerId = document.getElementById('rcImpressora').value;
-  const grams = parseFloat(document.getElementById('rcGramas').value) || 0;
-  const hours = parseFloat(document.getElementById('rcHoras').value) || 0;
-  const minutes = parseFloat(document.getElementById('rcMinutos').value) || 0;
-  const laborRate = parseFloat(document.getElementById('rcMaoObra').value) || 0;
-
-  const custo = calcularCustoReceita({
-    filament_color_id: colorId, printer_id: printerId, estimated_grams: grams,
-    estimated_print_hours: hours, post_processing_minutes: minutes, post_processing_labor_rate: laborRate,
-  });
-  const el = document.getElementById('rcPreview');
-  el.innerHTML =
-    '<div>Material: ' + fmtMoney(custo.custoMaterial) + '</div>' +
-    '<div>Máquina: ' + fmtMoney(custo.custoMaquina) + '</div>' +
-    '<div>Mão de obra: ' + fmtMoney(custo.custoMaoObra) + '</div>' +
-    '<div style="margin-top:6px; font-weight:700;">Custo total: ' + fmtMoney(custo.total) + '</div>';
+function lerFormularioCusto() {
+  return {
+    filament_color_id: document.getElementById('rcCor').value || null,
+    printer_id: document.getElementById('rcImpressora').value || null,
+    estimated_grams: parseFloat(document.getElementById('rcGramas').value) || 0,
+    estimated_print_hours: parseFloat(document.getElementById('rcHoras').value) || 0,
+    post_processing_minutes: parseFloat(document.getElementById('rcMinutos').value) || 0,
+    post_processing_labor_rate: parseFloat(document.getElementById('rcMaoObra').value) || 0,
+  };
 }
 
-async function saveReceita(productId, recipeId) {
-  const filament_color_id = document.getElementById('rcCor').value || null;
-  const printer_id = document.getElementById('rcImpressora').value || null;
-  const estimated_grams = parseFloat(document.getElementById('rcGramas').value);
-  const estimated_print_hours = parseFloat(document.getElementById('rcHoras').value);
-  const post_processing_minutes = parseFloat(document.getElementById('rcMinutos').value) || 0;
-  const post_processing_labor_rate = parseFloat(document.getElementById('rcMaoObra').value) || 0;
-  if (isNaN(estimated_grams) || isNaN(estimated_print_hours)) { toast('Preenche peso e tempo de impressão.'); return; }
-  const payload = { product_id: productId, filament_color_id, printer_id, estimated_grams, estimated_print_hours, post_processing_minutes, post_processing_labor_rate };
-  const { error } = recipeId
-    ? await SUPA.from('product_recipes').update(payload).eq('id', recipeId)
+function atualizarCustoPreview() {
+  const form = lerFormularioCusto();
+  const custo = calcularCustoReceita(form);
+  const el = document.getElementById('rcPreview');
+  const p = produtosCache.find((x) => x.id === _custoProdutoAberto);
+
+  if (!custo || custo.total <= 0) {
+    el.innerHTML = '<div class="card" style="background:#f7f9fc;"><div class="empty">' +
+      'Preenche o filamento, a impressora, os gramas e as horas que eu já mostro o preço aqui.' +
+      '</div></div>';
+    return;
+  }
+
+  let html = '<div class="card" style="background:#f7f9fc;">';
+  html += '<div style="font-weight:700; font-size:15px;">Fazer essa peça custa ' + fmtMoney(custo.total) + '</div>';
+  html += '<div style="margin-top:8px; font-size:13px; line-height:1.9;">';
+  html += '<div>🧵 O filamento: <strong>' + fmtMoney(custo.custoMaterial) + '</strong>' +
+    (custo.corFaltando ? ' <span style="color:var(--muted);">(escolhe o filamento pra eu contar isso)</span>' : '') + '</div>';
+  html += '<div>⚡ A luz da impressora: <strong>' + fmtMoney(custo.custoMaquina) + '</strong>' +
+    (custo.impressoraFaltando ? ' <span style="color:var(--muted);">(escolhe a impressora pra eu contar isso)</span>' : '') + '</div>';
+  html += '<div>✋ O seu trabalho: <strong>' + fmtMoney(custo.custoMaoObra) + '</strong></div>';
+  html += '</div>';
+
+  html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">';
+  html += '<div style="font-weight:700;">De cada R$ 100 que o cliente pagar, quanto você quer que sobre?</div>';
+  html += '<div style="display:flex; gap:6px; flex-wrap:wrap; margin-top:8px;">';
+  [40, 50, 60, 70].forEach((m) => {
+    html += '<button class="btn ' + (custoMargemDesejada === m ? '' : 'ghost') + '" onclick="setMargemDesejada(' + m + ')">R$ ' + m + '</button>';
+  });
+  html += '</div>';
+
+  const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+  if (preco) {
+    const sobra = preco - custo.total;
+    html += '<div style="margin-top:14px; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px;">' +
+      'Então cobra ' + fmtMoney(preco) + '</div>';
+    html += '<div style="color:var(--muted); font-size:13px; margin-top:4px;">' +
+      'Desses ' + fmtMoney(preco) + ', ' + fmtMoney(custo.total) + ' pagam o filamento, a luz e o seu tempo — e ' +
+      fmtMoney(sobra) + ' sobram pra você.</div>';
+    if (p && p.sale_price) {
+      const dif = preco - p.sale_price;
+      html += '<div style="color:var(--muted); font-size:13px; margin-top:6px;">Hoje ele está ' + fmtMoney(p.sale_price) + ' — ' +
+        (Math.abs(dif) < 0.01 ? 'igualzinho ao sugerido.'
+          : (dif > 0 ? 'ou seja, ' + fmtMoney(dif) + ' mais barato do que devia.'
+                     : 'ou seja, ' + fmtMoney(-dif) + ' mais caro do que precisa.')) + '</div>';
+    }
+    html += '<button class="btn full" style="margin-top:12px;" onclick="saveReceita(true)">✅ Usar ' + fmtMoney(preco) + ' como preço</button>';
+  }
+  html += '</div></div>';
+  el.innerHTML = html;
+}
+
+async function saveReceita(aplicarPreco) {
+  const productId = _custoProdutoAberto;
+  const form = lerFormularioCusto();
+  if (!form.estimated_grams || !form.estimated_print_hours) {
+    toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.');
+    return;
+  }
+  const payload = Object.assign({ product_id: productId }, form);
+  const { error } = _custoReceitaAberta
+    ? await SUPA.from('product_recipes').update(payload).eq('id', _custoReceitaAberta)
     : await SUPA.from('product_recipes').insert([payload]);
   if (error) { toast('Erro: ' + error.message); return; }
+
+  if (aplicarPreco) {
+    const custo = calcularCustoReceita(form);
+    const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+    if (preco) {
+      const { error: e2 } = await SUPA.from('products')
+        .update({ sale_price: preco, updated_at: new Date().toISOString() }).eq('id', productId);
+      if (e2) { toast('O custo foi guardado, mas o preço não: ' + e2.message); return; }
+      closeModal();
+      toast('Pronto! Custo guardado e preço mudado pra ' + fmtMoney(preco) + '.');
+      await getProdutos(true);
+      await renderProdutos();
+      return;
+    }
+  }
   closeModal();
-  toast('Receita de custo salva.');
+  toast('Custo guardado.');
   await renderProdutos();
 }
 

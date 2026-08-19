@@ -3,6 +3,33 @@
 Contexto, setup e convenções gerais estão no [README.md](README.md) — leia ele
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
+
+## Escrevendo texto de tela
+
+Quem opera este sistema no dia a dia tem 10 anos. Todo texto que aparece na
+tela — rótulo, botão, aviso, mensagem de erro — precisa ser entendido por uma
+criança sozinha, sem ninguém do lado explicando.
+
+Na prática:
+
+- **Pergunta direta no lugar de rótulo técnico.** "Quantos gramas de filamento
+  ela gasta?" em vez de "Peso estimado (g)", com uma dica embaixo dizendo onde
+  achar o número ("o fatiador mostra quando termina de fatiar"). Use
+  `<label class="pergunta">` — o estilo padrão de label é caixa alta de 11px,
+  que serve pra "NOME" e não pra uma pergunta inteira.
+- **Palavra de negócio não entra.** "margem", "pós-processamento", "mão de
+  obra", "receita de custo", "estimativa" não querem dizer nada pra ele.
+  Troque por "quanto sobra pra você", "depois de pronta, quanto tempo você
+  mexe nela", "o seu trabalho".
+- **O sistema faz a conta.** Nunca peça um número que dê pra calcular a partir
+  dos outros — e mostre o resultado por extenso ("desses R$ 75,90, R$ 30,00
+  pagam o filamento, a luz e o seu tempo") em vez de só uma porcentagem.
+- **Dinheiro vai na ordem custo → preço.** Primeiro se monta quanto custa
+  fazer, depois o preço sai da conta e um botão aplica. Digitar um preço e
+  conferir a margem depois exige adivinhar.
+
+`openCustoForm()` é o modelo a seguir — é a tela mais recente feita com essas
+regras.
 ## Onde as coisas ficam
 
 [`index.html`](index.html) é o sistema inteiro em ~2000 linhas, nesta ordem:

@@ -179,6 +179,6 @@ A `anon key` no `index.html` é outra coisa: ela é feita pra ser pública.
 - **Mudança de banco vira um patch numerado novo** em `docs/`, com cabeçalho
   explicando o porquê. Nunca edite um patch já rodado — o banco de produção já
   passou por ele.
-- **Mensagem de erro é lida pelo Rafael, não por um programador.** Diga o que
-  aconteceu e o que fazer ("Fatie esta manualmente no programa"), não o stack
-  trace.
+- **Todo texto de tela é lido por uma criança de 10 anos**, não por um
+  programador. Diga o que aconteceu e o que fazer ("Fatie esta manualmente no
+  programa"), não o stack trace. O CLAUDE.md tem a regra inteira.
