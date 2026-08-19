@@ -1919,10 +1919,30 @@ function abrirGerenciarProduto(productId) {
         '<span>Fatiamento e colinha IA — ' + renderFatiamentoCell(p) + '</span>' +
         '<span class="row-actions">' + renderFatiamentoBtns(p) + '</span>' +
       '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Apagar esse produto</span>' +
+        '<button class="btn ghost" onclick="removerProduto(\'' + p.id + '\')">🗑️ Remover</button>' +
+      '</div>' +
     '</div>' +
     '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>',
     { wide: true }
   );
+}
+
+async function removerProduto(productId) {
+  if (!confirm('Apagar esse produto de vez? Não tem como desfazer.')) return;
+  const { error } = await SUPA.from('products').delete().eq('id', productId);
+  if (error) {
+    if (error.code === '23503') {
+      toast('Esse produto já tem pedido registrado — não dá pra apagar. Desative ele em vez disso.');
+    } else {
+      toast('Erro: ' + error.message);
+    }
+    return;
+  }
+  closeModal();
+  toast('Produto apagado.');
+  await renderProdutos();
 }
 
 async function solicitarAbrirFatiador(productId) {
