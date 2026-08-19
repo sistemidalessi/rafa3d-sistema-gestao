@@ -789,26 +789,89 @@ async function uploadModeloProjeto(lineItemId) {
   abrirGerenciarProjeto(lineItemId);
 }
 
-function abrirAprovarProjeto(lineItemId) {
+// Aprovar projeto é onde mais se erra o preço: peça única, sem nada no
+// catálogo pra comparar. Por isso o dono vê as mesmas perguntas de custo
+// da tela de produto, e o preço sai pronto delas.
+//
+// O ajudante também aprova projeto, mas as tabelas de custo (filamento,
+// impressora) são só do dono por RLS — pra ele as perguntas viriam
+// vazias e o preço nunca apareceria. Nesse caso a tela continua sendo o
+// campo simples de preço, como era antes.
+async function abrirAprovarProjeto(lineItemId) {
+  const li = await q(SUPA.from('order_line_items').select('*').eq('id', lineItemId).maybeSingle());
+  const isOwner = currentProfile && currentProfile.role === 'owner';
+  _projetoPrecoAberto = li;
+
+  if (!isOwner) {
+    openModal(
+      '<h3>Aprovar e definir preço</h3>' +
+      '<label class="pergunta">Quanto vai cobrar por esse projeto? (R$)</label>' +
+      '<input id="projPreco" type="number" step="0.01" placeholder="0,00" value="' + (li.unit_price || '') + '">' +
+      '<div class="modal-actions">' +
+        '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+        '<button class="btn" onclick="aprovarProjeto(\'' + lineItemId + '\', false)">Aprovar</button>' +
+      '</div>'
+    );
+    return;
+  }
+
+  await getFilamentos();
+  await getImpressoras();
+  _recalcularPrecoAtivo = atualizarPrecoProjeto;
+  custoMargemDesejada = 60;
+
   openModal(
-    '<h3>Aprovar e definir preço</h3>' +
-    '<label>Preço (R$)</label><input id="projPreco" type="number" step="0.01" placeholder="0,00">' +
+    '<h3>Quanto cobrar por esse projeto?</h3>' +
+    '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">' +
+      escapeHtml(li.custom_description || 'Projeto personalizado') + '</p>' +
+    perguntasDeCustoHtml({}) +
+    '<div id="rcPreview" style="margin-top:16px;"></div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
-      '<button class="btn" onclick="aprovarProjeto(\'' + lineItemId + '\')">Aprovar</button>' +
     '</div>'
   );
+  atualizarPrecoProjeto();
 }
 
-async function aprovarProjeto(lineItemId) {
-  const preco = parseFloat(document.getElementById('projPreco').value);
-  if (!preco || preco <= 0) { toast('Informa um preço válido.'); return; }
-  const { error } = await SUPA.from('order_line_items').update({
-    unit_price: preco, line_status: 'orcamento_aprovado', updated_at: new Date().toISOString(),
-  }).eq('id', lineItemId);
+function atualizarPrecoProjeto() {
+  const li = _projetoPrecoAberto;
+  document.getElementById('rcPreview').innerHTML = blocoCustoEPrecoHtml(
+    calcularCustoReceita(lerFormularioCusto()),
+    {
+      precoAtual: li && li.unit_price ? li.unit_price : null,
+      rotuloBotao: '✅ Aprovar e cobrar {preco}',
+      acaoBotao: 'aprovarProjeto(\'' + (li ? li.id : '') + '\', true)',
+    });
+}
+
+async function aprovarProjeto(lineItemId, comCalculadora) {
+  const payload = { line_status: 'orcamento_aprovado', updated_at: new Date().toISOString() };
+
+  if (comCalculadora) {
+    const form = lerFormularioCusto();
+    const custo = calcularCustoReceita(form);
+    const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+    if (!preco) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return; }
+    payload.unit_price = preco;
+    // Guarda o custo junto: é ele que a aba Margem vai usar pra saber se
+    // esse projeto deu lucro de verdade lá na frente.
+    payload.unit_cost_estimate = custo.total;
+  } else {
+    const preco = parseFloat(document.getElementById('projPreco').value);
+    if (!preco || preco <= 0) { toast('Escreve quanto vai cobrar por esse projeto.'); return; }
+    payload.unit_price = preco;
+  }
+
+  const { error } = await SUPA.from('order_line_items').update(payload).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
+
+  // Sem isto o total do pedido continuava zerado depois de aprovar por
+  // esta tela — o preço entrava na linha, mas não subia pro pedido.
+  const li = _projetoPrecoAberto;
+  if (li && li.order_id) await recalcularTotalPedido(li.order_id);
+
   closeModal();
-  toast('Projeto aprovado! Já entrou no fluxo de pedidos e fila de impressão.');
+  toast('Projeto aprovado por ' + fmtMoney(payload.unit_price) + '! Já entrou na fila de impressão.');
   await renderProjetos();
 }
 
@@ -1869,15 +1932,30 @@ async function removerModelo3D(productId) {
    depois descobrir se sobrou alguma coisa) exige adivinhar, e quem
    opera este sistema no dia a dia não tem como adivinhar.
 
-   Por isso cada campo é uma pergunta direta com a dica de onde achar o
-   número, e o resultado vem escrito por extenso ("de cada R$ 75,90 que
-   o cliente pagar, R$ 45,90 ficam pra você") em vez de só uma
-   porcentagem solta.
+   Duas telas usam isto: o custo do produto de catálogo (que grava a
+   receita e o preço de tabela) e a aprovação de um projeto
+   personalizado (que grava o preço e o custo daquele pedido). As
+   perguntas são as mesmas — só muda o que se faz com o preço no fim,
+   por isso os campos e o bloco do preço são compartilhados e cada tela
+   passa o próprio botão.
    ------------------------------------------------------------ */
 
 let custoMargemDesejada = 60;
 let _custoProdutoAberto = null;
 let _custoReceitaAberta = null;
+let _projetoPrecoAberto = null;
+// Qual tela está aberta agora — os campos são os mesmos nas duas, então
+// quem abre diz qual função redesenha o bloco do preço.
+let _recalcularPrecoAtivo = null;
+
+function recalcularPreco() {
+  if (_recalcularPrecoAtivo) _recalcularPrecoAtivo();
+}
+
+function setMargemDesejada(pct) {
+  custoMargemDesejada = pct;
+  recalcularPreco();
+}
 
 // Todo preço do catálogo termina em ,90 — o sugerido sobe pro próximo
 // ,90 pra não sair um número quebrado tipo R$ 74,17 na vitrine.
@@ -1887,7 +1965,7 @@ function arredondarPrecoNoventa(valor) {
   return candidato >= valor ? candidato : base + 1.9;
 }
 
-// Margem é sobre o preço, não sobre o custo: "60%" quer dizer que 60
+// Margem é sobre o preço, não sobre o custo: "60" quer dizer que 60
 // centavos de cada real que o cliente paga sobram. Por isso é dividir
 // por (1 - margem), e não multiplicar o custo por 1,6.
 function precoAPartirDoCusto(custo, margemPercentual) {
@@ -1895,22 +1973,14 @@ function precoAPartirDoCusto(custo, margemPercentual) {
   return arredondarPrecoNoventa(custo / (1 - margemPercentual / 100));
 }
 
-function setMargemDesejada(pct) {
-  custoMargemDesejada = pct;
-  atualizarCustoPreview();
-}
-
 function dicaCampo(texto) {
   return '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">' + escapeHtml(texto) + '</div>';
 }
 
-function openCustoForm(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
-  const r = receitasCache.find((x) => x.product_id === productId) || {};
-  _custoProdutoAberto = productId;
-  _custoReceitaAberta = r.id || null;
-  custoMargemDesejada = 60;
-
+// As seis perguntas que formam o custo de uma peça. Os ids são fixos
+// (rcCor, rcGramas...) porque só existe um modal aberto por vez, e assim
+// lerFormularioCusto() serve pras duas telas sem parametrizar nada.
+function perguntasDeCustoHtml(r) {
   let coresOptions = '<option value="">— escolha —</option>';
   filamentosCache.forEach((c) => {
     coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' +
@@ -1922,40 +1992,27 @@ function openCustoForm(productId) {
       escapeHtml(imp.name) + (imp.hourly_cost ? ' (' + fmtMoney(imp.hourly_cost) + ' por hora ligada)' : '') + '</option>';
   });
 
-  openModal(
-    '<h3>Quanto custa fazer o ' + escapeHtml(p.name) + '?</h3>' +
-    '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Responde as perguntas abaixo que eu calculo o preço no final.</p>' +
-
-    '<label class="pergunta">Qual filamento essa peça usa?</label>' +
-    '<select id="rcCor" onchange="atualizarCustoPreview()">' + coresOptions + '</select>' +
+  return '<label class="pergunta">Qual filamento essa peça usa?</label>' +
+    '<select id="rcCor" onchange="recalcularPreco()">' + coresOptions + '</select>' +
 
     '<label class="pergunta">Em qual impressora?</label>' +
-    '<select id="rcImpressora" onchange="atualizarCustoPreview()">' + impOptions + '</select>' +
+    '<select id="rcImpressora" onchange="recalcularPreco()">' + impOptions + '</select>' +
 
     '<label class="pergunta">Quantos gramas de filamento ela gasta?</label>' +
     dicaCampo('O fatiador mostra esse número quando termina de fatiar a peça.') +
-    '<input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="atualizarCustoPreview()">' +
+    '<input id="rcGramas" type="number" step="0.1" value="' + (r.estimated_grams || '') + '" oninput="recalcularPreco()">' +
 
     '<label class="pergunta">Quantas horas a impressora fica ligada fazendo ela?</label>' +
     dicaCampo('Também aparece no fatiador, junto com os gramas.') +
-    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="atualizarCustoPreview()">' +
+    '<input id="rcHoras" type="number" step="0.1" value="' + (r.estimated_print_hours || '') + '" oninput="recalcularPreco()">' +
 
     '<label class="pergunta">Depois de pronta, quantos minutos você mexe nela?</label>' +
     dicaCampo('Tirar o suporte, lixar, colar, montar. Se não mexe, deixa 0.') +
-    '<input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="atualizarCustoPreview()">' +
+    '<input id="rcMinutos" type="number" step="1" value="' + (r.post_processing_minutes || 0) + '" oninput="recalcularPreco()">' +
 
     '<label class="pergunta">Quanto vale uma hora do seu trabalho? (R$)</label>' +
     dicaCampo('O que você acha justo ganhar por hora mexendo nas peças.') +
-    '<input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="atualizarCustoPreview()">' +
-
-    '<div id="rcPreview" style="margin-top:16px;"></div>' +
-
-    '<div class="modal-actions">' +
-      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn ghost" onclick="saveReceita(false)">Guardar só o custo</button>' +
-    '</div>'
-  );
-  atualizarCustoPreview();
+    '<input id="rcMaoObra" type="number" step="0.01" value="' + (r.post_processing_labor_rate || 0) + '" oninput="recalcularPreco()">';
 }
 
 function lerFormularioCusto() {
@@ -1969,17 +2026,14 @@ function lerFormularioCusto() {
   };
 }
 
-function atualizarCustoPreview() {
-  const form = lerFormularioCusto();
-  const custo = calcularCustoReceita(form);
-  const el = document.getElementById('rcPreview');
-  const p = produtosCache.find((x) => x.id === _custoProdutoAberto);
-
+// O bloco que aparece embaixo das perguntas: quanto custa, quanto se
+// quer que sobre, e o preço pronto. opts.rotuloAtual é a linha do preço
+// que já existe hoje (produto de catálogo tem, projeto novo não).
+function blocoCustoEPrecoHtml(custo, opts) {
   if (!custo || custo.total <= 0) {
-    el.innerHTML = '<div class="card" style="background:#f7f9fc;"><div class="empty">' +
+    return '<div class="card" style="background:#f7f9fc;"><div class="empty">' +
       'Preenche o filamento, a impressora, os gramas e as horas que eu já mostro o preço aqui.' +
       '</div></div>';
-    return;
   }
 
   let html = '<div class="card" style="background:#f7f9fc;">';
@@ -2002,23 +2056,52 @@ function atualizarCustoPreview() {
 
   const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
   if (preco) {
-    const sobra = preco - custo.total;
     html += '<div style="margin-top:14px; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px;">' +
       'Então cobra ' + fmtMoney(preco) + '</div>';
     html += '<div style="color:var(--muted); font-size:13px; margin-top:4px;">' +
       'Desses ' + fmtMoney(preco) + ', ' + fmtMoney(custo.total) + ' pagam o filamento, a luz e o seu tempo — e ' +
-      fmtMoney(sobra) + ' sobram pra você.</div>';
-    if (p && p.sale_price) {
-      const dif = preco - p.sale_price;
-      html += '<div style="color:var(--muted); font-size:13px; margin-top:6px;">Hoje ele está ' + fmtMoney(p.sale_price) + ' — ' +
+      fmtMoney(preco - custo.total) + ' sobram pra você.</div>';
+    if (opts.precoAtual) {
+      const dif = preco - opts.precoAtual;
+      html += '<div style="color:var(--muted); font-size:13px; margin-top:6px;">Hoje ele está ' + fmtMoney(opts.precoAtual) + ' — ' +
         (Math.abs(dif) < 0.01 ? 'igualzinho ao sugerido.'
           : (dif > 0 ? 'ou seja, ' + fmtMoney(dif) + ' mais barato do que devia.'
                      : 'ou seja, ' + fmtMoney(-dif) + ' mais caro do que precisa.')) + '</div>';
     }
-    html += '<button class="btn full" style="margin-top:12px;" onclick="saveReceita(true)">✅ Usar ' + fmtMoney(preco) + ' como preço</button>';
+    html += '<button class="btn full" style="margin-top:12px;" onclick="' + opts.acaoBotao + '">' +
+      opts.rotuloBotao.replace('{preco}', fmtMoney(preco)) + '</button>';
   }
-  html += '</div></div>';
-  el.innerHTML = html;
+  return html + '</div></div>';
+}
+
+/* ---- Tela 1: custo do produto de catálogo ---- */
+
+function openCustoForm(productId) {
+  const p = produtosCache.find((x) => x.id === productId);
+  const r = receitasCache.find((x) => x.product_id === productId) || {};
+  _custoProdutoAberto = productId;
+  _custoReceitaAberta = r.id || null;
+  _recalcularPrecoAtivo = atualizarCustoPreview;
+  custoMargemDesejada = 60;
+
+  openModal(
+    '<h3>Quanto custa fazer o ' + escapeHtml(p.name) + '?</h3>' +
+    '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">Responde as perguntas abaixo que eu calculo o preço no final.</p>' +
+    perguntasDeCustoHtml(r) +
+    '<div id="rcPreview" style="margin-top:16px;"></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn ghost" onclick="saveReceita(false)">Guardar só o custo</button>' +
+    '</div>'
+  );
+  atualizarCustoPreview();
+}
+
+function atualizarCustoPreview() {
+  const p = produtosCache.find((x) => x.id === _custoProdutoAberto);
+  document.getElementById('rcPreview').innerHTML = blocoCustoEPrecoHtml(
+    calcularCustoReceita(lerFormularioCusto()),
+    { precoAtual: p ? p.sale_price : null, rotuloBotao: '✅ Usar {preco} como preço', acaoBotao: 'saveReceita(true)' });
 }
 
 async function saveReceita(aplicarPreco) {
@@ -2035,8 +2118,7 @@ async function saveReceita(aplicarPreco) {
   if (error) { toast('Erro: ' + error.message); return; }
 
   if (aplicarPreco) {
-    const custo = calcularCustoReceita(form);
-    const preco = precoAPartirDoCusto(custo.total, custoMargemDesejada);
+    const preco = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMargemDesejada);
     if (preco) {
       const { error: e2 } = await SUPA.from('products')
         .update({ sale_price: preco, updated_at: new Date().toISOString() }).eq('id', productId);
