@@ -960,8 +960,13 @@ class Component extends DCLogic {
     return 'width:100%; padding:10px 12px; border:1.5px solid #dde1e8; border-radius:9px; font-size:13.5px; font-family:inherit; box-sizing:border-box;';
   }
 
+  function ckInputStyleAuto() {
+    return ckInputStyle() + (CK.cepEncontrado ? ' background:#f3f4f7; color:#7b879c;' : '');
+  }
+
   function ckHtmlDados() {
     var e = CK.endereco;
+    var achado = CK.cepEncontrado;
     return ckHtmlErro() +
       ckLabel('Seu nome') + '<input id="ckNome" style="' + ckInputStyle() + '" value="' + (e.nome || '') + '">' +
       ckLabel('Seu WhatsApp') + '<input id="ckContato" style="' + ckInputStyle() + '" placeholder="(11) 90000-0000" value="' + (e.contato || '') + '">' +
@@ -970,16 +975,17 @@ class Component extends DCLogic {
       '<input type="checkbox" id="ckCombinar" onchange="ckToggleCombinar()"' + (CK.combinar ? ' checked' : '') + '> Prefiro combinar a entrega (retirar, Uber, moro perto...)' +
       '</label></div>' +
       '<div id="ckEnderecoFields" style="display:' + (CK.combinar ? 'none' : 'block') + ';">' +
-      ckLabel('CEP') + '<input id="ckCep" style="' + ckInputStyle() + '" placeholder="00000-000" value="' + (e.cep || '') + '">' +
-      ckLabel('Rua') + '<input id="ckRua" style="' + ckInputStyle() + '" value="' + (e.rua || '') + '">' +
+      ckLabel('CEP') + '<input id="ckCep" style="' + ckInputStyle() + '" placeholder="00000-000" maxlength="9" value="' + (e.cep || '') + '" oninput="ckCepDigitado(this.value)">' +
+      '<div id="ckCepStatus" style="font-size:11.5px; color:#7b879c; margin:-2px 0 4px;">' + (CK.buscandoCep ? 'Buscando endereço...' : (achado === false ? 'Não achei esse CEP — preenche o endereço na mão.' : '')) + '</div>' +
+      ckLabel('Rua') + '<input id="ckRua"' + (achado ? ' readonly' : '') + ' style="' + ckInputStyleAuto() + '" value="' + (e.rua || '') + '">' +
       '<div style="display:flex; gap:8px;">' +
       '<div style="flex:1;">' + ckLabel('Número') + '<input id="ckNumero" style="' + ckInputStyle() + '" value="' + (e.numero || '') + '"></div>' +
       '<div style="flex:2;">' + ckLabel('Complemento (opcional)') + '<input id="ckComplemento" style="' + ckInputStyle() + '" value="' + (e.complemento || '') + '"></div>' +
       '</div>' +
-      ckLabel('Bairro') + '<input id="ckBairro" style="' + ckInputStyle() + '" value="' + (e.bairro || '') + '">' +
+      ckLabel('Bairro') + '<input id="ckBairro"' + (achado ? ' readonly' : '') + ' style="' + ckInputStyleAuto() + '" value="' + (e.bairro || '') + '">' +
       '<div style="display:flex; gap:8px;">' +
-      '<div style="flex:2;">' + ckLabel('Cidade') + '<input id="ckCidade" style="' + ckInputStyle() + '" value="' + (e.cidade || '') + '"></div>' +
-      '<div style="flex:1;">' + ckLabel('UF') + '<input id="ckEstado" maxlength="2" style="' + ckInputStyle() + '" value="' + (e.estado || '') + '"></div>' +
+      '<div style="flex:2;">' + ckLabel('Cidade') + '<input id="ckCidade"' + (achado ? ' readonly' : '') + ' style="' + ckInputStyleAuto() + '" value="' + (e.cidade || '') + '"></div>' +
+      '<div style="flex:1;">' + ckLabel('UF') + '<input id="ckEstado" maxlength="2"' + (achado ? ' readonly' : '') + ' style="' + ckInputStyleAuto() + '" value="' + (e.estado || '') + '"></div>' +
       '</div>' +
       '</div>' +
       '<button onclick="ckAvancarDados()" style="width:100%; margin-top:18px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' +
@@ -990,6 +996,56 @@ class Component extends DCLogic {
     CK.combinar = document.getElementById('ckCombinar').checked;
     document.getElementById('ckEnderecoFields').style.display = CK.combinar ? 'none' : 'block';
   };
+
+  var ckCepTimer = null;
+  window.ckCepDigitado = function (valor) {
+    CK.endereco.cep = valor;
+    var limpo = valor.replace(/\D/g, '');
+    clearTimeout(ckCepTimer);
+    if (limpo.length !== 8) { CK.cepEncontrado = null; return; }
+    ckCepTimer = setTimeout(function () { ckBuscarCep(limpo); }, 400);
+  };
+
+  // Antes de re-renderizar (a busca do CEP troca a tela toda), salva o que
+  // já tava digitado nos campos que ckRender() não recalcula sozinho —
+  // senão nome/contato/número somem quando o endereço volta da ViaCEP.
+  function ckCapturarCamposLivres() {
+    var nome = document.getElementById('ckNome');
+    var contato = document.getElementById('ckContato');
+    var numero = document.getElementById('ckNumero');
+    var complemento = document.getElementById('ckComplemento');
+    if (nome) CK.endereco.nome = nome.value;
+    if (contato) CK.endereco.contato = contato.value;
+    if (numero) CK.endereco.numero = numero.value;
+    if (complemento) CK.endereco.complemento = complemento.value;
+  }
+
+  function ckBuscarCep(cep) {
+    ckCapturarCamposLivres();
+    CK.buscandoCep = true;
+    var status = document.getElementById('ckCepStatus');
+    if (status) status.textContent = 'Buscando endereço...';
+    fetch('https://viacep.com.br/ws/' + cep + '/json/').then(function (r) { return r.json(); }).then(function (dados) {
+      CK.buscandoCep = false;
+      if (dados.erro) {
+        CK.cepEncontrado = false;
+        ckRender();
+        return;
+      }
+      CK.cepEncontrado = true;
+      CK.endereco.rua = dados.logradouro || '';
+      CK.endereco.bairro = dados.bairro || '';
+      CK.endereco.cidade = dados.localidade || '';
+      CK.endereco.estado = dados.uf || '';
+      ckRender();
+      var numero = document.getElementById('ckNumero');
+      if (numero) numero.focus();
+    }).catch(function () {
+      CK.buscandoCep = false;
+      CK.cepEncontrado = false;
+      ckRender();
+    });
+  }
 
   function ckSalvarDadosDoForm() {
     CK.endereco = {
