@@ -158,6 +158,7 @@
     <div class="nav-item" data-tab="produtos"><span class="ic">🎁</span> Produtos</div>
     <div class="nav-item" data-tab="clientes"><span class="ic">👥</span> Clientes</div>
     <div class="nav-item" data-tab="financeiro"><span class="ic">💰</span> Financeiro</div>
+    <div class="nav-item" data-tab="margem"><span class="ic">📈</span> Margem</div>
     <div class="who">
       <div id="whoLabel"></div>
       <button class="btn ghost" onclick="doLogout()">Sair</button>
@@ -176,6 +177,7 @@
     <div id="tab-produtos" class="tab-panel hidden"></div>
     <div id="tab-clientes" class="tab-panel hidden"></div>
     <div id="tab-financeiro" class="tab-panel hidden"></div>
+    <div id="tab-margem" class="tab-panel hidden"></div>
   </div>
 </div>
 
@@ -300,6 +302,7 @@ const TAB_TITLES = {
   produtos: '🎁 Produtos',
   clientes: '👥 Clientes',
   financeiro: '💰 Financeiro',
+  margem: '📈 Margem',
 };
 
 function applyRolePermissions() {
@@ -332,6 +335,7 @@ async function renderTab(name) {
   if (name === 'produtos') await renderProdutos();
   if (name === 'clientes') await renderClientes();
   if (name === 'financeiro') await renderFinanceiro();
+  if (name === 'margem') await renderMargem();
 }
 
 document.querySelectorAll('.nav-item').forEach((item) => {
@@ -2004,6 +2008,294 @@ async function saveCliente(id) {
   closeModal();
   toast('Cliente salvo.');
   await renderClientes();
+}
+
+/* ============================================================
+   MARGEM — o que cada venda deixou de verdade (só o dono)
+
+   O custo de um item pode vir de quatro lugares, nesta ordem de
+   confiança — e a tela sempre mostra de qual deles veio, porque
+   misturar custo real com estimativa sem avisar é o mesmo que não ter
+   relatório nenhum:
+
+   1. real           — filamento realmente baixado do estoque (já inclui
+                       o desperdício das tentativas que falharam), mais
+                       máquina e mão de obra da receita de custo
+   2. real (parcial) — tem baixa de estoque, mas o produto não tem
+                       receita cadastrada: máquina e mão de obra ficam
+                       de fora, então o custo sai por baixo
+   3. estimado       — o número que o dono digitou ao aprovar o orçamento
+   4. receita        — a estimativa da receita de custo do produto
+
+   Sem nenhum dos quatro o item fica FORA da conta e é contado à parte:
+   entrar com custo zero viraria lucro inventado.
+
+   O schema-inicial previa isto como uma RPC no banco, restrita a is_owner().
+   Ficou no navegador, como todas as outras telas — assim não depende de rodar
+   patch novo pra funcionar. A aba já é escondida do ajudante pelo
+   HELPER_ALLOWED_TABS, e as tabelas de custo (product_recipes, filament_colors,
+   printers) são owner-only por RLS de qualquer jeito.
+   ============================================================ */
+
+// Item só entra na conta depois que virou trabalho de verdade. Antes de
+// 'imprimindo' nada foi gasto ainda, e cancelado não é venda.
+const MARGEM_STATUS_PRODUZIDO = ['imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'];
+
+const MARGEM_FONTE_LABELS = {
+  real: 'Real',
+  real_parcial: 'Real (só material)',
+  estimado: 'Estimado no pedido',
+  receita: 'Receita do produto',
+};
+
+let margemPeriodoDias = 90;
+
+function setMargemPeriodo(dias) {
+  margemPeriodoDias = dias;
+  renderMargem();
+}
+
+// Quanto custou 1 grama deste rolo. Prefere o que foi pago de verdade
+// por ele; se o rolo entrou sem preço, cai pro valor de tabela da cor.
+function custoPorGramaSpool(spool, cores) {
+  if (spool && spool.cost_paid > 0 && spool.initial_weight_g > 0) {
+    return spool.cost_paid / spool.initial_weight_g;
+  }
+  const cor = spool ? cores.find((c) => c.id === spool.color_id) : null;
+  return cor && cor.cost_per_kg ? cor.cost_per_kg / 1000 : 0;
+}
+
+// Reimpressão é uma linha separada com unit_price = 0 (não se cobra de
+// novo do cliente), então ela nunca é uma venda própria — o filamento e
+// o tempo dela são custo da venda original. Por isso a conta é feita por
+// "família": a linha original mais todas as reimpressões dela.
+function calcularMargemFamilia(principal, reimpressoes, ctx) {
+  const membros = [principal].concat(reimpressoes);
+  const quantidade = Number(principal.quantity || 1);
+  const receita = Number(principal.unit_price || 0) * quantidade;
+  const base = { receita: receita, quantidade: quantidade, reimpressoes: reimpressoes.length };
+
+  let materialReal = 0;
+  let temBaixaDeEstoque = false;
+  membros.forEach((m) => {
+    (ctx.movimentosPorLinha[m.id] || []).forEach((mov) => {
+      const gramas = Math.abs(Number(mov.grams_delta || 0));
+      if (gramas <= 0) return;
+      temBaixaDeEstoque = true;
+      materialReal += gramas * custoPorGramaSpool(ctx.spools.find((s) => s.id === mov.spool_id), ctx.cores);
+    });
+  });
+
+  const receitaProduto = principal.product_id ? ctx.receitasPorProduto[principal.product_id] : null;
+  const custoReceita = receitaProduto ? calcularCustoReceita(receitaProduto) : null;
+
+  if (temBaixaDeEstoque) {
+    // Máquina e mão de obra são por peça produzida — uma reimpressão
+    // ocupa a impressora de novo, então conta de novo.
+    const pecas = membros.reduce((soma, m) => soma + Number(m.quantity || 1), 0);
+    const maquinaMaoObra = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoMaoObra) * pecas : 0;
+    return Object.assign(base, {
+      custo: materialReal + maquinaMaoObra,
+      fonte: custoReceita ? 'real' : 'real_parcial',
+    });
+  }
+  if (principal.unit_cost_estimate != null) {
+    return Object.assign(base, { custo: Number(principal.unit_cost_estimate) * quantidade, fonte: 'estimado' });
+  }
+  if (custoReceita) {
+    return Object.assign(base, { custo: custoReceita.total * quantidade, fonte: 'receita' });
+  }
+  return Object.assign(base, { custo: null, fonte: 'sem_custo' });
+}
+
+function margemPct(receita, custo) {
+  if (!receita || receita <= 0) return null;
+  return ((receita - custo) / receita) * 100;
+}
+
+function margemBadge(pct) {
+  if (pct === null) return '<span class="badge off">—</span>';
+  return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">' + pct.toFixed(0) + '%</span>';
+}
+
+function margemBotoesPeriodo() {
+  const opcoes = [[30, '30 dias'], [90, '90 dias'], [365, '1 ano'], [0, 'Tudo']];
+  let html = '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
+  opcoes.forEach((o) => {
+    html += '<button class="btn ' + (margemPeriodoDias === o[0] ? '' : 'ghost') + '" onclick="setMargemPeriodo(' + o[0] + ')">' + o[1] + '</button>';
+  });
+  return html + '</div>';
+}
+
+function margemNomeDoItem(linha, produtos) {
+  const p = produtos.find((x) => x.id === linha.product_id);
+  if (p) return p.name;
+  const desc = linha.custom_description || 'Item personalizado';
+  return desc.length > 60 ? desc.slice(0, 60) + '…' : desc;
+}
+
+async function renderMargem() {
+  const el = document.getElementById('tab-margem');
+  el.innerHTML = '<div class="empty">Carregando...</div>';
+
+  await getFilamentos();
+  await getImpressoras();
+  await getReceitas(true);
+  const produtos = await getProdutos();
+  const spools = await getSpools(true);
+  const linhas = await q(SUPA.from('order_line_items').select('*, orders(status, order_number, customers(name))'));
+  const movimentos = await q(SUPA.from('filament_stock_movements')
+    .select('order_line_item_id, grams_delta, spool_id').not('order_line_item_id', 'is', null));
+
+  const movimentosPorLinha = {};
+  movimentos.forEach((m) => {
+    if (!movimentosPorLinha[m.order_line_item_id]) movimentosPorLinha[m.order_line_item_id] = [];
+    movimentosPorLinha[m.order_line_item_id].push(m);
+  });
+  const receitasPorProduto = {};
+  receitasCache.forEach((r) => { receitasPorProduto[r.product_id] = r; });
+  const reimpressoesPor = {};
+  linhas.forEach((l) => {
+    if (!l.reprint_of_line_item_id) return;
+    if (!reimpressoesPor[l.reprint_of_line_item_id]) reimpressoesPor[l.reprint_of_line_item_id] = [];
+    reimpressoesPor[l.reprint_of_line_item_id].push(l);
+  });
+
+  const ctx = { movimentosPorLinha: movimentosPorLinha, spools: spools, cores: filamentosCache, receitasPorProduto: receitasPorProduto };
+  const limite = margemPeriodoDias ? Date.now() - margemPeriodoDias * 86400000 : null;
+  const consideradas = linhas.filter((l) =>
+    !l.reprint_of_line_item_id &&
+    MARGEM_STATUS_PRODUZIDO.indexOf(l.line_status) !== -1 &&
+    !(l.orders && l.orders.status === 'cancelado') &&
+    (!limite || new Date(l.created_at).getTime() >= limite));
+
+  const avaliadas = consideradas.map((l) =>
+    Object.assign({ linha: l }, calcularMargemFamilia(l, reimpressoesPor[l.id] || [], ctx)));
+  const comCusto = avaliadas.filter((a) => a.custo !== null);
+  const semCusto = avaliadas.filter((a) => a.custo === null);
+
+  const faturamento = comCusto.reduce((s, a) => s + a.receita, 0);
+  const custoTotal = comCusto.reduce((s, a) => s + a.custo, 0);
+  const lucro = faturamento - custoTotal;
+  const pctGeral = margemPct(faturamento, custoTotal);
+
+  let html = '<div class="card" style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap;">';
+  html += '<div><strong>Período</strong><div style="color:var(--muted); font-size:12px;">Conta só item que já foi pra impressora — orçamento e fila ainda não custaram nada.</div></div>';
+  html += margemBotoesPeriodo() + '</div>';
+
+  html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
+  html += statCard('🧾', fmtMoney(faturamento), 'Faturamento');
+  html += statCard('🧵', fmtMoney(custoTotal), 'Custo');
+  html += statCard(lucro >= 0 ? '📈' : '📉', fmtMoney(lucro), 'Lucro');
+  html += statCard('％', pctGeral === null ? '—' : pctGeral.toFixed(0) + '%', 'Margem');
+  html += '</div>';
+
+  if (comCusto.length === 0 && semCusto.length === 0) {
+    html += '<div class="card"><div class="empty">Nenhum item produzido neste período — nada pra calcular ainda.</div></div>';
+    el.innerHTML = html;
+    return;
+  }
+
+  if (semCusto.length > 0) {
+    const receitaDeFora = semCusto.reduce((s, a) => s + a.receita, 0);
+    html += '<div class="card">';
+    html += '<strong>⚠️ ' + semCusto.length + (semCusto.length === 1 ? ' item ficou' : ' itens ficaram') + ' fora da conta</strong>';
+    html += '<div style="color:var(--muted); font-size:13px; margin-top:4px;">';
+    html += 'Somam ' + fmtMoney(receitaDeFora) + ' de venda, mas não têm custo nenhum registrado: nem baixa de filamento, nem receita de custo do produto, nem custo digitado na aprovação. ';
+    html += 'Entrariam como lucro puro e inflariam os números acima, então ficaram de fora. Pra trazer pra conta, cadastre a receita de custo na aba Produtos.';
+    html += '</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Item</th><th>Venda</th></tr>';
+    semCusto.forEach((a) => {
+      html += '<tr><td>' + escapeHtml(a.linha.orders && a.linha.orders.order_number ? a.linha.orders.order_number : '—') + '</td>';
+      html += '<td>' + escapeHtml(margemNomeDoItem(a.linha, produtos)) + '</td>';
+      html += '<td>' + fmtMoney(a.receita) + '</td></tr>';
+    });
+    html += '</table></div>';
+  }
+
+  const porProduto = {};
+  comCusto.filter((a) => a.linha.product_id).forEach((a) => {
+    const k = a.linha.product_id;
+    if (!porProduto[k]) porProduto[k] = { qtd: 0, receita: 0, custo: 0, reimpressoes: 0, fontes: {} };
+    porProduto[k].qtd += a.quantidade;
+    porProduto[k].receita += a.receita;
+    porProduto[k].custo += a.custo;
+    porProduto[k].reimpressoes += a.reimpressoes;
+    porProduto[k].fontes[a.fonte] = true;
+  });
+  const linhasProduto = Object.keys(porProduto).map((k) => {
+    const v = porProduto[k];
+    const p = produtos.find((x) => x.id === k);
+    return { nome: p ? p.name : 'Produto removido', codigo: p ? p.catalog_code : '', d: v, lucro: v.receita - v.custo };
+  }).sort((a, b) => b.lucro - a.lucro);
+
+  if (linhasProduto.length > 0) {
+    html += '<div class="card"><strong>🎁 Por produto do catálogo</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Do que mais deu lucro pro que menos deu.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Qtd</th><th>Venda</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo veio de</th></tr>';
+    linhasProduto.forEach((r) => {
+      html += '<tr>';
+      html += '<td><strong>' + escapeHtml(r.nome) + '</strong>' +
+        (r.codigo ? ' <span style="color:var(--muted); font-size:11px;">' + escapeHtml(r.codigo) + '</span>' : '') +
+        (r.d.reimpressoes > 0 ? '<div style="font-size:11px; color:var(--muted);">inclui ' + r.d.reimpressoes + ' reimpressão(ões)</div>' : '') + '</td>';
+      html += '<td>' + r.d.qtd + '</td>';
+      html += '<td>' + fmtMoney(r.d.receita) + '</td>';
+      html += '<td>' + fmtMoney(r.d.custo) + '</td>';
+      html += '<td>' + fmtMoney(r.lucro) + '</td>';
+      html += '<td>' + margemBadge(margemPct(r.d.receita, r.d.custo)) + '</td>';
+      html += '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(Object.keys(r.d.fontes).map((f) => MARGEM_FONTE_LABELS[f]).join(', ')) + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  const projetos = comCusto.filter((a) => a.linha.line_type === 'custom')
+    .sort((a, b) => (b.receita - b.custo) - (a.receita - a.custo));
+  if (projetos.length > 0) {
+    html += '<div class="card"><strong>🪄 Projetos personalizados</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Cada um é único, então aparecem um a um em vez de agrupados por produto.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Projeto</th><th>Cliente</th><th>Venda</th><th>Custo</th><th>Lucro</th><th>Margem</th><th>Custo veio de</th></tr>';
+    projetos.forEach((a) => {
+      const cliente = a.linha.requester_name ||
+        (a.linha.orders && a.linha.orders.customers ? a.linha.orders.customers.name : '—');
+      html += '<tr>';
+      html += '<td>' + escapeHtml(margemNomeDoItem(a.linha, produtos)) + '</td>';
+      html += '<td>' + escapeHtml(cliente) + '</td>';
+      html += '<td>' + fmtMoney(a.receita) + '</td>';
+      html += '<td>' + fmtMoney(a.custo) + '</td>';
+      html += '<td>' + fmtMoney(a.receita - a.custo) + '</td>';
+      html += '<td>' + margemBadge(margemPct(a.receita, a.custo)) + '</td>';
+      html += '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(MARGEM_FONTE_LABELS[a.fonte]) + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  const problemas = comCusto
+    .map((a) => ({ a: a, pct: margemPct(a.receita, a.custo) }))
+    .filter((x) => x.pct !== null && x.pct < 20)
+    .sort((x, y) => x.pct - y.pct);
+  if (problemas.length > 0) {
+    html += '<div class="card"><strong>🔻 Vendas que quase não deixaram nada</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Margem abaixo de 20% — vale olhar o preço, o desperdício ou o tempo de máquina.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Item</th><th>Venda</th><th>Custo</th><th>Margem</th><th>Provável motivo</th></tr>';
+    problemas.forEach((x) => {
+      const motivo = x.a.reimpressoes > 0
+        ? x.a.reimpressoes + ' reimpressão(ões) comeram o lucro'
+        : (x.pct < 0 ? 'custo passou do preço cobrado' : 'margem apertada no preço');
+      html += '<tr>';
+      html += '<td>' + escapeHtml(x.a.linha.orders && x.a.linha.orders.order_number ? x.a.linha.orders.order_number : '—') + '</td>';
+      html += '<td>' + escapeHtml(margemNomeDoItem(x.a.linha, produtos)) + '</td>';
+      html += '<td>' + fmtMoney(x.a.receita) + '</td>';
+      html += '<td>' + fmtMoney(x.a.custo) + '</td>';
+      html += '<td>' + margemBadge(x.pct) + '</td>';
+      html += '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(motivo) + '</td>';
+      html += '</tr>';
+    });
+    html += '</table></div>';
+  }
+
+  el.innerHTML = html;
 }
 
 /* ============================================================

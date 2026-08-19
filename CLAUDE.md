@@ -51,5 +51,10 @@ O agente usa `service_role`, então tabela nova ou coluna nova precisa do
 - **Colunas mortas:** `ai_viability_*` (patch 09) ficaram órfãs quando a etapa
   de Viabilidade saiu da tela. O patch 12 apaga elas — se ainda estiverem no
   banco, é porque ele não foi rodado. Não use, nunca são alimentadas.
+- **`unit_cost_estimate` quase nunca está preenchido.** Só recebe valor em
+  item personalizado, quando o dono digita o custo ao aprovar o orçamento (e
+  o campo é opcional). Item de catálogo nunca preenche — `salvarItem()` não
+  toca nele. Por isso a aba Margem tem quatro fontes de custo em cascata em
+  vez de simplesmente ler essa coluna.
 - **O OrcaSlicer sai com código 0 mesmo falhando.** A única checagem confiável
   é ver se o arquivo de saída existe.
