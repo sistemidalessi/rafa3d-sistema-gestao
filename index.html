@@ -1480,7 +1480,7 @@ async function renderFilamentos() {
       const estoqueG = estoquePorCor(c.id);
       const baixo = estoqueG <= c.low_stock_threshold_g;
       html += '<tr>';
-      html += '<td><span style="display:inline-block; width:22px; height:22px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.1);"></span></td>';
+      html += '<td><span style="display:inline-block; width:42px; height:42px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:2px solid rgba(0,0,0,0.12); box-shadow:0 1px 3px rgba(0,0,0,0.15);"></span></td>';
       html += '<td>' + escapeHtml(c.name) + (c.active ? '' : ' <span style="color:var(--muted);font-size:11px;">(inativa)</span>') + '</td>';
       html += '<td>' + escapeHtml(c.material) + '</td>';
       html += '<td><span class="badge ' + (baixo ? 'off' : 'on') + '">' + estoqueG.toFixed(0) + ' g' + (baixo ? ' · baixo!' : '') + '</span></td>';
@@ -2368,11 +2368,16 @@ async function saveReceita(aplicarPreco) {
   if (aplicarPreco) {
     const preco = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMultiplicador);
     if (preco) {
-      const { error: e2 } = await SUPA.from('products')
-        .update({ sale_price: preco, updated_at: new Date().toISOString() }).eq('id', productId);
+      // Só o primeiro preço (produto nascia com sale_price 0) publica sozinho.
+      // Reajustar o preço de um produto que o dono já desativou por outro
+      // motivo não deve reativar ele por baixo dos panos.
+      const produtoAtual = produtosCache.find((x) => x.id === productId);
+      const dadosPreco = { sale_price: preco, updated_at: new Date().toISOString() };
+      if (produtoAtual && !produtoAtual.sale_price) dadosPreco.active = true;
+      const { error: e2 } = await SUPA.from('products').update(dadosPreco).eq('id', productId);
       if (e2) { toast('O custo foi guardado, mas o preço não: ' + e2.message); return; }
       closeModal();
-      toast('Pronto! Custo guardado e preço mudado pra ' + fmtMoney(preco) + '.');
+      toast('Pronto! Custo guardado e preço mudado pra ' + fmtMoney(preco) + (dadosPreco.active ? ' — já está no catálogo.' : '.'));
       produtoPrecificarId = null;
       await getProdutos(true);
       await renderProdutos();
@@ -2453,7 +2458,8 @@ function desenharCadastroProduto(el) {
   html += '<input id="pcAltura" type="number" step="0.1" value="' + (p.height_cm || '') + '">';
 
   html += '<label class="pergunta">Aparece no catálogo pros clientes verem?</label>';
-  html += '<select id="pcAtivo"><option value="true"' + (isNovo || p.active ? ' selected' : '') + '>Sim</option><option value="false"' + (!isNovo && !p.active ? ' selected' : '') + '>Não</option></select>';
+  if (isNovo) html += dicaCampo('Fica escondida até você dar um preço de verdade pra ela — assim que aplicar o preço, ela aparece sozinha.');
+  html += '<select id="pcAtivo"><option value="true"' + (!isNovo && p.active ? ' selected' : '') + '>Sim</option><option value="false"' + (isNovo || !p.active ? ' selected' : '') + '>Não</option></select>';
   html += '</div>';
 
   html += '<div class="card">';
