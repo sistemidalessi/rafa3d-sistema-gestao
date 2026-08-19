@@ -143,12 +143,14 @@
   .modal-box label { display: block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; margin: 12px 0 5px; color: var(--muted); }
   /* Pergunta inteira em vez de rótulo curto: caixa alta de 11px serve pra
      "NOME", não pra "Quantos gramas de filamento ela gasta?" — que é como
-     as telas de dinheiro perguntam, pra serem lidas sem esforço. */
-  .modal-box label.pergunta { font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); margin-top: 16px; }
-  .modal-box input, .modal-box select {
-    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px; font-size: 13.5px;
+     as telas de dinheiro perguntam, pra serem lidas sem esforço. Vale tanto
+     dentro de modal quanto nas telas cheias (ex: desenharPrecificar), por
+     isso não é escopado a .modal-box. */
+  label.pergunta { display: block; font-size: 14px; text-transform: none; letter-spacing: 0; color: var(--text); margin-top: 16px; }
+  input, select {
+    width: 100%; padding: 10px 12px; border: 1.5px solid var(--border); border-radius: 9px; font-size: 13.5px; font-family: inherit;
   }
-  .modal-box input:focus, .modal-box select:focus { outline: none; border-color: var(--blue); }
+  input:focus, select:focus { outline: none; border-color: var(--blue); }
   .modal-box .modal-actions { display: flex; gap: 8px; margin-top: 22px; justify-content: flex-end; }
 
   /* ---- toast ---- */
@@ -1729,6 +1731,15 @@ const CATEGORY_LABELS = {
   minis: 'Miniaturas & Personagens',
 };
 
+/* image_path vem de dois jeitos: caminho relativo dentro de catalogo/assets
+   (produto antigo, importado por SQL) ou URL pública completa do Storage
+   (produto cadastrado pela tela, bucket produtos-fotos). */
+function produtoFotoSrc(p) {
+  const path = (p && p.image_path) || '';
+  if (/^https?:\/\//.test(path)) return path;
+  return 'catalogo/' + path;
+}
+
 let produtosCache = [];
 async function getProdutos(force) {
   if (produtosCache.length && !force) return produtosCache;
@@ -1810,10 +1821,13 @@ async function renderProdutos() {
 function onFiltroProdutosTexto(v) { produtosFiltroTexto = v; desenharProdutos(); }
 function onFiltroProdutosCategoria(v) { produtosFiltroCategoria = v; desenharProdutos(); }
 
+let produtoCadastroAberto = null;
+
 function desenharProdutos() {
   const el = document.getElementById('tab-produtos');
   if (!el) return;
   if (produtoPrecificarId) { desenharPrecificar(el); return; }
+  if (produtoCadastroAberto) { desenharCadastroProduto(el); return; }
   const scrollY = window.scrollY;
   const isOwner = currentProfile && currentProfile.role === 'owner';
   const produtos = produtosFiltrados();
@@ -1830,6 +1844,7 @@ function desenharProdutos() {
   html += '<input type="text" placeholder="🔍 Buscar por nome ou código..." value="' + escapeHtml(produtosFiltroTexto) + '" oninput="onFiltroProdutosTexto(this.value)" style="flex:1;">';
   html += '<select onchange="onFiltroProdutosCategoria(this.value)" style="width:auto;">' + opcoesCategoria + '</select>';
   html += '</div>';
+  if (isOwner) html += '<button class="btn" onclick="abrirNovoProduto()">+ Novo Produto</button>';
   html += '</div>';
   if (produtos.length === 0) {
     html += '<div class="empty">Nenhum produto encontrado' + (produtosFiltroTexto || produtosFiltroCategoria ? ' com esse filtro.' : ' ainda.') + '</div>';
@@ -1837,7 +1852,7 @@ function desenharProdutos() {
     html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th>Arquivo 3D</th><th></th>' : '') + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
-      html += '<td><img class="thumb" src="catalogo/' + escapeHtml(p.image_path || '') + '" onerror="this.style.visibility=\'hidden\'"></td>';
+      html += '<td><img class="thumb" src="' + escapeHtml(produtoFotoSrc(p)) + '" onerror="this.style.visibility=\'hidden\'"></td>';
       html += '<td>' + escapeHtml(p.catalog_code) + '</td>';
       html += '<td>' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + '</td>';
       html += '<td class="prod-name">' + escapeHtml(p.name) + '</td>';
@@ -1883,14 +1898,14 @@ function abrirGerenciarProduto(productId) {
   const p = produtosCache.find((x) => x.id === productId);
   openModal(
     '<div style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">' +
-      '<img src="catalogo/' + escapeHtml(p.image_path || '') + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">' +
+      '<img src="' + escapeHtml(produtoFotoSrc(p)) + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">' +
       '<div><h3 style="margin:0;">' + escapeHtml(p.name) + '</h3>' +
       '<div style="font-size:12px; color:var(--muted);">' + escapeHtml(p.catalog_code) + ' · ' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + ' · ' + fmtMoney(p.sale_price) + '</div></div>' +
     '</div>' +
     '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Dados do produto (nome, preço, foto...)</span>' +
-        '<button class="btn ghost" onclick="closeModal(); openProdutoForm(\'' + p.id + '\');">Editar</button>' +
+        '<button class="btn ghost" onclick="closeModal(); abrirEditarProduto(\'' + p.id + '\');">Editar</button>' +
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Receita de custo</span>' +
@@ -2163,7 +2178,7 @@ function desenharPrecificar(el) {
   let html = '<div class="card">';
   html += '<button class="btn ghost" onclick="voltarProdutos()">← Voltar pros produtos</button>';
   html += '<div style="display:flex; align-items:center; gap:14px; margin-top:14px;">';
-  html += '<img src="catalogo/' + escapeHtml(p.image_path || '') + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">';
+  html += '<img src="' + escapeHtml(produtoFotoSrc(p)) + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">';
   html += '<div>';
   html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:21px;">' + escapeHtml(p.name) + '</div>';
   html += '<div style="color:var(--muted); font-size:13px;">' + escapeHtml(p.catalog_code || '') +
@@ -2344,32 +2359,167 @@ async function saveReceita(aplicarPreco) {
   await renderProdutos();
 }
 
-function openProdutoForm(id) {
-  const p = produtosCache.find((x) => x.id === id);
-  if (!p) return;
-  openModal(
-    '<h3>Editar produto — ' + escapeHtml(p.catalog_code) + '</h3>' +
-    '<label>Nome</label><input id="pdNome" value="' + escapeHtml(p.name) + '">' +
-    '<label>Preço (R$)</label><input id="pdPreco" type="number" step="0.01" value="' + p.sale_price + '">' +
-    '<label>Status</label>' +
-    '<select id="pdAtivo"><option value="true"' + (p.active ? ' selected' : '') + '>Ativo</option><option value="false"' + (!p.active ? ' selected' : '') + '>Inativo</option></select>' +
-    '<div class="modal-actions">' +
-      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn" onclick="saveProduto(\'' + id + '\')">Salvar</button>' +
-    '</div>'
-  );
+/* ---- Tela de cadastrar/editar um produto ----
+   Mesmo esquema de tela cheia da desenharPrecificar: produtoCadastroAberto
+   guarda 'novo' ou o id do produto sendo editado. Ao criar um produto novo,
+   ele nasce com sale_price 0 e cai direto na tela de dar preço (o preço
+   sempre nasce da conta de custo, nunca é digitado direto). */
+function abrirNovoProduto() {
+  produtoCadastroAberto = 'novo';
+  desenharProdutos();
+  window.scrollTo(0, 0);
 }
 
-async function saveProduto(id) {
-  const name = document.getElementById('pdNome').value.trim();
-  const sale_price = parseFloat(document.getElementById('pdPreco').value);
-  const active = document.getElementById('pdAtivo').value === 'true';
-  if (!name || isNaN(sale_price)) { toast('Preencha nome e preço corretamente.'); return; }
-  const { error } = await SUPA.from('products').update({ name, sale_price, active, updated_at: new Date().toISOString() }).eq('id', id);
-  if (error) { toast('Erro: ' + error.message); return; }
-  closeModal();
-  toast('Produto salvo.');
-  await renderProdutos();
+function abrirEditarProduto(id) {
+  produtoCadastroAberto = id;
+  desenharProdutos();
+  window.scrollTo(0, 0);
+}
+
+function sairCadastroProduto() {
+  produtoCadastroAberto = null;
+  renderProdutos();
+  window.scrollTo(0, 0);
+}
+
+function proximoCatalogCode(category) {
+  const chaves = Object.keys(CATEGORY_LABELS);
+  const prefixo = String(chaves.indexOf(category) + 1).padStart(2, '0');
+  const numeros = produtosCache
+    .filter((p) => (p.catalog_code || '').startsWith(prefixo + '.'))
+    .map((p) => parseInt(p.catalog_code.split('.')[1], 10))
+    .filter((n) => !isNaN(n));
+  const proximo = numeros.length ? Math.max(...numeros) + 1 : 1;
+  return prefixo + '.' + String(proximo).padStart(2, '0');
+}
+
+function desenharCadastroProduto(el) {
+  const isNovo = produtoCadastroAberto === 'novo';
+  const p = isNovo ? {} : produtosCache.find((x) => x.id === produtoCadastroAberto);
+  if (!isNovo && !p) { produtoCadastroAberto = null; desenharProdutos(); return; }
+
+  let opcoesCategoria = '<option value="">— escolha —</option>';
+  Object.keys(CATEGORY_LABELS).forEach((k) => {
+    opcoesCategoria += '<option value="' + k + '"' + (p.category === k ? ' selected' : '') + '>' + escapeHtml(CATEGORY_LABELS[k]) + '</option>';
+  });
+
+  let html = '<div class="card">';
+  html += '<button class="btn ghost" onclick="sairCadastroProduto()">← Voltar pros produtos</button>';
+  html += '<h3 style="margin:16px 0 4px;">' + (isNovo ? 'Novo produto' : 'Editar produto — ' + escapeHtml(p.catalog_code)) + '</h3>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<label class="pergunta">Foto dela</label>';
+  html += dicaCampo('Uma foto quadrada, bem iluminada, fica melhor no catálogo.');
+  if (!isNovo && p.image_path) {
+    html += '<img src="' + escapeHtml(produtoFotoSrc(p)) + '" style="width:90px; height:90px; object-fit:cover; border-radius:12px; border:1px solid var(--border); margin-bottom:8px; display:block;" onerror="this.style.visibility=\'hidden\'">';
+  }
+  html += '<input id="pcFoto" type="file" accept="image/*">';
+
+  html += '<label class="pergunta">Qual o nome dela?</label>';
+  html += '<input id="pcNome" value="' + escapeHtml(p.name || '') + '" placeholder="Ex: Vaso Bloom">';
+
+  html += '<label class="pergunta">Em qual parte do catálogo ela fica?</label>';
+  html += '<select id="pcCategoria">' + opcoesCategoria + '</select>';
+
+  html += '<label class="pergunta">Qual a altura dela? (cm)</label>';
+  html += dicaCampo('Opcional — só preenche se ajudar o cliente a imaginar o tamanho.');
+  html += '<input id="pcAltura" type="number" step="0.1" value="' + (p.height_cm || '') + '">';
+
+  html += '<label class="pergunta">Aparece no catálogo pros clientes verem?</label>';
+  html += '<select id="pcAtivo"><option value="true"' + (isNovo || p.active ? ' selected' : '') + '>Sim</option><option value="false"' + (!isNovo && !p.active ? ' selected' : '') + '>Não</option></select>';
+  html += '</div>';
+
+  html += '<div class="card">';
+  html += '<label class="pergunta">Quer um selo em cima da foto?</label>';
+  html += dicaCampo('Ex: Novidade, Mais vendido. Deixe em branco se não quiser.');
+  html += '<input id="pcSelo" value="' + escapeHtml(p.badge_label || '') + '">';
+
+  html += '<label class="pergunta">Tem alguma palavra depois do preço?</label>';
+  html += dicaCampo('Ex: "cada", pra quando vende por unidade. Deixe em branco se não precisar.');
+  html += '<input id="pcUnidade" value="' + escapeHtml(p.price_unit_note || '') + '">';
+
+  html += '<label class="pergunta">Tem promoção?</label>';
+  html += dicaCampo('Ex: 3 por R$ 149,90. Deixe em branco se não tiver.');
+  html += '<input id="pcPromo" value="' + escapeHtml(p.promo_note || '') + '">';
+
+  html += '<label class="pergunta">Algum aviso a mais pro cliente?</label>';
+  html += dicaCampo('Ex: escolha a cor, escolha a letra. Deixe em branco se não precisar.');
+  html += '<input id="pcExtra" value="' + escapeHtml(p.extra_note || '') + '">';
+  html += '</div>';
+
+  html += '<div class="card">';
+  if (isNovo) {
+    html += '<div class="empty">O preço vem depois — assim que salvar, o próximo passo é montar a conta de quanto custa fazer.</div>';
+  } else {
+    html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+    html += '<div><div style="color:var(--muted); font-size:12px;">Preço hoje</div><strong style="font-size:19px;">' + fmtMoney(p.sale_price) + '</strong></div>';
+    html += '<button class="btn ghost" onclick="produtoCadastroAberto=null; abrirPrecificar(\'' + p.id + '\');">💰 Ajustar preço</button>';
+    html += '</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="card" style="display:flex; gap:8px; justify-content:flex-end;">';
+  html += '<button class="btn ghost" onclick="sairCadastroProduto()">Cancelar</button>';
+  html += '<button class="btn" onclick="salvarCadastroProduto()">Salvar</button>';
+  html += '</div>';
+
+  el.innerHTML = html;
+}
+
+async function salvarCadastroProduto() {
+  const isNovo = produtoCadastroAberto === 'novo';
+  const id = isNovo ? null : produtoCadastroAberto;
+  const name = document.getElementById('pcNome').value.trim();
+  const category = document.getElementById('pcCategoria').value;
+  const height_cm = document.getElementById('pcAltura').value ? parseFloat(document.getElementById('pcAltura').value) : null;
+  const active = document.getElementById('pcAtivo').value === 'true';
+  const badge_label = document.getElementById('pcSelo').value.trim() || null;
+  const price_unit_note = document.getElementById('pcUnidade').value.trim() || null;
+  const promo_note = document.getElementById('pcPromo').value.trim() || null;
+  const extra_note = document.getElementById('pcExtra').value.trim() || null;
+  if (!name || !category) { toast('Preenche o nome e escolhe a categoria.'); return; }
+
+  const dados = { name, category, height_cm, active, badge_label, price_unit_note, promo_note, extra_note, updated_at: new Date().toISOString() };
+
+  const file = document.getElementById('pcFoto').files[0];
+
+  if (isNovo) {
+    const catalog_code = proximoCatalogCode(category);
+    const { data: inserido, error: insErr } = await SUPA.from('products')
+      .insert({ ...dados, catalog_code, sale_price: 0 }).select().single();
+    if (insErr) { toast('Erro: ' + insErr.message); return; }
+    if (file) {
+      const caminhoOk = await enviarFotoProduto(inserido.id, catalog_code, file);
+      if (!caminhoOk) return;
+    }
+    toast('Produto criado — agora dá o preço dele.');
+    await getProdutos(true);
+    produtoCadastroAberto = null;
+    abrirPrecificar(inserido.id);
+  } else {
+    if (file) {
+      const p = produtosCache.find((x) => x.id === id);
+      const caminhoOk = await enviarFotoProduto(id, p.catalog_code, file);
+      if (!caminhoOk) return;
+    }
+    const { error } = await SUPA.from('products').update(dados).eq('id', id);
+    if (error) { toast('Erro: ' + error.message); return; }
+    toast('Produto salvo.');
+    produtoCadastroAberto = null;
+    await renderProdutos();
+  }
+}
+
+async function enviarFotoProduto(productId, catalog_code, file) {
+  const ext = file.name.split('.').pop();
+  const path = catalog_code + '/foto.' + ext;
+  const { error: upErr } = await SUPA.storage.from('produtos-fotos').upload(path, file, { upsert: true });
+  if (upErr) { toast('Erro no envio da foto: ' + upErr.message); return false; }
+  const { data } = SUPA.storage.from('produtos-fotos').getPublicUrl(path);
+  const { error: dbErr } = await SUPA.from('products').update({ image_path: data.publicUrl }).eq('id', productId);
+  if (dbErr) { toast('Erro: ' + dbErr.message); return false; }
+  return true;
 }
 
 /* ============================================================
