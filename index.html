@@ -360,6 +360,16 @@ function fmtMoney(n) {
   return 'R$ ' + n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+// Plural escrito à mão em vez de "1 vez(es)" e "1 item(ns)": texto com
+// parêntese de plural parece escrito por máquina, e quem lê tem 10 anos.
+function vezes(n) {
+  return n + (n === 1 ? ' vez' : ' vezes');
+}
+
+function pecas(n) {
+  return n + (n === 1 ? ' peça' : ' peças');
+}
+
 function todayISO() {
   const d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
@@ -490,21 +500,38 @@ function statCard(icon, valor, label) {
    ============================================================ */
 const LINE_STATUS_LABELS = {
   recebido: 'Recebido',
-  orcamento_pendente: 'Orçamento pendente',
-  orcamento_aprovado: 'Orçamento aprovado',
-  fila_impressao: 'Fila de impressão',
+  orcamento_pendente: 'Falta dar o preço',
+  orcamento_aprovado: 'Preço combinado',
+  fila_impressao: 'Esperando pra imprimir',
   imprimindo: 'Imprimindo',
-  pos_processamento: 'Pós-processamento',
+  pos_processamento: 'Dando o acabamento',
   embalado: 'Embalado',
   enviado: 'Enviado',
   entregue: 'Entregue',
-  falhou_reimprimir: 'Falhou (reimprimir)',
+  falhou_reimprimir: 'Deu errado, tem que refazer',
   cancelado: 'Cancelado',
 };
 const PAYMENT_STATUS_LABELS = {
-  aguardando_sinal: 'Aguardando sinal',
-  sinal_pago: 'Sinal pago',
-  quitado: 'Quitado',
+  aguardando_sinal: 'Ainda não pagou',
+  sinal_pago: 'Pagou uma parte',
+  quitado: 'Pagou tudo',
+};
+
+// O banco guarda 'sob_encomenda' e 'em_producao'; a lista de pedidos
+// mostrava esses valores crus na tela. Estes dois mapas são a tradução
+// pra linguagem de quem usa o sistema.
+const ORDER_TYPE_LABELS = {
+  catalogo: 'Do catálogo',
+  sob_encomenda: 'Feito sob medida',
+  misto: 'Os dois',
+};
+const ORDER_STATUS_LABELS = {
+  orcamento: 'Vendo o preço',
+  aguardando_aprovacao: 'Esperando o cliente dizer sim',
+  aprovado: 'O cliente disse sim',
+  em_producao: 'Fazendo',
+  concluido: 'Pronto',
+  cancelado: 'Cancelado',
 };
 
 /* ============================================================
@@ -917,8 +944,8 @@ async function renderPedidos() {
       html += '<tr>';
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
       html += '<td>' + escapeHtml(o.customers ? o.customers.name : '—') + '</td>';
-      html += '<td>' + escapeHtml(o.order_type) + '</td>';
-      html += '<td>' + escapeHtml(o.status) + '</td>';
+      html += '<td>' + escapeHtml(ORDER_TYPE_LABELS[o.order_type] || o.order_type) + '</td>';
+      html += '<td>' + escapeHtml(ORDER_STATUS_LABELS[o.status] || o.status) + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td><span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></td>';
       html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\')">Abrir</button></td>';
@@ -1001,7 +1028,7 @@ async function renderPedidoDetalhe(id) {
     html += '<div class="empty">Nenhum item ainda.</div>';
   } else {
     const isOwner = currentProfile && currentProfile.role === 'owner';
-    html += '<table><tr><th>Item</th><th>Qtd</th><th>Preço</th><th>Status</th><th></th></tr>';
+    html += '<table><tr><th>Peça</th><th>Quantas</th><th>Preço</th><th>Status</th><th></th></tr>';
     items.forEach((it) => {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       html += '<tr>';
@@ -1029,7 +1056,7 @@ async function renderPedidoDetalhe(id) {
 
   html += '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
-  html += '<strong>Pagamentos</strong><button class="btn" onclick="openPagamentoForm(\'' + id + '\')">+ Registrar pagamento</button>';
+  html += '<strong>Pagamentos</strong><button class="btn" onclick="openPagamentoForm(\'' + id + '\')">+ Anotar pagamento</button>';
   html += '</div>';
   if (payments.length === 0) {
     html += '<div class="empty">Nenhum pagamento registrado.</div>';
@@ -1166,11 +1193,11 @@ async function salvarAprovacaoOrcamento(itemId, orderId) {
 
 function openPagamentoForm(orderId) {
   openModal(
-    '<h3>Registrar pagamento</h3>' +
-    '<label>Tipo</label>' +
-    '<select id="pgTipo"><option value="sinal">Sinal</option><option value="saldo">Saldo</option><option value="pagamento_integral">Pagamento integral</option><option value="reembolso">Reembolso</option></select>' +
+    '<h3>Anotar um pagamento</h3>' +
+    '<label class="pergunta">O cliente pagou o quê?</label>' +
+    '<select id="pgTipo"><option value="sinal">Uma parte agora</option><option value="saldo">O resto que faltava</option><option value="pagamento_integral">Tudo de uma vez</option><option value="reembolso">Devolvi o dinheiro pra ele</option></select>' +
     '<label>Valor (R$)</label><input id="pgValor" type="number" step="0.01">' +
-    '<label>Método</label>' +
+    '<label class="pergunta">Como ele pagou?</label>' +
     '<select id="pgMetodo"><option value="pix">PIX</option><option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="outro">Outro</option></select>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
@@ -1217,22 +1244,22 @@ async function renderFila() {
   });
 
   let html = '';
-  html += renderGrupoFila('📥 Sem impressora atribuída', null, semImpressora, impressoras);
+  html += renderGrupoFila('📥 Ainda sem impressora', null, semImpressora, impressoras);
   impressoras.forEach((p) => {
     html += renderGrupoFila('🖨️ ' + p.name, p.id, grupos[p.id].itens, impressoras);
   });
-  el.innerHTML = html || '<div class="card"><div class="empty">Fila vazia — nenhum item em produção agora.</div></div>';
+  el.innerHTML = html || '<div class="card"><div class="empty">Não tem nada pra imprimir agora.</div></div>';
 }
 
 function renderGrupoFila(titulo, printerId, itens, impressoras) {
   let html = '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
-  html += '<strong>' + titulo + '</strong><span style="color:var(--muted); font-size:12px;">' + itens.length + ' item(ns)</span>';
+  html += '<strong>' + titulo + '</strong><span style="color:var(--muted); font-size:12px;">' + pecas(itens.length) + '</span>';
   html += '</div>';
   if (itens.length === 0) {
     html += '<div class="empty">Nada por aqui.</div>';
   } else {
-    html += '<table><tr><th>Pedido</th><th>Item</th><th>Qtd</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
+    html += '<table><tr><th>Pedido</th><th>Peça</th><th>Quantas</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
     itens.forEach((it) => {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       html += '<tr>';
@@ -1250,11 +1277,11 @@ function renderGrupoFila(titulo, printerId, itens, impressoras) {
       });
       html += '</select></td>';
       html += '<td class="row-actions">';
-      html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">Concluir</button>';
+      html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">Terminei</button>';
       if (it.line_status === 'falhou_reimprimir') {
-        html += '<button class="btn ghost" onclick="reimprimirItem(\'' + it.id + '\')">Reimprimir</button>';
+        html += '<button class="btn ghost" onclick="reimprimirItem(\'' + it.id + '\')">Imprimir de novo</button>';
       } else {
-        html += '<button class="btn ghost" onclick="openMarcarFalha(\'' + it.id + '\')">Falhou</button>';
+        html += '<button class="btn ghost" onclick="openMarcarFalha(\'' + it.id + '\')">Deu errado</button>';
       }
       html += '</td>';
       html += '</tr>';
@@ -1303,18 +1330,18 @@ async function openConcluirImpressao(itemId) {
   const spools = await getSpools(true);
   const corAlvo = item.requested_filament_color_id;
   const spoolsDaCor = spools.filter((s) => (!corAlvo || s.color_id === corAlvo) && s.status !== 'empty');
-  let options = '<option value="">— selecione o rolo —</option>';
+  let options = '<option value="">— escolhe o rolo —</option>';
   spoolsDaCor.forEach((s) => {
     const cor = cores.find((c) => c.id === s.color_id);
     options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
   });
   openModal(
-    '<h3>Concluir impressão</h3>' +
-    '<label>Rolo usado</label><select id="ccSpool">' + options + '</select>' +
-    '<label>Gramas usadas</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
+    '<h3>Terminei de imprimir essa peça</h3>' +
+    '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>' +
+    '<label class="pergunta">Quantos gramas ela gastou?</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Confirmar</button>' +
+      '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Pronto, terminei</button>' +
     '</div>'
   );
 }
@@ -1340,18 +1367,18 @@ async function salvarConclusaoImpressao(itemId) {
 async function openMarcarFalha(itemId) {
   const cores = await getFilamentosSafe();
   const spools = await getSpools(true);
-  let options = '<option value="">— sem perda de material —</option>';
+  let options = '<option value="">— não perdi filamento —</option>';
   spools.filter((s) => s.status !== 'empty').forEach((s) => {
     const cor = cores.find((c) => c.id === s.color_id);
     options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
   });
   openModal(
-    '<h3>Marcar impressão como falhou</h3>' +
-    '<label>Rolo usado (se perdeu material)</label><select id="mfSpool">' + options + '</select>' +
-    '<label>Gramas perdidas</label><input id="mfGramas" type="number" step="0.1" value="0">' +
+    '<h3>Essa peça deu errado</h3>' +
+    '<label class="pergunta">Qual rolo estava na impressora?</label>' + dicaCampo('Só precisa se você perdeu filamento na tentativa.') + '<select id="mfSpool">' + options + '</select>' +
+    '<label class="pergunta">Quantos gramas foram pro lixo?</label><input id="mfGramas" type="number" step="0.1" value="0">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn secondary" onclick="salvarFalha(\'' + itemId + '\')">Confirmar falha</button>' +
+      '<button class="btn secondary" onclick="salvarFalha(\'' + itemId + '\')">Anotar que deu errado</button>' +
     '</div>'
   );
 }
@@ -1368,7 +1395,7 @@ async function salvarFalha(itemId) {
   const { error: e2 } = await SUPA.from('order_line_items').update({ line_status: 'falhou_reimprimir', updated_at: new Date().toISOString() }).eq('id', itemId);
   if (e2) { toast('Erro: ' + e2.message); return; }
   closeModal();
-  toast('Marcado como falha. Use "Reimprimir" quando quiser gerar uma nova tentativa.');
+  toast('Anotado. Quando quiser tentar outra vez, clica em "Imprimir de novo".');
   await renderFila();
 }
 
@@ -1383,7 +1410,7 @@ async function reimprimirItem(itemId) {
   };
   const { error } = await SUPA.from('order_line_items').insert([novo]);
   if (error) { toast('Erro: ' + error.message); return; }
-  toast('Reimpressão criada e adicionada à fila (sem cobrar de novo do cliente).');
+  toast('Entrou na fila pra imprimir de novo, sem cobrar nada a mais do cliente.');
   await renderFila();
 }
 
@@ -2337,13 +2364,6 @@ function margemBadge(pct) {
   if (pct < 0) return '<span class="badge off">faltou R$ ' + Math.abs(pct).toFixed(0) + '</span>';
   return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">R$ ' + pct.toFixed(0) + '</span>';
 }
-
-// "1 vez(es)" é o tipo de coisa que faz o texto parecer escrito por
-// máquina — e quem lê tem 10 anos.
-function vezes(n) {
-  return n + (n === 1 ? ' vez' : ' vezes');
-}
-
 function margemBotoesPeriodo() {
   const opcoes = [[30, '30 dias'], [90, '90 dias'], [365, '1 ano'], [0, 'Tudo']];
   let html = '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
