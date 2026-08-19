@@ -2638,9 +2638,18 @@ const MARGEM_FONTE_LABELS = {
 };
 
 let margemPeriodoDias = 90;
+let margemDataDe = '';
+let margemDataAte = '';
 
 function setMargemPeriodo(dias) {
   margemPeriodoDias = dias;
+  margemDataDe = '';
+  margemDataAte = '';
+  renderMargem();
+}
+
+function setMargemData(campo, valor) {
+  if (campo === 'de') margemDataDe = valor; else margemDataAte = valor;
   renderMargem();
 }
 
@@ -2712,11 +2721,18 @@ function margemBadge(pct) {
   return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">R$ ' + pct.toFixed(0) + '</span>';
 }
 function margemBotoesPeriodo() {
+  const usandoData = !!(margemDataDe || margemDataAte);
   const opcoes = [[30, '30 dias'], [90, '90 dias'], [365, '1 ano'], [0, 'Tudo']];
-  let html = '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
+  let html = '<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center;">';
+  html += '<div style="display:flex; gap:6px; flex-wrap:wrap;">';
   opcoes.forEach((o) => {
-    html += '<button class="btn ' + (margemPeriodoDias === o[0] ? '' : 'ghost') + '" onclick="setMargemPeriodo(' + o[0] + ')">' + o[1] + '</button>';
+    html += '<button class="btn ' + (!usandoData && margemPeriodoDias === o[0] ? '' : 'ghost') + '" onclick="setMargemPeriodo(' + o[0] + ')">' + o[1] + '</button>';
   });
+  html += '</div>';
+  html += '<div style="display:flex; gap:6px; align-items:center; font-size:12px; color:var(--muted);">';
+  html += 'ou de <input type="date" value="' + escapeHtml(margemDataDe) + '" onchange="setMargemData(\'de\', this.value)" style="width:auto;">';
+  html += 'até <input type="date" value="' + escapeHtml(margemDataAte) + '" onchange="setMargemData(\'ate\', this.value)" style="width:auto;">';
+  html += '</div>';
   return html + '</div>';
 }
 
@@ -2755,17 +2771,57 @@ async function renderMargem() {
   });
 
   const ctx = { movimentosPorLinha: movimentosPorLinha, spools: spools, cores: filamentosCache, receitasPorProduto: receitasPorProduto };
-  const limite = margemPeriodoDias ? Date.now() - margemPeriodoDias * 86400000 : null;
+  const limiteInicio = margemDataDe ? new Date(margemDataDe + 'T00:00:00').getTime()
+    : (margemPeriodoDias ? Date.now() - margemPeriodoDias * 86400000 : null);
+  const limiteFim = margemDataAte ? new Date(margemDataAte + 'T23:59:59').getTime() : null;
   const consideradas = linhas.filter((l) =>
     !l.reprint_of_line_item_id &&
     MARGEM_STATUS_PRODUZIDO.indexOf(l.line_status) !== -1 &&
     !(l.orders && l.orders.status === 'cancelado') &&
-    (!limite || new Date(l.created_at).getTime() >= limite));
+    (!limiteInicio || new Date(l.created_at).getTime() >= limiteInicio) &&
+    (!limiteFim || new Date(l.created_at).getTime() <= limiteFim));
 
   const avaliadas = consideradas.map((l) =>
     Object.assign({ linha: l }, calcularMargemFamilia(l, reimpressoesPor[l.id] || [], ctx)));
   const comCusto = avaliadas.filter((a) => a.custo !== null);
   const semCusto = avaliadas.filter((a) => a.custo === null);
+
+  // Gramas usadas por cor de filamento no período — soma a peça original
+  // e todas as reimpressões dela, igual à conta de custo.
+  const gramasPorCor = {};
+  consideradas.forEach((l) => {
+    [l].concat(reimpressoesPor[l.id] || []).forEach((m) => {
+      (movimentosPorLinha[m.id] || []).forEach((mov) => {
+        const gramas = Math.abs(Number(mov.grams_delta || 0));
+        if (gramas <= 0) return;
+        const spool = spools.find((s) => s.id === mov.spool_id);
+        const corId = spool ? spool.color_id : null;
+        if (!corId) return;
+        gramasPorCor[corId] = (gramasPorCor[corId] || 0) + gramas;
+      });
+    });
+  });
+  const coresMaisUsadas = Object.keys(gramasPorCor).map((corId) => {
+    const cor = filamentosCache.find((c) => c.id === corId);
+    return { nome: cor ? cor.name : 'Cor removida', gramas: gramasPorCor[corId] };
+  }).sort((a, b) => b.gramas - a.gramas).slice(0, 8);
+
+  const porProduto = {};
+  comCusto.filter((a) => a.linha.product_id).forEach((a) => {
+    const k = a.linha.product_id;
+    if (!porProduto[k]) porProduto[k] = { qtd: 0, receita: 0, custo: 0, reimpressoes: 0, fontes: {} };
+    porProduto[k].qtd += a.quantidade;
+    porProduto[k].receita += a.receita;
+    porProduto[k].custo += a.custo;
+    porProduto[k].reimpressoes += a.reimpressoes;
+    porProduto[k].fontes[a.fonte] = true;
+  });
+  const linhasProduto = Object.keys(porProduto).map((k) => {
+    const v = porProduto[k];
+    const p = produtos.find((x) => x.id === k);
+    return { nome: p ? p.name : 'Produto removido', codigo: p ? p.catalog_code : '', d: v, lucro: v.receita - v.custo };
+  }).sort((a, b) => b.lucro - a.lucro);
+  const maisVendidos = linhasProduto.slice().sort((a, b) => b.d.qtd - a.d.qtd).slice(0, 8);
 
   const faturamento = comCusto.reduce((s, a) => s + a.receita, 0);
   const custoTotal = comCusto.reduce((s, a) => s + a.custo, 0);
@@ -2789,6 +2845,42 @@ async function renderMargem() {
     return;
   }
 
+  html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:14px;">';
+
+  html += '<div class="card">';
+  if (maisVendidos.length > 0) {
+    html += '<strong>🏆 Mais vendidos</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Quem saiu mais vezes da impressora.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Vendidos</th></tr>';
+    maisVendidos.forEach((r) => {
+      html += '<tr><td><strong>' + escapeHtml(r.nome) + '</strong>' +
+        (r.codigo ? ' <span style="color:var(--muted); font-size:11px;">' + escapeHtml(r.codigo) + '</span>' : '') + '</td>' +
+        '<td>' + r.d.qtd + '</td></tr>';
+    });
+    html += '</table>';
+  } else {
+    html += '<strong>🏆 Mais vendidos</strong><div class="empty">Nenhum produto de catálogo vendido nesse tempo.</div>';
+  }
+  html += '</div>';
+
+  html += '<div class="card">';
+  if (coresMaisUsadas.length > 0) {
+    html += '<strong>🎨 Cores de filamento mais usadas</strong>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Quanto saiu do estoque, por cor.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Cor</th><th>Gramas usados</th></tr>';
+    coresMaisUsadas.forEach((c) => {
+      html += '<tr><td>' + escapeHtml(c.nome) + '</td><td>' +
+        (c.gramas >= 1000 ? (c.gramas / 1000).toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' kg' : Math.round(c.gramas) + ' g') +
+        '</td></tr>';
+    });
+    html += '</table>';
+  } else {
+    html += '<strong>🎨 Cores de filamento mais usadas</strong><div class="empty">Nenhuma baixa de estoque registrada nesse tempo.</div>';
+  }
+  html += '</div>';
+
+  html += '</div>';
+
   if (semCusto.length > 0) {
     const receitaDeFora = semCusto.reduce((s, a) => s + a.receita, 0);
     html += '<div class="card">';
@@ -2805,22 +2897,6 @@ async function renderMargem() {
     });
     html += '</table></div>';
   }
-
-  const porProduto = {};
-  comCusto.filter((a) => a.linha.product_id).forEach((a) => {
-    const k = a.linha.product_id;
-    if (!porProduto[k]) porProduto[k] = { qtd: 0, receita: 0, custo: 0, reimpressoes: 0, fontes: {} };
-    porProduto[k].qtd += a.quantidade;
-    porProduto[k].receita += a.receita;
-    porProduto[k].custo += a.custo;
-    porProduto[k].reimpressoes += a.reimpressoes;
-    porProduto[k].fontes[a.fonte] = true;
-  });
-  const linhasProduto = Object.keys(porProduto).map((k) => {
-    const v = porProduto[k];
-    const p = produtos.find((x) => x.id === k);
-    return { nome: p ? p.name : 'Produto removido', codigo: p ? p.catalog_code : '', d: v, lucro: v.receita - v.custo };
-  }).sort((a, b) => b.lucro - a.lucro);
 
   if (linhasProduto.length > 0) {
     html += '<div class="card"><strong>🎁 Quanto cada produto deixou</strong>';
