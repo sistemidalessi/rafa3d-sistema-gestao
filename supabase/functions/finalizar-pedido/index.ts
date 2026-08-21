@@ -56,6 +56,36 @@ async function avisarPedidoNovo(supabaseAdmin: any, orderNumber: string, total: 
   return { totalInscricoes: subs.length, resultados };
 }
 
+// E-mail via Resend — canal mais confiável que o push (não depende de
+// nenhum aparelho ter ativado nada antes). Nunca deixa isso quebrar a
+// resposta pro cliente.
+async function avisarPedidoNovoPorEmail(orderNumber: string, total: number, combinar: boolean) {
+  const apiKey = Deno.env.get("RESEND_API_KEY");
+  const destinatarios = (Deno.env.get("NOTIFY_EMAILS") || "").split(",").map((s) => s.trim()).filter(Boolean);
+  if (!apiKey || !destinatarios.length) return;
+
+  const assunto = "🎁 Pedido novo — " + orderNumber;
+  const corpo = combinar
+    ? "Um cliente fechou o pedido " + orderNumber + " no catálogo e escolheu combinar a entrega direto com vocês."
+    : "Um cliente fechou o pedido " + orderNumber + " no catálogo, no valor de R$ " + total.toFixed(2).replace(".", ",") +
+      ". Ele vai mandar o comprovante do PIX pelo WhatsApp.";
+
+  const resp = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: { Authorization: "Bearer " + apiKey, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      from: "Rafa 3D <onboarding@resend.dev>",
+      to: destinatarios,
+      subject: assunto,
+      text: corpo,
+    }),
+  });
+  if (!resp.ok) {
+    const detalhe = await resp.text();
+    console.error("Resend respondeu com erro:", resp.status, detalhe);
+  }
+}
+
 // CRC16-CCITT (poly 0x1021, init 0xFFFF) — checksum exigido no final do
 // código Pix, pra quem escaneia confirmar que não veio corrompido.
 function crc16(payload: string): string {
@@ -203,6 +233,8 @@ export default {
     // resposta pro cliente, o pedido já está criado de qualquer jeito.
     await avisarPedidoNovo(ctx.supabaseAdmin, orderNumber, total, combinar).catch((e) =>
       console.error("Erro mandando notificação push:", e));
+    await avisarPedidoNovoPorEmail(orderNumber, total, combinar).catch((e) =>
+      console.error("Erro mandando e-mail de aviso:", e));
 
     const whatsappNumero = Deno.env.get("WHATSAPP_NUMBER") || "";
     const mensagem = combinar
