@@ -174,27 +174,13 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   'imprimir uma peça pra vender — a resposta precisa ser uma ficha técnica de verdade, com números específicos, ' +
   'não recomendações vagas ou faixas genéricas. Nunca responda "ajuste conforme necessário" ou similar — decida um ' +
   'valor e diga esse valor.\n\n' +
-  'Olhe a imagem desta peça (miniatura renderizada de dentro do arquivo de projeto) e produza a ficha nesta estrutura ' +
-  'exata, preenchendo cada campo com um valor concreto (pode marcar "não se aplica" só quando genuinely não fizer ' +
-  'sentido pra essa peça, nunca por preguiça de decidir):\n\n' +
-  '## Perfil\nAltura de camada (mm) — Número de paredes/contornos — Padrão e % de preenchimento\n\n' +
-  '## Temperatura e velocidade\nBico e mesa (°C, considerando PLA salvo se a peça pedir PETG) — Velocidade parede ' +
-  'externa/interna/preenchimento (mm/s) — Velocidade reduzida em algum trecho específico da peça, se aplicável\n\n' +
-  '## Suporte\nPrecisa? (sim/não) — Tipo (normal ou árvore) e por quê — Densidade (%) — Distância Z do topo/base ' +
-  '(mm) — Ângulo limite de overhang (°) — Onde exatamente na peça (descreva a região)\n\n' +
-  '## Aderência à mesa\nBrim, raft ou nenhum — Largura/altura (mm) e número de loops se for brim — Por quê, dado o ' +
-  'formato de contato da peça com a mesa\n\n' +
-  '## Orientação sugerida\nComo posicionar na mesa e por quê (reduz suporte, melhora acabamento em superfície ' +
-  'visível, evita peça soltar)\n\n' +
-  '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
-  'seção fina que quebra, peça alta e estreita que tomba, troca excessiva de filamento em AMS, etc.) e a mitigação ' +
-  'pra cada um\n\n' +
-  'Responda com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
-  'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.\n\n' +
-  'Depois da ficha, numa linha separada, repita os MESMOS valores que você acabou de decidir num bloco de código ' +
-  'JSON (só isso depois da ficha, nada de texto explicando o JSON) com exatamente estas chaves — não invente chave ' +
-  'nova, não omita nenhuma (se não precisar de suporte, ainda assim preencha support_enable como false e os outros ' +
-  'campos de suporte com um valor qualquer, eles são ignorados quando enable é false):\n\n' +
+  'Olhe a imagem desta peça (miniatura renderizada de dentro do arquivo de projeto) e responda em DUAS partes, ' +
+  'NESSA ORDEM (o bloco de números primeiro é importante — se sua resposta for cortada por tamanho, o que mais ' +
+  'importa precisa ter saído primeiro):\n\n' +
+  '1) Primeiro, só o bloco de código JSON abaixo, com os MESMOS valores que você vai decidir, preenchido — nada de ' +
+  'texto antes dele, com exatamente estas chaves, sem inventar chave nova nem omitir nenhuma (se não precisar de ' +
+  'suporte, ainda assim preencha support_enable como false e os outros campos de suporte com um valor qualquer, ' +
+  'eles são ignorados quando enable é false):\n\n' +
   '```json\n' +
   '{\n' +
   '  "layer_height_mm": 0.2,\n' +
@@ -209,7 +195,24 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '  "nozzle_temp_c": 220,\n' +
   '  "bed_temp_c": 55\n' +
   '}\n' +
-  '```';
+  '```\n\n' +
+  '2) Depois do bloco JSON, a ficha técnica pra humano ler, nesta estrutura exata, preenchendo cada campo com um ' +
+  'valor concreto (pode marcar "não se aplica" só quando genuinely não fizer sentido pra essa peça, nunca por ' +
+  'preguiça de decidir):\n\n' +
+  '## Perfil\nAltura de camada (mm) — Número de paredes/contornos — Padrão e % de preenchimento\n\n' +
+  '## Temperatura e velocidade\nBico e mesa (°C, considerando PLA salvo se a peça pedir PETG) — Velocidade parede ' +
+  'externa/interna/preenchimento (mm/s) — Velocidade reduzida em algum trecho específico da peça, se aplicável\n\n' +
+  '## Suporte\nPrecisa? (sim/não) — Tipo (normal ou árvore) e por quê — Densidade (%) — Distância Z do topo/base ' +
+  '(mm) — Ângulo limite de overhang (°) — Onde exatamente na peça (descreva a região)\n\n' +
+  '## Aderência à mesa\nBrim, raft ou nenhum — Largura/altura (mm) e número de loops se for brim — Por quê, dado o ' +
+  'formato de contato da peça com a mesa\n\n' +
+  '## Orientação sugerida\nComo posicionar na mesa e por quê (reduz suporte, melhora acabamento em superfície ' +
+  'visível, evita peça soltar)\n\n' +
+  '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
+  'seção fina que quebra, peça alta e estreita que tomba, troca excessiva de filamento em AMS, etc.) e a mitigação ' +
+  'pra cada um\n\n' +
+  'A ficha usa títulos ## e itens com traço, sem introdução nem conclusão — é pra colar direto num sistema interno ' +
+  'e ser lido rápido antes de fatiar de verdade.';
 
 // Puxa o bloco ```json{...}``` do fim da resposta da IA. Se não achar
 // ou vier mal formado, devolve null — quem chama trata isso como "sem
@@ -263,7 +266,7 @@ async function chamarClaude(imagemBuf, mediaType, historico) {
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 4000,
+      max_tokens: 8000,
       messages: [{
         role: 'user',
         content: [
