@@ -5,6 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip');
+const { gerarModelo3mfConfigurado } = require('./gerar3mf');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -188,8 +189,47 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
   'seção fina que quebra, peça alta e estreita que tomba, troca excessiva de filamento em AMS, etc.) e a mitigação ' +
   'pra cada um\n\n' +
-  'Responda só com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
-  'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.';
+  'Responda com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
+  'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.\n\n' +
+  'Depois da ficha, numa linha separada, repita os MESMOS valores que você acabou de decidir num bloco de código ' +
+  'JSON (só isso depois da ficha, nada de texto explicando o JSON) com exatamente estas chaves — não invente chave ' +
+  'nova, não omita nenhuma (se não precisar de suporte, ainda assim preencha support_enable como false e os outros ' +
+  'campos de suporte com um valor qualquer, eles são ignorados quando enable é false):\n\n' +
+  '```json\n' +
+  '{\n' +
+  '  "layer_height_mm": 0.2,\n' +
+  '  "wall_loops": 3,\n' +
+  '  "infill_density_pct": 15,\n' +
+  '  "infill_pattern": "grid",\n' +
+  '  "support_enable": false,\n' +
+  '  "support_type": "normal",\n' +
+  '  "support_threshold_angle": 40,\n' +
+  '  "brim_type": "outer_brim_only",\n' +
+  '  "brim_width_mm": 3,\n' +
+  '  "nozzle_temp_c": 220,\n' +
+  '  "bed_temp_c": 55\n' +
+  '}\n' +
+  '```';
+
+// Puxa o bloco ```json{...}``` do fim da resposta da IA. Se não achar
+// ou vier mal formado, devolve null — quem chama trata isso como "sem
+// versão estruturada" e simplesmente não pré-configura o fatiador,
+// nunca quebra o resto do fluxo por causa disso.
+function extrairAjustesEstruturados(textoCompleto) {
+  const m = textoCompleto.match(/```json\s*([\s\S]*?)```/i);
+  if (!m) return null;
+  try {
+    return JSON.parse(m[1]);
+  } catch (e) {
+    return null;
+  }
+}
+
+// A ficha "pra humano ler" não deve mostrar o JSON colado embaixo —
+// tira o bloco antes de guardar em ai_slicing_tips.
+function removerBlocoJSON(textoCompleto) {
+  return textoCompleto.replace(/```json\s*[\s\S]*?```/i, '').trim();
+}
 
 // Busca as últimas tentativas de impressão registradas pra essa peça
 // (produto ou projeto) e monta um textinho pra IA levar em conta — é
@@ -255,10 +295,13 @@ async function analisarUm(product) {
 
     log('Analisando "' + product.name + '" com IA...');
     const historico = await buscarHistoricoFeedback('product_id', product.id);
-    const tips = await chamarClaude(miniatura, undefined, historico);
+    const respostaCompleta = await chamarClaude(miniatura, undefined, historico);
+    const ajustes = extrairAjustesEstruturados(respostaCompleta);
+    const tips = removerBlocoJSON(respostaCompleta);
 
     await supabase.from('products').update({
-      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
+      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_slicing_settings: ajustes,
+      ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
     }).eq('id', product.id);
     log('✅ Análise de "' + product.name + '" pronta.');
   } catch (e) {
@@ -502,10 +545,13 @@ async function analisarProjetoUm(li) {
 
     log('Analisando projeto de "' + nomeRef + '" com IA...');
     const historico = await buscarHistoricoFeedback('order_line_item_id', li.id);
-    const tips = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico);
+    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico);
+    const ajustes = extrairAjustesEstruturados(respostaCompleta);
+    const tips = removerBlocoJSON(respostaCompleta);
 
     await supabase.from('order_line_items').update({
-      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
+      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_slicing_settings: ajustes,
+      ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
     }).eq('id', li.id);
     log('✅ Análise do projeto de "' + nomeRef + '" pronta.');
   } catch (e) {
@@ -551,8 +597,29 @@ async function abrirNoFatiadorProjeto(li) {
     fs.mkdirSync(downloadsDir, { recursive: true });
     const ext = path.extname(li.model_file_path) || '.stl';
     const nomeSeguro = ('projeto-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
-    const localPath = path.join(downloadsDir, nomeSeguro + ext);
-    fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
+    const stlBuf = Buffer.from(await fileData.arrayBuffer());
+
+    // Se a colinha já tem os números certinhos e o arquivo é um .stl cru
+    // (é o que a Meshy sempre gera), monta um .3mf com impressora,
+    // filamento e os ajustes da colinha já aplicados — pra abrir sem
+    // escolher nada na mão. Se der qualquer problema na conversão, cai
+    // pro comportamento de sempre (.stl puro) em vez de travar o pedido.
+    let localPath;
+    if (ext.toLowerCase() === '.stl' && li.ai_slicing_settings) {
+      try {
+        const resultado = gerarModelo3mfConfigurado(stlBuf, li.ai_slicing_settings, nomeSeguro + '.stl');
+        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
+        fs.writeFileSync(localPath, resultado.buffer);
+        log('Projeto de "' + nomeRef + '" convertido pra .3mf configurado (escala ' + resultado.escalaAplicada.toFixed(4) + ').');
+      } catch (e) {
+        log('AVISO: não consegui pré-configurar o .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
+        localPath = path.join(downloadsDir, nomeSeguro + ext);
+        fs.writeFileSync(localPath, stlBuf);
+      }
+    } else {
+      localPath = path.join(downloadsDir, nomeSeguro + ext);
+      fs.writeFileSync(localPath, stlBuf);
+    }
 
     log('Abrindo projeto de "' + nomeRef + '" no fatiador...');
     const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
@@ -580,7 +647,7 @@ async function abrirNoFatiadorProjeto(li) {
 async function tickAbrirFatiadorProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, model_file_path')
+    .select('id, requester_name, model_file_path, ai_slicing_settings')
     .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);
