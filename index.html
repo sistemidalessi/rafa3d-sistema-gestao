@@ -739,6 +739,13 @@ async function abrirGerenciarProjeto(lineItemId) {
   }
   html += '</div>';
 
+  if (li.model_file_path) {
+    html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
+    html += '<span>Gostou do resultado? Pode virar item do catálogo, pra vender pra qualquer cliente.</span>';
+    html += '<button class="btn ghost" onclick="transformarProjetoEmProduto(\'' + li.id + '\')">🎁 Transformar em Produto</button>';
+    html += '</div>';
+  }
+
   html += '</div><div class="modal-actions">' +
     '<button class="btn ghost" style="color:var(--text-danger, #c0392b); border-color:#f0c9c9;" onclick="excluirProjeto(\'' + li.id + '\', \'' + (li.order_id || '') + '\')">🗑️ Excluir Projeto</button>' +
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
@@ -2446,10 +2453,28 @@ async function saveReceita(aplicarPreco) {
    guarda 'novo' ou o id do produto sendo editado. Ao criar um produto novo,
    ele nasce com sale_price 0 e cai direto na tela de dar preço (o preço
    sempre nasce da conta de custo, nunca é digitado direto). */
-function abrirNovoProduto() {
+let produtoCadastroSeed = null;
+
+function abrirNovoProduto(seed) {
   produtoCadastroAberto = 'novo';
+  produtoCadastroSeed = seed || null;
   desenharProdutos();
   window.scrollTo(0, 0);
+}
+
+// Pega um projeto personalizado já com modelo 3D e usa ele como ponto de
+// partida pra um produto do catálogo — o dono ainda escolhe categoria,
+// foto e preço na tela normal de cadastro, nada disso é automático.
+async function transformarProjetoEmProduto(lineItemId) {
+  if (!confirm('Isso abre a tela de novo produto já começando com o modelo 3D desse projeto. Você ainda escolhe categoria, foto e preço antes dele aparecer no catálogo. Continuar?')) return;
+  const li = await q(SUPA.from('order_line_items').select('*').eq('id', lineItemId).maybeSingle());
+  closeModal();
+  await showTab('produtos');
+  abrirNovoProduto({
+    name: li.custom_description || '',
+    model_file_path: li.model_file_path || null,
+    model_source: li.model_source || null,
+  });
 }
 
 function abrirEditarProduto(id) {
@@ -2460,6 +2485,7 @@ function abrirEditarProduto(id) {
 
 function sairCadastroProduto() {
   produtoCadastroAberto = null;
+  produtoCadastroSeed = null;
   renderProdutos();
   window.scrollTo(0, 0);
 }
@@ -2477,7 +2503,7 @@ function proximoCatalogCode(category) {
 
 function desenharCadastroProduto(el) {
   const isNovo = produtoCadastroAberto === 'novo';
-  const p = isNovo ? {} : produtosCache.find((x) => x.id === produtoCadastroAberto);
+  const p = isNovo ? (produtoCadastroSeed || {}) : produtosCache.find((x) => x.id === produtoCadastroAberto);
   if (!isNovo && !p) { produtoCadastroAberto = null; desenharProdutos(); return; }
 
   let opcoesCategoria = '<option value="">— escolha —</option>';
@@ -2488,6 +2514,9 @@ function desenharCadastroProduto(el) {
   let html = '<div class="card">';
   html += '<button class="btn ghost" onclick="sairCadastroProduto()">← Voltar pros produtos</button>';
   html += '<h3 style="margin:16px 0 4px;">' + (isNovo ? 'Novo produto' : 'Editar produto — ' + escapeHtml(p.catalog_code)) + '</h3>';
+  if (isNovo && produtoCadastroSeed && produtoCadastroSeed.model_file_path) {
+    html += '<div style="color:var(--muted); font-size:12px; margin-bottom:4px;">📦 Veio de um projeto — o modelo 3D já está anexado, só falta categoria, foto e preço.</div>';
+  }
   html += '</div>';
 
   html += '<div class="card">';
@@ -2569,6 +2598,10 @@ async function salvarCadastroProduto() {
 
   if (isNovo) {
     const catalog_code = proximoCatalogCode(category);
+    if (produtoCadastroSeed && produtoCadastroSeed.model_file_path) {
+      dados.model_file_path = produtoCadastroSeed.model_file_path;
+      dados.model_source = produtoCadastroSeed.model_source || 'manual_upload';
+    }
     const { data: inserido, error: insErr } = await SUPA.from('products')
       .insert({ ...dados, catalog_code, sale_price: 0 }).select().single();
     if (insErr) { toast('Erro: ' + insErr.message); return; }
@@ -2577,6 +2610,7 @@ async function salvarCadastroProduto() {
       if (!caminhoOk) return;
     }
     toast('Produto criado — agora dá o preço dele.');
+    produtoCadastroSeed = null;
     await getProdutos(true);
     produtoCadastroAberto = null;
     abrirPrecificar(inserido.id);
