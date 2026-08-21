@@ -689,6 +689,7 @@ function abrirNovoProjeto() {
     '<label>O que o cliente quer</label>' +
     '<textarea id="projDescricao" rows="3" placeholder="Descreva o que o cliente pediu..." style="width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit;"></textarea>' +
     '<label>Foto de referência (opcional)</label><input id="projFoto" type="file" accept="image/*">' +
+    '<div style="font-size:12px; color:var(--muted); margin:-4px 0 4px;">Se a peça foi feita em pedaços separados (base, tampa, encaixe...), deixe essa foto em branco — na próxima tela você adiciona uma foto pra cada pedaço.</div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="criarProjeto()">Criar Projeto</button>' +
@@ -724,9 +725,9 @@ async function criarProjeto() {
     else await SUPA.from('order_line_items').update({ custom_reference_image_path: path }).eq('id', li.id);
   }
 
-  closeModal();
   toast('Projeto criado!');
   await renderProjetos();
+  await abrirGerenciarProjeto(li.id);
 }
 
 async function abrirGerenciarProjeto(lineItemId) {
