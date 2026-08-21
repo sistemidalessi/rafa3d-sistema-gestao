@@ -463,7 +463,10 @@ async function renderDashboard() {
   const countImprimindo = filaCounts.filter((i) => i.line_status === 'imprimindo').length;
   const countPos = filaCounts.filter((i) => i.line_status === 'pos_processamento').length;
 
-  let html = '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
+  let html = '';
+  if (isOwner) html += cardAvisoPush();
+
+  html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
   html += statCard('🧾', orcamentosPendentes.length, 'Orçamentos pendentes');
   html += statCard('🖨️', countFila + countImprimindo, 'Na fila / imprimindo');
   html += statCard('🎨', countPos, 'Em pós-processamento');
@@ -515,6 +518,54 @@ function statCard(icon, valor, label) {
     '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px; margin-top:4px;">' + valor + '</div>' +
     '<div style="color:var(--muted); font-size:12px; margin-top:2px;">' + escapeHtml(label) + '</div>' +
   '</div>';
+}
+
+const VAPID_PUBLIC_KEY = 'BL6grIejbqKL_Q5RAHP8zgkZQ7e8Ipj9d5kAExNyecBLrdYrAx_18iPqkAvKpPDhqHbeB0irxRMRB0kqfG2aAh4';
+
+// Aviso instantâneo de pedido novo sem precisar de WhatsApp comercial:
+// notificação nativa do navegador, funciona até com a aba fechada (não
+// precisa estar com o sistema aberto), desde que tenha ativado uma vez.
+function cardAvisoPush() {
+  const suportado = 'serviceWorker' in navigator && 'PushManager' in window;
+  if (!suportado) return '';
+  const permissao = window.Notification ? Notification.permission : 'default';
+  if (permissao === 'granted') {
+    return '<div class="card" style="display:flex; justify-content:space-between; align-items:center;">' +
+      '<span>🔔 Avisos de pedido novo neste aparelho: <span class="badge on">ativado</span></span>' +
+      '</div>';
+  }
+  return '<div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+    '<span>🔔 Quer ser avisado na hora que chegar um pedido novo, mesmo com o sistema fechado?</span>' +
+    '<button class="btn" onclick="ativarNotificacoesPush()">Ativar avisos neste aparelho</button>' +
+    '</div>';
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+async function ativarNotificacoesPush() {
+  try {
+    const permissao = await Notification.requestPermission();
+    if (permissao !== 'granted') { toast('Sem permissão de notificação, não dá pra ativar.'); return; }
+    const registro = await navigator.serviceWorker.register('sw.js');
+    const subscription = await registro.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+    });
+    const raw = subscription.toJSON();
+    const { error } = await SUPA.from('push_subscriptions').upsert({
+      endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth, user_id: currentUser.id,
+    }, { onConflict: 'endpoint' });
+    if (error) { toast('Erro: ' + error.message); return; }
+    toast('Avisos ativados neste aparelho!');
+    await renderDashboard();
+  } catch (e) {
+    toast('Não consegui ativar: ' + e.message);
+  }
 }
 
 /* ============================================================
@@ -1046,14 +1097,21 @@ async function renderPedidoDetalhe(id) {
   const payments = await q(SUPA.from('payments').select('*').eq('order_id', id).order('created_at'));
   const ps = await q(SUPA.from('orders_payment_status').select('*').eq('order_id', id).maybeSingle());
 
+  const nomeCliente = order.customers ? order.customers.name : (order.customer_name || '—');
+  const contatoCliente = order.customers ? order.customers.phone : order.customer_contact;
+
   let html = '<button class="btn ghost" onclick="voltarPedidos()">&larr; Voltar</button>';
   html += '<div class="card" style="margin-top:12px;">';
   html += '<div style="display:flex; justify-content:space-between;">';
   html += '<div><strong>' + escapeHtml(order.order_number || order.id.slice(0, 8)) + '</strong><br>';
-  html += '<span style="color:var(--muted);">' + escapeHtml(order.customers ? order.customers.name : '—') + (order.customers && order.customers.phone ? ' · ' + escapeHtml(order.customers.phone) : '') + '</span></div>';
+  html += '<span style="color:var(--muted);">' + escapeHtml(nomeCliente) + (contatoCliente ? ' · ' + escapeHtml(contatoCliente) : '') + '</span></div>';
   html += '<div style="text-align:right;"><div>' + fmtMoney(order.total_amount) + '</div>';
   html += '<span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></div>';
-  html += '</div></div>';
+  html += '</div>';
+  if (contatoCliente) {
+    html += '<div style="margin-top:10px;"><button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button></div>';
+  }
+  html += '</div>';
 
   if (order.channel === 'catalogo') {
     html += '<div class="card">';
@@ -1136,6 +1194,20 @@ async function renderPedidoDetalhe(id) {
   html += '</div>';
 
   el.innerHTML = html;
+}
+
+async function abrirAgradecimento(orderId) {
+  const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', orderId).maybeSingle());
+  const contato = (order.customers ? order.customers.phone : order.customer_contact) || '';
+  const digitos = contato.replace(/\D/g, '');
+  if (!digitos) { toast('Esse pedido não tem WhatsApp do cliente cadastrado.'); return; }
+  const numeroCompleto = digitos.length <= 11 ? '55' + digitos : digitos;
+  const nome = (order.customers ? order.customers.name : order.customer_name) || '';
+  const primeiroNome = nome.trim().split(' ')[0];
+  const mensagem = 'Olá' + (primeiroNome ? ' ' + primeiroNome : '') + '! Muito obrigado pela compra na Rafa 3D 🙌 ' +
+    'Já recebemos seu pedido' + (order.order_number ? ' ' + order.order_number : '') + ' e vamos começar a preparar com carinho. ' +
+    'Qualquer dúvida durante o processo é só chamar por aqui!';
+  window.open('https://wa.me/' + numeroCompleto + '?text=' + encodeURIComponent(mensagem), '_blank');
 }
 
 async function gerarEtiqueta(orderId) {

@@ -6,9 +6,54 @@
 // Banco Central, não precisa de conta em lugar nenhum pra isso).
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+import webpush from "web-push";
 
 function tlv(id: string, value: string): string {
   return id + String(value.length).padStart(2, "0") + value;
+}
+
+// Manda notificação push pra todo aparelho que ativou os avisos
+// (aba "🔔 Ativar avisos" no Dashboard) — funciona mesmo com o sistema
+// fechado. Se um aparelho não existe mais (celular trocado, notificação
+// desativada no navegador), o Web Push devolve erro 410 e a gente
+// aproveita pra limpar aquela inscrição velha.
+async function avisarPedidoNovo(supabaseAdmin: any, orderNumber: string, total: number, combinar: boolean) {
+  const publicKey = Deno.env.get("VAPID_PUBLIC_KEY");
+  const privateKey = Deno.env.get("VAPID_PRIVATE_KEY");
+  const subject = Deno.env.get("VAPID_SUBJECT");
+  if (!publicKey || !privateKey || !subject) return { motivo: "sem VAPID configurado" };
+  webpush.setVapidDetails(subject, publicKey, privateKey);
+
+  const { data: subs, error: erroSubs } = await supabaseAdmin.from("push_subscriptions").select("*");
+  if (erroSubs) return { motivo: "erro buscando inscrições", erro: erroSubs.message };
+  if (!subs || !subs.length) return { motivo: "nenhuma inscrição cadastrada" };
+
+  const payload = JSON.stringify({
+    title: "🎁 Pedido novo — " + orderNumber,
+    body: combinar
+      ? "Cliente fechou pedido e quer combinar a entrega."
+      : "Cliente fechou pedido de " + total.toFixed(2).replace(".", ",") + " — aguardando comprovante do PIX.",
+    url: "./",
+  });
+
+  const resultados = [];
+  for (const sub of subs) {
+    try {
+      await webpush.sendNotification(
+        { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
+        payload,
+      );
+      resultados.push({ id: sub.id, ok: true });
+    } catch (e: any) {
+      if (e.statusCode === 404 || e.statusCode === 410) {
+        await supabaseAdmin.from("push_subscriptions").delete().eq("id", sub.id);
+        resultados.push({ id: sub.id, ok: false, apagada: true, statusCode: e.statusCode });
+      } else {
+        resultados.push({ id: sub.id, ok: false, statusCode: e.statusCode, erro: String(e && e.message || e) });
+      }
+    }
+  }
+  return { totalInscricoes: subs.length, resultados };
 }
 
 // CRC16-CCITT (poly 0x1021, init 0xFFFF) — checksum exigido no final do
@@ -153,6 +198,11 @@ export default {
       await ctx.supabaseAdmin.from("orders").update({ status: "cancelado" }).eq("id", pedido.id);
       return Response.json({ error: "Não consegui salvar os itens do pedido." }, { status: 500 });
     }
+
+    // Avisa o dono na hora, no celular — nunca deixa isso quebrar a
+    // resposta pro cliente, o pedido já está criado de qualquer jeito.
+    await avisarPedidoNovo(ctx.supabaseAdmin, orderNumber, total, combinar).catch((e) =>
+      console.error("Erro mandando notificação push:", e));
 
     const whatsappNumero = Deno.env.get("WHATSAPP_NUMBER") || "";
     const mensagem = combinar
