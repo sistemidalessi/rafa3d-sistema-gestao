@@ -1029,18 +1029,28 @@ async function renderPedidos() {
       const ps = statusById[o.id];
       html += '<tr>';
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
-      html += '<td>' + escapeHtml(o.customers ? o.customers.name : '—') + '</td>';
+      html += '<td>' + escapeHtml(o.customers ? o.customers.name : (o.customer_name || '—')) + '</td>';
       html += '<td>' + escapeHtml(ORDER_TYPE_LABELS[o.order_type] || o.order_type) + '</td>';
       html += '<td>' + escapeHtml(ORDER_STATUS_LABELS[o.status] || o.status) + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td><span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></td>';
-      html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\')">Abrir</button></td>';
+      html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\')">Abrir</button>' +
+        '<button class="btn ghost" onclick="excluirPedido(\'' + o.id + '\')">🗑️</button></td>';
       html += '</tr>';
     });
     html += '</table>';
   }
   html += '</div>';
   el.innerHTML = html;
+}
+
+async function excluirPedido(orderId) {
+  if (!confirm('Excluir esse pedido de vez? Isso apaga os itens e pagamentos dele também. Não tem como desfazer.')) return;
+  const { error } = await SUPA.from('orders').delete().eq('id', orderId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Pedido excluído.');
+  pedidoDetalheId = null;
+  await renderPedidos();
 }
 
 async function openPedidoForm() {
@@ -1108,9 +1118,12 @@ async function renderPedidoDetalhe(id) {
   html += '<div style="text-align:right;"><div>' + fmtMoney(order.total_amount) + '</div>';
   html += '<span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></div>';
   html += '</div>';
+  html += '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">';
   if (contatoCliente) {
-    html += '<div style="margin-top:10px;"><button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button></div>';
+    html += '<button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button>';
   }
+  html += '<button class="btn ghost" onclick="excluirPedido(\'' + id + '\')">🗑️ Excluir pedido</button>';
+  html += '</div>';
   html += '</div>';
 
   if (order.channel === 'catalogo') {
@@ -3187,7 +3200,7 @@ async function renderMargem() {
 async function renderFinanceiro() {
   const el = document.getElementById('tab-financeiro');
   el.innerHTML = '<div class="empty">Carregando...</div>';
-  const orders = await q(SUPA.from('orders').select('id, order_number, total_amount, created_at, customers(name)').neq('status', 'cancelado'));
+  const orders = await q(SUPA.from('orders').select('id, order_number, total_amount, created_at, customer_name, customers(name)').neq('status', 'cancelado'));
   const statuses = await q(SUPA.from('orders_payment_status').select('*'));
   const statusById = {};
   statuses.forEach((s) => { statusById[s.order_id] = s; });
@@ -3206,7 +3219,7 @@ async function renderFinanceiro() {
       const falta = o.total_amount - ps.total_paid;
       html += '<tr>';
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '</td>';
-      html += '<td>' + escapeHtml(o.customers ? o.customers.name : '—') + '</td>';
+      html += '<td>' + escapeHtml(o.customers ? o.customers.name : (o.customer_name || '—')) + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td>' + fmtMoney(ps.total_paid) + '</td>';
       html += '<td>' + fmtMoney(falta) + '</td>';
