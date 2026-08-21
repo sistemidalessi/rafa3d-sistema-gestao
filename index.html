@@ -732,6 +732,7 @@ async function criarProjeto() {
 async function abrirGerenciarProjeto(lineItemId) {
   _projetoGerenciarAberto = lineItemId;
   const li = await q(SUPA.from('order_line_items').select('*, orders(order_number, status)').eq('id', lineItemId).maybeSingle());
+  const partes = await q(SUPA.from('project_parts').select('*').eq('order_line_item_id', lineItemId).order('ordem'));
   let fotoUrl = null;
   if (li.custom_reference_image_path) {
     const { data } = await SUPA.storage.from('projetos-fotos').createSignedUrl(li.custom_reference_image_path, 300);
@@ -748,6 +749,24 @@ async function abrirGerenciarProjeto(lineItemId) {
   html += '<div><h3 style="margin:0 0 4px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</h3>' +
     '<div style="font-size:12px; color:var(--muted); margin-bottom:6px;">' + escapeHtml(li.requester_contact || '') + ' · ' + escapeHtml(li.orders ? li.orders.order_number : '') + '</div>' +
     '<div style="font-size:13px;">' + escapeHtml(li.custom_description || '') + '</div></div>';
+  html += '</div>';
+
+  html += '<div style="border-top:1px solid var(--border); padding:12px 0; margin-bottom:6px;">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px;">';
+  html += '<strong>🧩 Partes do projeto' + (partes.length ? ' (' + partes.length + ')' : '') + '</strong>';
+  html += '<button class="btn ghost" onclick="abrirAdicionarParte(\'' + lineItemId + '\')">+ Adicionar parte</button>';
+  html += '</div>';
+  if (partes.length === 0) {
+    html += '<div style="font-size:12px; color:var(--muted);">Use isso quando a peça de referência foi feita em pedaços separados (base, tampa, encaixe...) — cada parte ganha foto, modelo 3D e colinha próprios, e todas abrem juntas no fatiador.</div>';
+  } else {
+    for (const parte of partes) {
+      html += await renderParteHtml(parte);
+    }
+    const partesProntas = partes.filter((p) => p.model_file_path);
+    if (partesProntas.length > 0) {
+      html += '<button class="btn full" style="margin-top:10px;" onclick="solicitarAbrirFatiadorTodasPartes(\'' + lineItemId + '\')">🖥️ Abrir todas as partes no Fatiador (' + partesProntas.length + ')</button>';
+    }
+  }
   html += '</div>';
 
   html += '<div style="display:flex; flex-direction:column; gap:10px;">';
@@ -808,6 +827,144 @@ async function abrirGerenciarProjeto(lineItemId) {
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
+}
+
+const PARTE_STATUS_BADGE = {
+  queued: '<span class="badge off">na fila…</span>',
+  processing: '<span class="badge off">gerando…</span>',
+  done: '<span class="badge on">pronto</span>',
+  error: '<span class="badge off">erro</span>',
+};
+
+async function renderParteHtml(parte) {
+  let fotoUrl = null;
+  if (parte.reference_image_path) {
+    const { data } = await SUPA.storage.from('projetos-fotos').createSignedUrl(parte.reference_image_path, 300);
+    fotoUrl = data ? data.signedUrl : null;
+  }
+  const nome = escapeHtml(parte.nome || ('Parte ' + parte.ordem));
+  let html = '<div class="card" style="background:#f7f9fc; margin-top:8px;">';
+  html += '<div style="display:flex; gap:10px; align-items:flex-start;">';
+  html += fotoUrl
+    ? '<img src="' + fotoUrl + '" style="width:56px; height:56px; object-fit:cover; border-radius:8px; border:1px solid var(--border); flex:none;">'
+    : '<div style="width:56px; height:56px; border-radius:8px; background:#e7e9ef; flex:none;"></div>';
+  html += '<div style="flex:1; min-width:0;">';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center;"><strong style="font-size:13px;">' + nome + '</strong>';
+  html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="excluirParte(\'' + parte.id + '\')">🗑️</button></div>';
+
+  html += '<div style="font-size:12px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">';
+  html += '<span>Modelo 3D — ' + (parte.model_file_path ? '<span class="badge on">' + (parte.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (PARTE_STATUS_BADGE[parte.meshy_status] || '<span style="color:var(--muted);">nenhum</span>')) + '</span>';
+  if (!parte.model_file_path && parte.meshy_status !== 'queued' && parte.meshy_status !== 'processing' && parte.reference_image_path) {
+    html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="solicitarGerarModeloParte(\'' + parte.id + '\')">🧬 Gerar por IA</button>';
+  }
+  html += '</div>';
+
+  if (parte.model_file_path) {
+    html += '<div style="font-size:12px; margin-top:4px; display:flex; justify-content:space-between; align-items:center;">';
+    html += '<span>Colinha — ' + (parte.ai_analysis_status === 'done' ? '<span class="badge on">pronta</span>' : (PARTE_STATUS_BADGE[parte.ai_analysis_status] || '<span style="color:var(--muted);">não pedida</span>')) + '</span>';
+    html += '<span class="row-actions">';
+    if (parte.ai_analysis_status === 'done') {
+      html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="verColinhaParte(\'' + parte.id + '\')">Ver</button>';
+    }
+    if (parte.ai_analysis_status !== 'queued' && parte.ai_analysis_status !== 'processing') {
+      html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="solicitarAnaliseIAParte(\'' + parte.id + '\')">🤖 ' + (parte.ai_analysis_status === 'done' ? 'De novo' : 'Analisar') + '</button>';
+    }
+    html += '</span></div>';
+  }
+  html += '</div></div></div>';
+  return html;
+}
+
+function abrirAdicionarParte(lineItemId) {
+  openModal(
+    '<h3>Adicionar parte</h3>' +
+    '<label>Nome dessa parte (opcional)</label><input id="parteNome" placeholder="Ex: Base, Tampa, Encaixe...">' +
+    '<label>Foto de referência dessa parte</label><input id="parteFoto" type="file" accept="image/*">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+      '<button class="btn" onclick="salvarNovaParte(\'' + lineItemId + '\')">Adicionar</button>' +
+    '</div>'
+  );
+}
+
+async function salvarNovaParte(lineItemId) {
+  const nome = document.getElementById('parteNome').value.trim() || null;
+  const file = document.getElementById('parteFoto').files[0];
+  if (!file) { toast('Escolhe uma foto pra essa parte.'); return; }
+
+  const existentes = await q(SUPA.from('project_parts').select('ordem').eq('order_line_item_id', lineItemId).order('ordem', { ascending: false }).limit(1));
+  const ordem = existentes.length ? existentes[0].ordem + 1 : 1;
+
+  const { data: parte, error } = await SUPA.from('project_parts').insert({
+    order_line_item_id: lineItemId, ordem, nome,
+  }).select().single();
+  if (error) { toast('Erro: ' + error.message); return; }
+
+  const ext = file.name.split('.').pop();
+  const path = lineItemId + '/partes/' + parte.id + '/foto.' + ext;
+  const { error: upErr } = await SUPA.storage.from('projetos-fotos').upload(path, file, { upsert: true });
+  if (upErr) { toast('Parte criada, mas a foto falhou: ' + upErr.message); }
+  else await SUPA.from('project_parts').update({ reference_image_path: path }).eq('id', parte.id);
+
+  toast('Parte adicionada.');
+  abrirGerenciarProjeto(lineItemId);
+}
+
+async function excluirParte(parteId) {
+  if (!confirm('Excluir essa parte? Não tem como desfazer.')) return;
+  const { data: parte } = await SUPA.from('project_parts').select('order_line_item_id, reference_image_path, model_file_path').eq('id', parteId).maybeSingle();
+  if (parte) {
+    if (parte.reference_image_path) await SUPA.storage.from('projetos-fotos').remove([parte.reference_image_path]);
+    if (parte.model_file_path) await SUPA.storage.from('modelos-3d').remove([parte.model_file_path]);
+  }
+  const { error } = await SUPA.from('project_parts').delete().eq('id', parteId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Parte excluída.');
+  if (parte) abrirGerenciarProjeto(parte.order_line_item_id);
+}
+
+async function solicitarGerarModeloParte(parteId) {
+  const { error } = await SUPA.from('project_parts').update({
+    meshy_status: 'queued', meshy_requested_at: new Date().toISOString(), meshy_error: null,
+  }).eq('id', parteId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Pedido enviado — o agente local gera o modelo em instantes.');
+  const { data: parte } = await SUPA.from('project_parts').select('order_line_item_id').eq('id', parteId).maybeSingle();
+  if (parte) abrirGerenciarProjeto(parte.order_line_item_id);
+}
+
+async function solicitarAnaliseIAParte(parteId) {
+  const { error } = await SUPA.from('project_parts').update({
+    ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+  }).eq('id', parteId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Análise pedida — o agente local processa em instantes.');
+  const { data: parte } = await SUPA.from('project_parts').select('order_line_item_id').eq('id', parteId).maybeSingle();
+  if (parte) abrirGerenciarProjeto(parte.order_line_item_id);
+}
+
+async function verColinhaParte(parteId) {
+  const parte = await q(SUPA.from('project_parts').select('*').eq('id', parteId).maybeSingle());
+  openModal(
+    '<h3>Colinha de fatiamento — ' + escapeHtml(parte.nome || ('Parte ' + parte.ordem)) + '</h3>' +
+    '<div class="card" style="background:#f7f9fc; font-size:13.5px; line-height:1.55;">' +
+      formatarColinha(parte.ai_slicing_tips) +
+    '</div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + parte.order_line_item_id + '\')">Voltar</button>' +
+    '</div>',
+    { wide: true }
+  );
+}
+
+async function solicitarAbrirFatiadorTodasPartes(lineItemId) {
+  const { error } = await SUPA.from('project_parts')
+    .update({ open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null })
+    .eq('order_line_item_id', lineItemId)
+    .not('model_file_path', 'is', null);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Abrindo as partes — o agente local vai abrir uma janela do fatiador pra cada uma.');
+  abrirGerenciarProjeto(lineItemId);
 }
 
 async function solicitarGerarModelo3D(lineItemId) {

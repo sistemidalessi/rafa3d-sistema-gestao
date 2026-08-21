@@ -659,6 +659,206 @@ async function tickAbrirFatiadorProjeto() {
   await abrirNoFatiadorProjeto(queued[0]);
 }
 
+/* ============================================================
+   PARTES DE PROJETO — quando a peça de referência foi feita em
+   pedaços separados (project_parts), cada parte passa pela mesma
+   esteira que um projeto de peça única: Meshy → colinha → fatiador.
+   Funções praticamente iguais às de cima, só que lendo/gravando em
+   project_parts em vez de order_line_items — duplicado de propósito,
+   mexer numa não deveria arriscar quebrar a outra.
+   ============================================================ */
+
+async function gerarModeloMeshyParte(parte) {
+  const nomeRef = parte.nome || ('parte ' + parte.ordem);
+  try {
+    if (!parte.reference_image_path) throw new Error('parte não tem foto de referência anexada.');
+    log('Baixando foto da "' + nomeRef + '" pra gerar modelo 3D...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(parte.reference_image_path);
+    if (dlErr) throw new Error('download da foto falhou: ' + dlErr.message);
+    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+
+    log('Pedindo pra Meshy gerar o modelo 3D da "' + nomeRef + '"...');
+    const taskId = await meshyCriarTarefa(fileBuf, mediaTypeFromPath(parte.reference_image_path));
+    await supabase.from('project_parts').update({ meshy_task_id: taskId }).eq('id', parte.id);
+
+    log('Aguardando a Meshy terminar a "' + nomeRef + '" (pode levar alguns minutos)...');
+    const tarefaPronta = await meshyEsperarTarefa(taskId);
+    const stlUrl = tarefaPronta.model_urls && tarefaPronta.model_urls.stl;
+    if (!stlUrl) throw new Error('Meshy terminou mas não veio um arquivo .stl na resposta.');
+
+    const stlRes = await fetch(stlUrl);
+    if (!stlRes.ok) throw new Error('não consegui baixar o .stl gerado pela Meshy (HTTP ' + stlRes.status + ').');
+    const stlBuf = Buffer.from(await stlRes.arrayBuffer());
+
+    const modeloPath = 'projetos/' + parte.order_line_item_id + '/partes/' + parte.id + '/meshy.stl';
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(modeloPath, stlBuf, { upsert: true });
+    if (upErr) throw new Error('upload do modelo gerado falhou: ' + upErr.message);
+
+    let thumbnailPath = null;
+    if (tarefaPronta.thumbnail_url) {
+      try {
+        const thumbRes = await fetch(tarefaPronta.thumbnail_url);
+        if (thumbRes.ok) {
+          const thumbBuf = Buffer.from(await thumbRes.arrayBuffer());
+          thumbnailPath = parte.order_line_item_id + '/partes/' + parte.id + '/meshy_thumb.png';
+          const { error: thumbUpErr } = await supabase.storage.from(FOTOS_BUCKET).upload(thumbnailPath, thumbBuf, { upsert: true });
+          if (thumbUpErr) { thumbnailPath = null; log('AVISO: upload da miniatura da Meshy falhou: ' + thumbUpErr.message); }
+        }
+      } catch (e) {
+        log('AVISO: não consegui baixar a miniatura da Meshy: ' + e.message);
+      }
+    }
+
+    await supabase.from('project_parts').update({
+      meshy_status: 'done', model_file_path: modeloPath, model_source: 'meshy_generated', meshy_error: null,
+      meshy_thumbnail_path: thumbnailPath, updated_at: new Date().toISOString(),
+    }).eq('id', parte.id);
+    log('✅ Modelo 3D da "' + nomeRef + '" gerado com sucesso.');
+  } catch (e) {
+    log('❌ Geração de modelo da "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('project_parts').update({
+      meshy_status: 'error', meshy_error: String(e.message).slice(0, 2000),
+    }).eq('id', parte.id);
+  }
+}
+
+async function tickMeshyPartes() {
+  const { data: queued, error } = await supabase
+    .from('project_parts')
+    .select('id, order_line_item_id, nome, ordem, reference_image_path')
+    .eq('meshy_status', 'queued')
+    .order('meshy_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila da Meshy (partes): ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const parte = queued[0];
+  if (!MESHY_API_KEY) {
+    await supabase.from('project_parts').update({
+      meshy_status: 'error', meshy_error: 'MESHY_API_KEY não configurada no agente local (.env).',
+    }).eq('id', parte.id);
+    return;
+  }
+  await supabase.from('project_parts').update({ meshy_status: 'processing' }).eq('id', parte.id);
+  await gerarModeloMeshyParte(parte);
+}
+
+async function analisarParteUm(parte) {
+  const nomeRef = parte.nome || ('parte ' + parte.ordem);
+  try {
+    const imagemPath = parte.meshy_thumbnail_path || parte.reference_image_path;
+    if (!imagemPath) throw new Error('parte não tem miniatura do modelo nem foto de referência pra analisar.');
+
+    log('Baixando imagem da "' + nomeRef + '" pra analisar...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(imagemPath);
+    if (dlErr) throw new Error('download da imagem falhou: ' + dlErr.message);
+    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+
+    log('Analisando a "' + nomeRef + '" com IA...');
+    const historico = await buscarHistoricoFeedback('order_line_item_id', parte.order_line_item_id);
+    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico);
+    const ajustes = extrairAjustesEstruturados(respostaCompleta);
+    const tips = removerBlocoJSON(respostaCompleta);
+
+    await supabase.from('project_parts').update({
+      ai_analysis_status: 'done', ai_slicing_tips: tips, ai_slicing_settings: ajustes,
+      ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
+    }).eq('id', parte.id);
+    log('✅ Análise da "' + nomeRef + '" pronta.');
+  } catch (e) {
+    log('❌ Análise da "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('project_parts').update({
+      ai_analysis_status: 'error', ai_analysis_error: String(e.message).slice(0, 2000),
+    }).eq('id', parte.id);
+  }
+}
+
+async function tickAIPartes() {
+  const { data: queued, error } = await supabase
+    .from('project_parts')
+    .select('id, order_line_item_id, nome, ordem, meshy_thumbnail_path, reference_image_path')
+    .eq('ai_analysis_status', 'queued')
+    .order('ai_analysis_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila de análise (partes): ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const parte = queued[0];
+  if (!ANTHROPIC_API_KEY) {
+    await supabase.from('project_parts').update({
+      ai_analysis_status: 'error', ai_analysis_error: 'ANTHROPIC_API_KEY não configurada no agente local (.env).',
+    }).eq('id', parte.id);
+    return;
+  }
+  await supabase.from('project_parts').update({ ai_analysis_status: 'processing' }).eq('id', parte.id);
+  await analisarParteUm(parte);
+}
+
+async function abrirNoFatiadorParte(parte) {
+  const nomeRef = parte.nome || ('parte ' + parte.ordem);
+  try {
+    if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
+
+    log('Baixando modelo da "' + nomeRef + '" pra abrir no fatiador...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(parte.model_file_path);
+    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+
+    const downloadsDir = path.join(__dirname, 'downloads');
+    fs.mkdirSync(downloadsDir, { recursive: true });
+    const ext = path.extname(parte.model_file_path) || '.stl';
+    const nomeSeguro = ('parte-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
+    const stlBuf = Buffer.from(await fileData.arrayBuffer());
+
+    let localPath;
+    if (ext.toLowerCase() === '.stl' && parte.ai_slicing_settings) {
+      try {
+        const resultado = gerarModelo3mfConfigurado(stlBuf, parte.ai_slicing_settings, nomeSeguro + '.stl');
+        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
+        fs.writeFileSync(localPath, resultado.buffer);
+        log('"' + nomeRef + '" convertida pra .3mf configurado (escala ' + resultado.escalaAplicada.toFixed(4) + ').');
+      } catch (e) {
+        log('AVISO: não consegui pré-configurar o .3mf da "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
+        localPath = path.join(downloadsDir, nomeSeguro + ext);
+        fs.writeFileSync(localPath, stlBuf);
+      }
+    } else {
+      localPath = path.join(downloadsDir, nomeSeguro + ext);
+      fs.writeFileSync(localPath, stlBuf);
+    }
+
+    log('Abrindo a "' + nomeRef + '" no fatiador...');
+    const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
+    const psResult = await new Promise((resolve) => {
+      execFile('powershell.exe', [
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', psScript,
+        '-ExePath', SLICER_APP_PATH, '-FilePath', localPath,
+      ], { timeout: 30000, windowsHide: true }, (err, stdout, stderr) => {
+        resolve({ stdout: stdout || '', stderr: stderr || '', err });
+      });
+    });
+    if (psResult.err) throw new Error('não consegui abrir o fatiador: ' + (psResult.stderr || psResult.err.message).slice(0, 300));
+    log(psResult.stdout.trim() || 'fatiador aberto.');
+
+    await supabase.from('project_parts').update({ open_slicer_status: 'done', open_slicer_error: null }).eq('id', parte.id);
+    log('✅ "' + nomeRef + '" aberta no fatiador.');
+  } catch (e) {
+    log('❌ Abrir "' + nomeRef + '" no fatiador falhou: ' + e.message);
+    await supabase.from('project_parts').update({
+      open_slicer_status: 'error', open_slicer_error: String(e.message).slice(0, 2000),
+    }).eq('id', parte.id);
+  }
+}
+
+async function tickAbrirFatiadorPartes() {
+  const { data: queued, error } = await supabase
+    .from('project_parts')
+    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings')
+    .eq('open_slicer_status', 'queued')
+    .order('open_slicer_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando fila de abrir-no-fatiador (partes): ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  await abrirNoFatiadorParte(queued[0]);
+}
+
 async function main() {
   log('Agente de fatiamento iniciado.');
   log('OrcaSlicer: ' + ORCA_PATH);
@@ -670,6 +870,9 @@ async function main() {
     try { await tickMeshy(); } catch (e) { log('Erro inesperado (geração Meshy): ' + e.message); }
     try { await tickAbrirFatiadorProjeto(); } catch (e) { log('Erro inesperado (abrir no fatiador - projeto): ' + e.message); }
     try { await tickAIProjeto(); } catch (e) { log('Erro inesperado (análise IA - projeto): ' + e.message); }
+    try { await tickMeshyPartes(); } catch (e) { log('Erro inesperado (Meshy - partes): ' + e.message); }
+    try { await tickAIPartes(); } catch (e) { log('Erro inesperado (análise IA - partes): ' + e.message); }
+    try { await tickAbrirFatiadorPartes(); } catch (e) { log('Erro inesperado (abrir no fatiador - partes): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }
