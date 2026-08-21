@@ -723,6 +723,12 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '</div>';
     if (li.ai_analysis_status === 'done') {
       html += '<div class="card" style="background:#f7f9fc; margin-top:8px; font-size:13px; line-height:1.55;">' + formatarColinha(li.ai_slicing_tips) + '</div>';
+      html += '<div style="margin-top:8px;">';
+      html += '<div style="font-size:12px; color:var(--muted); margin-bottom:6px;">Já imprimiu com essa colinha? Como foi?</div>';
+      html += '<span class="row-actions">';
+      html += '<button class="btn ghost" onclick="registrarFeedbackColinha(true, {lineItemId:\'' + li.id + '\'})">✅ Funcionou bem</button>';
+      html += '<button class="btn ghost" onclick="registrarFeedbackColinha(false, {lineItemId:\'' + li.id + '\'})">⚠️ Deu problema</button>';
+      html += '</span></div>';
     }
     html += '</div>';
 
@@ -2049,12 +2055,46 @@ function verAnaliseIA(productId) {
       formatarColinha(p.ai_slicing_tips) +
     '</div>' +
     '<p style="font-size:11px; color:var(--muted); margin-top:8px;">Sugestão gerada por IA a partir da miniatura do arquivo — confira antes de imprimir, não substitui seu julgamento.</p>' +
+    '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">' +
+      '<div style="font-weight:700; font-size:13px; margin-bottom:8px;">Já imprimiu com essa colinha? Como foi?</div>' +
+      '<div class="row-actions">' +
+        '<button class="btn ghost" onclick="registrarFeedbackColinha(true, {productId:\'' + productId + '\'})">✅ Funcionou bem</button>' +
+        '<button class="btn ghost" onclick="registrarFeedbackColinha(false, {productId:\'' + productId + '\'})">⚠️ Deu problema</button>' +
+      '</div>' +
+    '</div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Fechar</button>' +
       '<button class="btn" onclick="solicitarAnaliseIA(\'' + productId + '\'); closeModal();">🔁 Analisar de novo</button>' +
     '</div>',
     { wide: true }
   );
+}
+
+async function registrarFeedbackColinha(funcionou, alvo) {
+  let nota = null;
+  if (!funcionou) {
+    nota = prompt('O que deu errado? (ex: a base soltou, suporte quebrou, ficou empenado)');
+    if (nota === null) return;
+  }
+  let colinha = null;
+  if (alvo.productId) {
+    const p = produtosCache.find((x) => x.id === alvo.productId);
+    colinha = p ? p.ai_slicing_tips : null;
+  } else if (alvo.lineItemId) {
+    const li = await q(SUPA.from('order_line_items').select('ai_slicing_tips').eq('id', alvo.lineItemId).maybeSingle());
+    colinha = li ? li.ai_slicing_tips : null;
+  }
+  const payload = {
+    product_id: alvo.productId || null,
+    order_line_item_id: alvo.lineItemId || null,
+    colinha_usada: colinha,
+    funcionou,
+    nota,
+  };
+  const { error } = await SUPA.from('print_feedback').insert(payload);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(funcionou ? 'Legal, guardado — obrigado!' : 'Anotado. A próxima colinha dessa peça já leva isso em conta.');
+  closeModal();
 }
 
 function openModelo3DForm(productId) {

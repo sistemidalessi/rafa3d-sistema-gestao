@@ -191,7 +191,29 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   'Responda só com a ficha nesse formato (títulos ## e itens com traço), sem introdução nem conclusão — é pra ' +
   'colar direto num sistema interno e ser lido rápido antes de fatiar de verdade.';
 
-async function chamarClaude(imagemBuf, mediaType) {
+// Busca as últimas tentativas de impressão registradas pra essa peça
+// (produto ou projeto) e monta um textinho pra IA levar em conta — é
+// assim que a colinha "aprende" com o que já deu errado antes.
+async function buscarHistoricoFeedback(coluna, id) {
+  const { data, error } = await supabase
+    .from('print_feedback')
+    .select('funcionou, nota, created_at')
+    .eq(coluna, id)
+    .order('created_at', { ascending: false })
+    .limit(5);
+  if (error || !data || !data.length) return null;
+  const linhas = data.map((f) => {
+    const quando = new Date(f.created_at).toLocaleDateString('pt-BR');
+    return f.funcionou ? ('- ' + quando + ': funcionou bem') : ('- ' + quando + ': DEU PROBLEMA — ' + (f.nota || 'sem detalhe'));
+  });
+  return linhas.join('\n');
+}
+
+async function chamarClaude(imagemBuf, mediaType, historico) {
+  const promptFinal = historico
+    ? PROMPT_ANALISE + '\n\nHistórico real de impressões anteriores dessa mesma peça — leve em conta pra não repetir ' +
+      'o que já deu errado, e ajuste a ficha especificamente pra evitar esses problemas de novo:\n' + historico
+    : PROMPT_ANALISE;
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -206,7 +228,7 @@ async function chamarClaude(imagemBuf, mediaType) {
         role: 'user',
         content: [
           { type: 'image', source: { type: 'base64', media_type: mediaType || 'image/png', data: imagemBuf.toString('base64') } },
-          { type: 'text', text: PROMPT_ANALISE },
+          { type: 'text', text: promptFinal },
         ],
       }],
     }),
@@ -232,7 +254,8 @@ async function analisarUm(product) {
     if (!miniatura) throw new Error('não achei nenhuma miniatura dentro do arquivo .3mf.');
 
     log('Analisando "' + product.name + '" com IA...');
-    const tips = await chamarClaude(miniatura);
+    const historico = await buscarHistoricoFeedback('product_id', product.id);
+    const tips = await chamarClaude(miniatura, undefined, historico);
 
     await supabase.from('products').update({
       ai_analysis_status: 'done', ai_slicing_tips: tips, ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
@@ -478,7 +501,8 @@ async function analisarProjetoUm(li) {
     const fileBuf = Buffer.from(await fileData.arrayBuffer());
 
     log('Analisando projeto de "' + nomeRef + '" com IA...');
-    const tips = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath));
+    const historico = await buscarHistoricoFeedback('order_line_item_id', li.id);
+    const tips = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico);
 
     await supabase.from('order_line_items').update({
       ai_analysis_status: 'done', ai_slicing_tips: tips, ai_analysis_done_at: new Date().toISOString(), ai_analysis_error: null,
