@@ -105,6 +105,12 @@ sai dali.
 - **`.stl` não tem miniatura embutida; `.3mf` tem.** Por isso a análise de IA
   do produto extrai a imagem de dentro do `.3mf`, e a do projeto usa a
   miniatura que a Meshy devolveu (ou cai pra foto do cliente).
+- **A fila de "Abrir no Fatiador" tem destino.** Desde o patch-25 cada pedido
+  carrega `open_slicer_agent` — o computador que deve abrir a janela — e cada
+  agente só pega o que é dele (ou o que está sem dono, que é como todo registro
+  antigo se comporta). Se você mexer nessa fila, mantenha o filtro: sem ele,
+  com dois agentes ligados, o arquivo abre na tela errada. O nome vem de
+  `os.hostname()` e o agente se anuncia sozinho em `slicer_agents`.
 - **A escala do `.3mf` gerado é decidida pela origem do arquivo, não pelo
   tamanho.** Modelo da Meshy sempre é normalizado pra 80mm no maior lado
   (a Meshy não exporta em milímetro, e o número dela varia muito); arquivo

@@ -160,9 +160,15 @@ O `.env` também não viaja — cada máquina tem o seu, preenchido a partir do
 [`.env.example`](slicer-agent/.env.example). É de propósito: ele carrega a
 `service_role key`.
 
-Vale lembrar que **o agente só precisa estar rodando numa máquina** — a que
-tem as impressoras. Nas outras o sistema funciona normal; só os botões de
-fatiador e de IA ficam esperando na fila até ele voltar.
+O sistema em si (a página) funciona de qualquer máquina, sempre. O que depende
+de máquina é só o agente: sem ele ligado, os botões de fatiador e de IA ficam
+esperando na fila até alguém ligar.
+
+**O agente pode rodar nos dois** — e desde o patch-25 isso é seguro. Cada
+agente se anuncia com o nome do próprio computador, e o sistema pergunta uma
+vez em qual deles você está; a janela do fatiador abre só naquele. Antes disso
+a fila não tinha destino, e quem pegasse primeiro abria o arquivo — podia ser
+o computador vazio da outra sala.
 
 ---
 
@@ -187,6 +193,7 @@ docs/patch-09-projetos-personalizados.sql    docs/patch-21-notificacoes.sql
 docs/patch-10-permissao-excluir-projeto.sql  docs/patch-22-colinha-estruturada.sql
 docs/patch-11-analise-ia-projetos.sql        docs/patch-23-partes-do-projeto.sql
 docs/patch-12-limpeza-colunas-mortas.sql
+docs/patch-24-corrige-reativar-avisos.sql        docs/patch-25-abrir-no-computador-certo.sql
 ```
 
 O patch 12 é o único que não se roda de olhos fechados: ele apaga colunas, e

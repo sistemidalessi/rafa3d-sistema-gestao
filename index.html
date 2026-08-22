@@ -465,6 +465,7 @@ async function renderDashboard() {
 
   let html = '';
   if (isOwner) html += cardAvisoPush();
+  html += cardComputador();
 
   html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
   html += statCard('🧾', orcamentosPendentes.length, 'Orçamentos pendentes');
@@ -520,6 +521,112 @@ function statCard(icon, valor, label) {
   '</div>';
 }
 
+/* ============================================================
+   QUAL COMPUTADOR ABRE O FATIADOR
+
+   O Anderson e o Rafa trabalham e imprimem dos dois computadores. Como
+   quem abre o arquivo de verdade é o agente instalado em cada máquina,
+   o pedido precisa dizer pra qual deles vai — senão quem pegasse
+   primeiro abriria a janela, e podia ser o computador vazio da outra
+   sala.
+
+   O nome não é digitado: cada agente se anuncia na tabela slicer_agents
+   quando liga, e a tela só oferece a lista. Nome digitado à mão erraria,
+   e quem opera tem 10 anos.
+
+   A escolha fica guardada neste navegador, então a pergunta aparece uma
+   vez só por computador.
+   ============================================================ */
+
+const CHAVE_COMPUTADOR = 'rafa3d_computador';
+// O agente dá sinal de vida a cada volta do laço (5s). 60s de folga
+// cobre uma internet ruim sem dar "desligado" por engano.
+const SEGUNDOS_PRA_CONSIDERAR_LIGADO = 60;
+
+let _computadoresListados = [];
+let _acaoDepoisDeEscolher = null;
+// Guardado também aqui na memória porque nem todo navegador deixa
+// escrever no disco (janela anônima com bloqueio, política de empresa).
+// Sem isso, quem estivesse nessa situação seria perguntado de novo a
+// cada clique, pra sempre, sem entender por quê.
+let _computadorNaMemoria = null;
+
+function computadorEscolhido() {
+  if (_computadorNaMemoria) return _computadorNaMemoria;
+  try { return localStorage.getItem(CHAVE_COMPUTADOR) || null; } catch (e) { return null; }
+}
+
+function guardarComputador(nome) {
+  _computadorNaMemoria = nome;
+  try { localStorage.setItem(CHAVE_COMPUTADOR, nome); } catch (e) { /* vale só até fechar a aba */ }
+}
+
+async function listarComputadores() {
+  const lista = await q(SUPA.from('slicer_agents').select('*').order('name'));
+  const agora = Date.now();
+  return (lista || []).map((c) => ({
+    nome: c.name,
+    ligado: (agora - new Date(c.last_seen_at).getTime()) / 1000 < SEGUNDOS_PRA_CONSIDERAR_LIGADO,
+  }));
+}
+
+// Devolve o computador que deve abrir o arquivo. Se ninguém escolheu
+// ainda neste navegador, abre a pergunta e devolve null — quem chamou
+// para por aqui, e a ação é refeita sozinha depois da escolha.
+async function garantirComputador(acaoDepois) {
+  const jaEscolhido = computadorEscolhido();
+  if (jaEscolhido) return jaEscolhido;
+  _acaoDepoisDeEscolher = acaoDepois || null;
+  await perguntarComputador();
+  return null;
+}
+
+async function perguntarComputador() {
+  _computadoresListados = await listarComputadores();
+  let html = '<h3>Em qual computador você está?</h3>';
+  html += '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">' +
+    'É nele que a janela do fatiador vai abrir. Pergunto uma vez só — depois já fica sabendo.</p>';
+
+  if (_computadoresListados.length === 0) {
+    html += '<div class="empty">Nenhum computador está com o programa do fatiador ligado agora. ' +
+      'Ligue o programa naquele que você quer usar (o atalho <strong>start-hidden.vbs</strong>) e clique aqui de novo.</div>';
+  } else {
+    _computadoresListados.forEach((c, i) => {
+      html += '<button class="btn full" style="margin-bottom:8px;" onclick="escolherComputador(' + i + ')">' +
+        escapeHtml(c.nome) + (c.ligado ? ' ✅ ligado agora' : ' 💤 desligado') + '</button>';
+    });
+  }
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Agora não</button></div>';
+  openModal(html);
+}
+
+function escolherComputador(indice) {
+  const c = _computadoresListados[indice];
+  if (!c) return;
+  guardarComputador(c.nome);
+  closeModal();
+  toast('Pronto! Os arquivos vão abrir no ' + c.nome + '.');
+  const acao = _acaoDepoisDeEscolher;
+  _acaoDepoisDeEscolher = null;
+  if (acao) acao();
+}
+
+function trocarComputador() {
+  _acaoDepoisDeEscolher = null;
+  perguntarComputador();
+}
+
+// Card do Dashboard: mostra pra onde este navegador manda os arquivos e
+// deixa trocar. Sem isso, quem escolhesse errado ficaria preso na
+// escolha pra sempre.
+function cardComputador() {
+  const escolhido = computadorEscolhido();
+  if (!escolhido) return '';
+  return '<div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
+    '<span>🖥️ Os arquivos abrem no computador: <strong>' + escapeHtml(escolhido) + '</strong></span>' +
+    '<button class="btn ghost" onclick="trocarComputador()">Trocar</button>' +
+    '</div>';
+}
 const VAPID_PUBLIC_KEY = 'BL6grIejbqKL_Q5RAHP8zgkZQ7e8Ipj9d5kAExNyecBLrdYrAx_18iPqkAvKpPDhqHbeB0irxRMRB0kqfG2aAh4';
 
 // Aviso instantâneo de pedido novo sem precisar de WhatsApp comercial:
@@ -993,8 +1100,11 @@ async function verColinhaParte(parteId) {
 }
 
 async function solicitarAbrirFatiadorTodasPartes(lineItemId) {
+  const pc = await garantirComputador(() => solicitarAbrirFatiadorTodasPartes(lineItemId));
+  if (!pc) return;
   const { error } = await SUPA.from('project_parts')
-    .update({ open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null })
+    .update({ open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(),
+      open_slicer_error: null, open_slicer_agent: pc })
     .eq('order_line_item_id', lineItemId)
     .not('model_file_path', 'is', null);
   if (error) { toast('Erro: ' + error.message); return; }
@@ -1023,8 +1133,11 @@ async function solicitarAnaliseIAProjeto(lineItemId) {
 }
 
 async function solicitarAbrirFatiadorProjeto(lineItemId) {
+  const pc = await garantirComputador(() => solicitarAbrirFatiadorProjeto(lineItemId));
+  if (!pc) return;
   const { error } = await SUPA.from('order_line_items').update({
-    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null,
+    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(),
+    open_slicer_error: null, open_slicer_agent: pc,
   }).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');
@@ -2288,8 +2401,11 @@ async function removerProduto(productId) {
 }
 
 async function solicitarAbrirFatiador(productId) {
+  const pc = await garantirComputador(() => solicitarAbrirFatiador(productId));
+  if (!pc) return;
   const { error } = await SUPA.from('products').update({
-    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(), open_slicer_error: null,
+    open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(),
+    open_slicer_error: null, open_slicer_agent: pc,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');

@@ -15,6 +15,16 @@ const ORCA_PATH = process.env.ORCA_PATH || 'C:\\Program Files\\OrcaSlicer\\orca-
 // botão na tela). O Rafa 3D usa Bambu Studio no dia a dia, não OrcaSlicer.
 const SLICER_APP_PATH = process.env.SLICER_APP_PATH || 'C:\\Program Files\\Bambu Studio\\bambu-studio.exe';
 const POLL_INTERVAL_MS = parseInt(process.env.POLL_INTERVAL_MS || '5000', 10);
+
+// Nome deste computador na fila. Vem do próprio Windows, então não
+// precisa configurar nada — mas dá pra fixar no .env se dois
+// computadores tiverem o mesmo nome de rede.
+//
+// Os caracteres estranhos saem porque este mesmo texto vai virar filtro
+// na consulta ao banco: vírgula ou parêntese no nome quebrariam o
+// filtro, e aí o agente pegaria pedido que não é dele.
+const AGENT_NAME = (process.env.AGENT_NAME || os.hostname() || 'computador')
+  .replace(/[^A-Za-z0-9À-ÿ_-]/g, '-').slice(0, 40);
 const BUCKET = 'modelos-3d';
 const FOTOS_BUCKET = 'projetos-fotos';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
@@ -52,6 +62,16 @@ if (!MESHY_API_KEY) {
 }
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+
+// Diz pro sistema que este computador está ligado e com o agente
+// rodando. A tela usa isso pra oferecer a lista de computadores na hora
+// de escolher onde abrir o arquivo — sem ninguém ter que cadastrar nada
+// à mão, e mostrando quais estão desligados agora.
+async function darSinalDeVida() {
+  const { error } = await supabase.from('slicer_agents')
+    .upsert({ name: AGENT_NAME, last_seen_at: new Date().toISOString() }, { onConflict: 'name' });
+  if (error) log('AVISO: não consegui avisar que este computador está ligado: ' + error.message);
+}
 
 /* ============================================================
    FATIAMENTO AUTOMÁTICO — fila slice_status em products
@@ -397,6 +417,7 @@ async function tickAbrirFatiador() {
     .from('products')
     .select('id, name, catalog_code, model_file_path')
     .eq('open_slicer_status', 'queued')
+    .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);
   if (error) { log('Erro consultando fila de abrir-no-fatiador: ' + error.message); return; }
@@ -664,6 +685,7 @@ async function tickAbrirFatiadorProjeto() {
     .from('order_line_items')
     .select('id, requester_name, model_file_path, ai_slicing_settings, model_source')
     .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
+    .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);
   if (error) { log('Erro consultando fila de abrir-no-fatiador (projetos): ' + error.message); return; }
@@ -864,6 +886,7 @@ async function tickAbrirFatiadorPartes() {
     .from('project_parts')
     .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source')
     .eq('open_slicer_status', 'queued')
+    .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);
   if (error) { log('Erro consultando fila de abrir-no-fatiador (partes): ' + error.message); return; }
@@ -872,10 +895,12 @@ async function tickAbrirFatiadorPartes() {
 }
 
 async function main() {
-  log('Agente de fatiamento iniciado.');
+  log('Agente de fatiamento iniciado neste computador: ' + AGENT_NAME);
   log('OrcaSlicer: ' + ORCA_PATH);
   log('Verificando a fila a cada ' + (POLL_INTERVAL_MS / 1000) + 's. Ctrl+C para parar.');
+  await darSinalDeVida();
   for (;;) {
+    try { await darSinalDeVida(); } catch (e) { log('Erro inesperado (sinal de vida): ' + e.message); }
     try { await tick(); } catch (e) { log('Erro inesperado (fatiamento): ' + e.message); }
     try { await tickAI(); } catch (e) { log('Erro inesperado (análise IA): ' + e.message); }
     try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
