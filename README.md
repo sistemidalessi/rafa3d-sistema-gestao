@@ -126,6 +126,46 @@ impedem de verdade a leitura. Esconder a aba sozinho não protegeria nada.
 
 ---
 
+## Trabalhando em duas máquinas
+
+O desenvolvimento acontece em dois computadores (casa e escritório), então vale
+conferir o que cada um precisa antes de começar — já aconteceu de faltar Node
+numa delas e o agente simplesmente não rodar.
+
+| Precisa | Pra quê | Onde é obrigatório |
+|---|---|---|
+| **git** | Óbvio | Nas duas |
+| **Node.js** | Rodar o agente e o `npx serve` do [`.claude/launch.json`](.claude/launch.json) | Nas duas |
+| **Bambu Studio** | "Abrir no Fatiador" de verdade | Onde ficam as impressoras |
+| **OrcaSlicer** | Só o fatiamento por linha de comando (hoje sem botão) | Opcional |
+| **CLI do Supabase** | Publicar Edge Function (`supabase functions deploy`) | Em quem for mexer nelas |
+| **`slicer-agent/.env`** | Segredos do agente | Onde o agente roda |
+
+No Windows, o que falta se instala com:
+
+```bash
+winget install OpenJS.NodeJS.LTS
+winget install Supabase.CLI
+```
+
+Depois de instalar o Node, o agente precisa das dependências dele naquela
+máquina (`node_modules` não vai pro repositório):
+
+```bash
+cd slicer-agent
+npm install
+```
+
+O `.env` também não viaja — cada máquina tem o seu, preenchido a partir do
+[`.env.example`](slicer-agent/.env.example). É de propósito: ele carrega a
+`service_role key`.
+
+Vale lembrar que **o agente só precisa estar rodando numa máquina** — a que
+tem as impressoras. Nas outras o sistema funciona normal; só os botões de
+fatiador e de IA ficam esperando na fila até ele voltar.
+
+---
+
 ## Montando do zero
 
 ### 1. Banco (Supabase)
