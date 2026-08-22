@@ -25,6 +25,18 @@ function log(msg) {
   console.log('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + msg);
 }
 
+// Depois de converter, diz em milímetro o que vai pra mesa. A escala
+// sozinha não revela nada — 0,042 tanto pode estar certa quanto ter
+// encolhido a peça pro tamanho de um grão de arroz. O tamanho final é o
+// número que dá pra conferir olhando o log, sem abrir o fatiador.
+function logTamanhoConvertido(nomeRef, resultado) {
+  const mm = resultado.tamanhoFinalMm.map((t) => t.toFixed(1)).join(' x ');
+  log('"' + nomeRef + '" convertida pra .3mf configurado — vai pra mesa com ' + mm + ' mm (escala ' + resultado.escalaAplicada.toFixed(4) + ').');
+  if (!resultado.cabeNaMesa) {
+    log('AVISO: "' + nomeRef + '" não cabe na mesa da impressora. O arquivo abriu do mesmo jeito, mas precisa ser reduzido no fatiador antes de imprimir.');
+  }
+}
+
 if (!SUPABASE_URL || !SERVICE_KEY) {
   console.error('[agente] Faltam SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no .env. Copie .env.example para .env e preencha.');
   process.exit(1);
@@ -610,10 +622,10 @@ async function abrirNoFatiadorProjeto(li) {
     let localPath;
     if (ext.toLowerCase() === '.stl' && li.ai_slicing_settings) {
       try {
-        const resultado = gerarModelo3mfConfigurado(stlBuf, li.ai_slicing_settings, nomeSeguro + '.stl');
+        const resultado = gerarModelo3mfConfigurado(stlBuf, li.ai_slicing_settings, nomeSeguro + '.stl', li.model_source);
         localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
         fs.writeFileSync(localPath, resultado.buffer);
-        log('Projeto de "' + nomeRef + '" convertido pra .3mf configurado (escala ' + resultado.escalaAplicada.toFixed(4) + ').');
+        logTamanhoConvertido(nomeRef, resultado);
       } catch (e) {
         log('AVISO: não consegui pré-configurar o .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
         localPath = path.join(downloadsDir, nomeSeguro + ext);
@@ -650,7 +662,7 @@ async function abrirNoFatiadorProjeto(li) {
 async function tickAbrirFatiadorProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, model_file_path, ai_slicing_settings')
+    .select('id, requester_name, model_file_path, ai_slicing_settings, model_source')
     .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);
@@ -810,10 +822,10 @@ async function abrirNoFatiadorParte(parte) {
     let localPath;
     if (ext.toLowerCase() === '.stl' && parte.ai_slicing_settings) {
       try {
-        const resultado = gerarModelo3mfConfigurado(stlBuf, parte.ai_slicing_settings, nomeSeguro + '.stl');
+        const resultado = gerarModelo3mfConfigurado(stlBuf, parte.ai_slicing_settings, nomeSeguro + '.stl', parte.model_source);
         localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
         fs.writeFileSync(localPath, resultado.buffer);
-        log('"' + nomeRef + '" convertida pra .3mf configurado (escala ' + resultado.escalaAplicada.toFixed(4) + ').');
+        logTamanhoConvertido(nomeRef, resultado);
       } catch (e) {
         log('AVISO: não consegui pré-configurar o .3mf da "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
         localPath = path.join(downloadsDir, nomeSeguro + ext);
@@ -850,7 +862,7 @@ async function abrirNoFatiadorParte(parte) {
 async function tickAbrirFatiadorPartes() {
   const { data: queued, error } = await supabase
     .from('project_parts')
-    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings')
+    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source')
     .eq('open_slicer_status', 'queued')
     .order('open_slicer_requested_at', { ascending: true })
     .limit(1);

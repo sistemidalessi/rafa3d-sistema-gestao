@@ -105,11 +105,13 @@ sai dali.
 - **`.stl` não tem miniatura embutida; `.3mf` tem.** Por isso a análise de IA
   do produto extrai a imagem de dentro do `.3mf`, e a do projeto usa a
   miniatura que a Meshy devolveu (ou cai pra foto do cliente).
-- **A escala do `.3mf` gerado ainda não foi conferida com olho humano.** A Meshy
-  não exporta em milímetro real, então
-  [`gerar3mf.js`](slicer-agent/gerar3mf.js) reescala por heurística. É a parte
-  de maior incerteza da função — antes de fatiar de verdade, abra e OLHE o
-  tamanho e a posição no Bambu Studio.
+- **A escala do `.3mf` gerado é decidida pela origem do arquivo, não pelo
+  tamanho.** Modelo da Meshy sempre é normalizado pra 80mm no maior lado
+  (a Meshy não exporta em milímetro, e o número dela varia muito); arquivo
+  anexado à mão nunca é reescalado. A versão antiga adivinhava pelo tamanho e
+  errava nas duas pontas. Se um dia isso precisar mudar, mexa em
+  `escalaSegura()` — e lembre que `model_source` vem do banco, então a consulta
+  do agente precisa continuar trazendo essa coluna.
 - **Projeto não é tabela própria.** É `order_line_items` com
   `line_type = 'custom'` — sempre filtre por isso ao consultar projetos. Já as
   **partes** de um projeto são tabela de verdade (`project_parts`, patch-23).

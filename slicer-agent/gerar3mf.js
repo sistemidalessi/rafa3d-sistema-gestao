@@ -80,14 +80,29 @@ function calcularBBox(vertices) {
   return { min, max, tamanho: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
-// Meshy não exporta em milímetro real — se o maior lado vier claramente
-// fora do que cabe numa impressora de mesa, reescala pra um tamanho
-// "peça pequena" razoável (8cm no maior lado). Se já vier num tamanho
-// plausível, não mexe em nada.
-function escalaSegura(bbox) {
+// Mesa da Bambu Lab A1 — usada pra centralizar a peça e pra avisar
+// quando ela não cabe.
+const MESA_MM = 256;
+const ALVO_MM = 80;
+
+// A Meshy não exporta em milímetro: o número que vem no arquivo é
+// unidade dela, e varia muito de um modelo pro outro (já vieram 1905
+// unidades num caso real, e vir 2,5 é igualmente possível). Por isso a
+// origem do arquivo decide, e não o tamanho:
+//
+//   meshy_generated → sempre normaliza pro alvo. Qualquer valor que
+//                     "pareça milímetro" ali é coincidência.
+//   qualquer outra  → não mexe. Quem modelou à mão já pôs na medida
+//                     certa, e reescalar destruiria a intenção.
+//
+// A versão antiga adivinhava pelo tamanho ("entre 2 e 350 já deve estar
+// em mm") e errava nas duas pontas: um modelo da Meshy com 2,5 unidades
+// ia pra mesa com 2,5 mm (grão de arroz), e um com 300 passava batido
+// sem caber na mesa.
+function escalaSegura(bbox, origem) {
+  if (origem !== 'meshy_generated') return 1;
   const maior = Math.max(...bbox.tamanho);
-  if (maior >= 2 && maior <= 350) return 1;
-  const ALVO_MM = 80;
+  if (!maior || !isFinite(maior)) return 1;
   return ALVO_MM / maior;
 }
 
@@ -191,17 +206,17 @@ function aplicarAjustesColinha(ajustes) {
 // (pode vir null — nesse caso usa só o template padrão, sem nada da
 // colinha). nomeObjeto: nome pra aparecer dentro do Bambu Studio.
 // Retorna um Buffer do .3mf pronto.
-function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto) {
+function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto, origem) {
   const { vertices, triangulos } = lerSTL(stlBuffer);
   if (!vertices.length || !triangulos.length) throw new Error('.stl não tem malha válida (0 vértices/triângulos).');
 
   const bbox = calcularBBox(vertices);
-  const escala = escalaSegura(bbox);
+  const escala = escalaSegura(bbox, origem);
   // Centraliza no meio de uma mesa de 256x256 (Bambu Lab A1) e apoia no Z=0.
   const centroX = (bbox.min[0] + bbox.max[0]) / 2 * escala;
   const centroY = (bbox.min[1] + bbox.max[1]) / 2 * escala;
   const baseZ = bbox.min[2] * escala;
-  const translacao = [128 - centroX, 128 - centroY, -baseZ];
+  const translacao = [MESA_MM / 2 - centroX, MESA_MM / 2 - centroY, -baseZ];
 
   const settings = aplicarAjustesColinha(ajustes);
 
@@ -227,7 +242,11 @@ function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto) {
   zip.addFile('Metadata/model_settings.config', Buffer.from(gerarModelSettingsXML(nomeObjeto)));
   zip.addFile('Metadata/project_settings.config', Buffer.from(JSON.stringify(settings, null, 4)));
 
-  return { buffer: zip.toBuffer(), escalaAplicada: escala, bbox };
+  const tamanhoFinalMm = bbox.tamanho.map((t) => t * escala);
+  return {
+    buffer: zip.toBuffer(), escalaAplicada: escala, bbox, tamanhoFinalMm,
+    cabeNaMesa: Math.max(tamanhoFinalMm[0], tamanhoFinalMm[1]) <= MESA_MM && tamanhoFinalMm[2] <= MESA_MM,
+  };
 }
 
 module.exports = { gerarModelo3mfConfigurado, lerSTL, calcularBBox };
