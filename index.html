@@ -525,15 +525,32 @@ const VAPID_PUBLIC_KEY = 'BL6grIejbqKL_Q5RAHP8zgkZQ7e8Ipj9d5kAExNyecBLrdYrAx_18i
 // Aviso instantâneo de pedido novo sem precisar de WhatsApp comercial:
 // notificação nativa do navegador, funciona até com a aba fechada (não
 // precisa estar com o sistema aberto), desde que tenha ativado uma vez.
+//
+// O card mostra três estados diferentes de propósito. Antes ele só
+// escondia o botão quando a permissão estava 'granted' — então quem
+// tivesse clicado em "Bloquear" uma vez via um botão que era impossível
+// funcionar: o navegador responde "negado" na hora, sem abrir janela
+// nenhuma, e da tela parecia que o botão estava quebrado.
 function cardAvisoPush() {
-  const suportado = 'serviceWorker' in navigator && 'PushManager' in window;
-  if (!suportado) return '';
+  if (!('serviceWorker' in navigator) || !('PushManager' in window)) return '';
   const permissao = window.Notification ? Notification.permission : 'default';
+
   if (permissao === 'granted') {
     return '<div class="card" style="display:flex; justify-content:space-between; align-items:center;">' +
       '<span>🔔 Avisos de pedido novo neste aparelho: <span class="badge on">ativado</span></span>' +
       '</div>';
   }
+
+  if (permissao === 'denied') {
+    return '<div class="card">' +
+      '<div><strong>🔕 Este aparelho está bloqueando os avisos</strong></div>' +
+      '<div style="color:var(--muted); font-size:13px; margin-top:6px;">' +
+      'Alguém já respondeu "Bloquear" quando o navegador perguntou, e por isso ele nem pergunta mais. ' +
+      'Pra liberar: clique no <strong>cadeado</strong> (ou no ícone à esquerda do endereço, lá em cima), ' +
+      'procure <strong>Notificações</strong> e mude pra <strong>Permitir</strong>. Depois recarregue a página.' +
+      '</div></div>';
+  }
+
   return '<div class="card" style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">' +
     '<span>🔔 Quer ser avisado na hora que chegar um pedido novo, mesmo com o sistema fechado?</span>' +
     '<button class="btn" onclick="ativarNotificacoesPush()">Ativar avisos neste aparelho</button>' +
@@ -548,9 +565,23 @@ function urlBase64ToUint8Array(base64String) {
 }
 
 async function ativarNotificacoesPush() {
+  // Service worker só funciona em página segura (https, ou localhost pra
+  // testar). Aberta como arquivo solto ou por http comum, o navegador
+  // recusa — e o erro que ele devolve não explica isso pra ninguém.
+  if (!window.isSecureContext) {
+    toast('Esta página precisa estar aberta pelo endereço https do sistema pra ligar os avisos.');
+    return;
+  }
+
   try {
     const permissao = await Notification.requestPermission();
-    if (permissao !== 'granted') { toast('Sem permissão de notificação, não dá pra ativar.'); return; }
+    if (permissao === 'denied') {
+      toast('O navegador está bloqueando os avisos. Clique no cadeado ao lado do endereço e libere as Notificações.');
+      await renderDashboard();
+      return;
+    }
+    if (permissao !== 'granted') { toast('Você fechou a pergunta sem responder. Clique de novo e escolha Permitir.'); return; }
+
     const registro = await navigator.serviceWorker.register('sw.js');
     const subscription = await registro.pushManager.subscribe({
       userVisibleOnly: true,
@@ -560,11 +591,14 @@ async function ativarNotificacoesPush() {
     const { error } = await SUPA.from('push_subscriptions').upsert({
       endpoint: raw.endpoint, p256dh: raw.keys.p256dh, auth: raw.keys.auth, user_id: currentUser.id,
     }, { onConflict: 'endpoint' });
-    if (error) { toast('Erro: ' + error.message); return; }
+    if (error) { toast('Consegui falar com o navegador, mas não consegui guardar no sistema: ' + error.message); return; }
+
     toast('Avisos ativados neste aparelho!');
     await renderDashboard();
   } catch (e) {
-    toast('Não consegui ativar: ' + e.message);
+    // Mensagem crua de service worker não diz nada pra quem lê ("Failed
+    // to register a ServiceWorker: ..."), então vem junto a tradução.
+    toast('Não consegui ligar os avisos neste aparelho (' + e.message + '). Tente por outro navegador, ou avise o Anderson.');
   }
 }
 
