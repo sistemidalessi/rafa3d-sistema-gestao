@@ -1,21 +1,24 @@
 # Rafa 3D — Sistema de Gestão
 
 Sistema interno da Rafa 3D Dalessi: pedidos, fila de impressão, estoque de
-filamento, custo/margem, catálogo público e os pedidos personalizados
-("Projetos"), onde o cliente manda uma foto e a IA gera o modelo 3D.
+filamento, custo e preço, catálogo público que **fecha pedido sozinho** (frete
+real, PIX, etiqueta de envio) e os pedidos personalizados ("Projetos"), onde o
+cliente manda uma foto e a IA gera o modelo 3D.
 
 Sem build, sem framework, sem `npm install` pro site — é HTML e JavaScript
 puro, servido como arquivo estático, falando direto com o Supabase.
 
 ---
 
-## As três peças
+## As peças
 
 | Pasta / arquivo | O que é | Onde roda |
 |---|---|---|
 | [`index.html`](index.html) | O sistema de gestão inteiro (login + todas as abas) num arquivo só | Navegador, com login |
-| [`catalogo/`](catalogo/) | Catálogo público, lê os produtos do Supabase ao vivo | Navegador, sem login |
+| [`catalogo/`](catalogo/) | Catálogo público: lê os produtos ao vivo e fecha a compra | Navegador, sem login |
+| [`supabase/functions/`](supabase/functions/) | Três Edge Functions (Deno): frete, fechamento do pedido e etiqueta | Servidor do Supabase |
 | [`slicer-agent/`](slicer-agent/) | Agente Node que fala com o fatiador e com as APIs de IA | Máquina do Rafael, em segundo plano |
+| [`sw.js`](sw.js) | Service worker — deixa a notificação chegar com o sistema fechado | Navegador |
 | [`docs/`](docs/) | Schema e patches SQL, rodados à mão no SQL Editor do Supabase | — |
 
 O banco (Postgres + Auth + Storage) é um projeto Supabase. A `anon key` fica
@@ -40,19 +43,72 @@ Então tudo que precisa do mundo real funciona assim:
    junto com a mensagem de erro.
 4. A tela do usuário mostra o resultado quando recarrega aquela aba.
 
-São seis filas hoje, todas no mesmo laço em [`agent.js`](slicer-agent/agent.js):
+São nove filas hoje — as mesmas três operações sobre três tabelas diferentes,
+todas no mesmo laço da `main()` em [`agent.js`](slicer-agent/agent.js):
 
-| Fila | Tabela | Coluna de status | O que faz |
+| Operação | Produto do catálogo | Projeto | Parte de projeto |
 |---|---|---|---|
-| Fatiamento automático | `products` | `slice_status` | Fatia por linha de comando no OrcaSlicer (sem botão na tela hoje) |
-| Análise IA — produto | `products` | `ai_analysis_status` | Colinha de fatiamento pela Claude, a partir da miniatura de dentro do `.3mf` |
-| Abrir no Fatiador — produto | `products` | `open_slicer_status` | Baixa o arquivo e abre no Bambu Studio |
-| Geração Meshy | `order_line_items` | `meshy_status` | Foto do cliente → modelo `.stl` (Image-to-3D) |
-| Abrir no Fatiador — projeto | `order_line_items` | `open_slicer_status` | Igual ao de produto, lendo do projeto |
-| Análise IA — projeto | `order_line_items` | `ai_analysis_status` | Colinha de fatiamento do projeto |
+| Gerar modelo 3D (Meshy, a partir da foto) | — | `meshy_status` | `meshy_status` |
+| Colinha de fatiamento por IA | `ai_analysis_status` | `ai_analysis_status` | `ai_analysis_status` |
+| Abrir no Fatiador | `open_slicer_status` | `open_slicer_status` | `open_slicer_status` |
+| Fatiamento automático por linha de comando | `slice_status` (sem botão na tela) | — | — |
+
+Tabelas: `products`, `order_line_items` (com `line_type = 'custom'`) e
+`project_parts`.
 
 Se o agente estiver desligado, nada quebra — os pedidos ficam parados em
 `queued` e são processados quando ele voltar.
+
+### Abrir no Fatiador já configurado
+
+O modelo que a Meshy devolve é `.stl` puro, sem configuração nenhuma. Por isso
+[`gerar3mf.js`](slicer-agent/gerar3mf.js) converte esse `.stl` num `.3mf` de
+verdade, partindo de um template real já testado
+([`template-3mf/`](slicer-agent/template-3mf/)) e trocando só os ~10 valores
+que a colinha da IA decidiu — os outros 500+ ajustes ficam como já funcionam.
+Se a conversão falhar, cai pro `.stl` puro em vez de travar o pedido.
+
+---
+
+## O que roda no servidor (Edge Functions)
+
+Coisas que não podem rodar no navegador (porque envolvem token de dinheiro ou
+precisam revalidar preço) ficam em [`supabase/functions/`](supabase/functions/),
+em Deno. O catálogo chama por `fetch` no `SB_FUNC_URL`:
+
+| Função | O que faz |
+|---|---|
+| `calcular-frete` | Consulta o Melhor Envio de verdade e devolve as opções pro cliente escolher |
+| `finalizar-pedido` | **Revalida os preços no servidor** (nunca confia no navegador), cria o pedido e os itens, gera o PIX copia-e-cola e dispara os avisos |
+| `gerar-etiqueta` | Compra a etiqueta no Melhor Envio e guarda rastreio + link de impressão. Confere o cargo de quem chamou antes de gastar dinheiro |
+
+O PIX é gerado na mão, pelo padrão aberto do Banco Central — **não há gateway
+de pagamento**. Foi decisão explícita: automatizar exigiria conta de gateway no
+CPF do responsável, e isso não se mistura com finanças pessoais. O cliente paga
+na chave fixa e manda o comprovante por WhatsApp.
+
+Aviso de pedido novo sai por dois canais, porque o Rafa tem 10 anos e não fica
+online o dia inteiro: **e-mail** (Resend) e **notificação push** (Web Push API
+com chaves VAPID + [`sw.js`](sw.js)). O WhatsApp automático ficou de fora — ele
+exigiria conta comercial verificada num número diferente do que já se usa.
+
+### Segredos das funções
+
+Ficam nos secrets do projeto Supabase, nunca no código:
+
+```
+MELHOR_ENVIO_TOKEN     MELHOR_ENVIO_ORIGEM
+PIX_KEY                PIX_MERCHANT_NAME       PIX_MERCHANT_CITY
+RESEND_API_KEY         NOTIFY_EMAILS
+VAPID_PUBLIC_KEY       VAPID_PRIVATE_KEY       VAPID_SUBJECT
+WHATSAPP_NUMBER
+```
+
+Pra publicar uma função depois de mexer nela, é a CLI do Supabase:
+
+```bash
+supabase functions deploy finalizar-pedido
+```
 
 ---
 
@@ -62,7 +118,7 @@ Dois papéis, na coluna `role` da tabela `profiles`:
 
 - **`owner`** (Rafael) — vê tudo.
 - **`helper`** (ajudante) — só Dashboard, Projetos, Pedidos, Fila e Clientes.
-  Não vê custo nem margem.
+  Não vê custo nem preço de custo.
 
 Isso é aplicado em dois lugares, e os dois importam: `HELPER_ALLOWED_TABS` em
 [`index.html`](index.html) esconde as abas, e as policies de RLS no banco
@@ -79,17 +135,17 @@ duplica nada.
 
 ```
 docs/schema-inicial.sql
-docs/patch-01-grants.sql
-docs/patch-02-custo-automatico.sql
-docs/patch-03-catalogo-publico.sql
-docs/patch-04-biblioteca-3d.sql
-docs/patch-05-fatiamento-automatico.sql
-docs/patch-06-grant-service-role.sql
-docs/patch-07-analise-ia.sql
-docs/patch-08-abrir-no-fatiador.sql
-docs/patch-09-projetos-personalizados.sql
-docs/patch-10-permissao-excluir-projeto.sql
-docs/patch-11-analise-ia-projetos.sql
+docs/patch-01-grants.sql                     docs/patch-13-fotos-produto-upload.sql
+docs/patch-02-custo-automatico.sql           docs/patch-14-permissao-excluir-produto.sql
+docs/patch-03-catalogo-publico.sql           docs/patch-15-precificacao-como-planilha.sql
+docs/patch-04-biblioteca-3d.sql              docs/patch-16-checkout-catalogo.sql
+docs/patch-05-fatiamento-automatico.sql      docs/patch-17-grant-insert-itens-pedido.sql
+docs/patch-06-grant-service-role.sql         docs/patch-18-etiqueta-envio.sql
+docs/patch-07-analise-ia.sql                 docs/patch-19-grant-profiles-service-role.sql
+docs/patch-08-abrir-no-fatiador.sql          docs/patch-20-feedback-colinha.sql
+docs/patch-09-projetos-personalizados.sql    docs/patch-21-notificacoes.sql
+docs/patch-10-permissao-excluir-projeto.sql  docs/patch-22-colinha-estruturada.sql
+docs/patch-11-analise-ia-projetos.sql        docs/patch-23-partes-do-projeto.sql
 docs/patch-12-limpeza-colunas-mortas.sql
 ```
 
@@ -119,14 +175,22 @@ existe usuário, mas não existe perfil.
 ### 3. Site
 
 É arquivo estático: `index.html` na raiz e `catalogo/index.html`. Não tem passo
-de build. Pra testar local, qualquer servidor estático serve (abrir o arquivo
-direto com `file://` não funciona por causa do CORS do Supabase):
+de build. Abrir o arquivo direto com `file://` não funciona por causa do CORS
+do Supabase — precisa de um servidor estático. O
+[`.claude/launch.json`](.claude/launch.json) já deixa os dois prontos
+(`sistema-local` na 8081, `catalogo-local` na 8080), ou na mão:
 
 ```bash
 npx serve .
 ```
 
-### 4. Agente local (só na máquina do Rafael)
+### 4. Funções e segredos
+
+Publique as três funções e cadastre os secrets listados acima, pela CLI do
+Supabase. Sem `MELHOR_ENVIO_TOKEN` o checkout não calcula frete; sem
+`RESEND_API_KEY`/VAPID os avisos não saem, mas o pedido é criado do mesmo jeito.
+
+### 5. Agente local (só na máquina do Rafael)
 
 Precisa do Node.js instalado, do Bambu Studio (pro "Abrir no Fatiador") e do
 OrcaSlicer (pro fatiamento por linha de comando).
@@ -157,13 +221,16 @@ inicialização (`Win+R` → `shell:startup`).
 
 ## Segredos
 
-O `.env` do agente carrega a `service_role key`, que passa por cima de toda a
-RLS — quem tem essa chave tem acesso total ao banco. Ela está no
-[`.gitignore`](.gitignore) e nunca deve ser commitada, colada em chat ou
-copiada pro navegador. As chaves da Anthropic e da Meshy ficam no mesmo arquivo
-pelo mesmo motivo.
+Três lugares, e nenhum deles é o repositório:
 
-A `anon key` no `index.html` é outra coisa: ela é feita pra ser pública.
+- **`slicer-agent/.env`** — a `service_role key`, que passa por cima de toda a
+  RLS, mais as chaves da Anthropic e da Meshy. Está no
+  [`.gitignore`](.gitignore) e nunca deve ser commitada, colada em chat ou
+  copiada pro navegador.
+- **Secrets do projeto Supabase** — token do Melhor Envio (compra etiqueta com
+  dinheiro de verdade), Resend, VAPID e os dados do PIX.
+- **`anon key` no `index.html`** — essa é a exceção: ela é feita pra ser
+  pública, e quem protege os dados é a RLS.
 
 ---
 
@@ -181,4 +248,4 @@ A `anon key` no `index.html` é outra coisa: ela é feita pra ser pública.
   passou por ele.
 - **Todo texto de tela é lido por uma criança de 10 anos**, não por um
   programador. Diga o que aconteceu e o que fazer ("Fatie esta manualmente no
-  programa"), não o stack trace. O CLAUDE.md tem a regra inteira.
+  programa"), não o stack trace. O [CLAUDE.md](CLAUDE.md) tem a regra inteira.
