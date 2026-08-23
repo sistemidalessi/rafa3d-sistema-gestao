@@ -29,3 +29,7 @@ slicer-agent/downloads/
 # Arquivo de peca nao mora aqui: o do catalogo vai pro Storage do Supabase,
 # e o que o agente baixa fica em slicer-agent/downloads, ja ignorado.
 /*.3mf
+
+# Malhas baixadas pela comparacao Hi3D x Meshy -- sao pesadas e da pra
+# gerar de novo a qualquer momento rodando comparar-geradores.js.
+slicer-agent/comparacao/
