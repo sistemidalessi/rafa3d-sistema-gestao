@@ -63,6 +63,51 @@ if (!MESHY_API_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
+// Quando o agente é fechado no meio de um trabalho (Ctrl+C, computador
+// desligado, queda de luz), a linha fica marcada como 'processing' pra
+// sempre — e a fila só procura por 'queued'. A peça some da fila e fica
+// presa em "gerando…" na tela, sem ninguém pra terminar.
+//
+// Aqui, o que estiver em 'processing' há muito mais tempo do que
+// qualquer trabalho real leva volta pra fila sozinho.
+//
+// O limite é folgado de propósito. A geração da Meshy pode levar até 10
+// minutos, e o Anderson e o Rafa rodam o agente em dois computadores: um
+// não pode devolver pra fila o que o outro está fazendo agora. 20
+// minutos fica bem acima do trabalho mais demorado e bem abaixo da
+// paciência de quem está esperando.
+const MINUTOS_PRA_CONSIDERAR_TRAVADO = 20;
+
+// Só as filas que têm o estado 'processing'. As de abrir-no-fatiador não
+// têm: elas vão de 'queued' direto pra 'done' ou 'error'.
+const FILAS_COM_PROCESSING = [
+  ['products', 'slice_status', 'slice_requested_at'],
+  ['products', 'ai_analysis_status', 'ai_analysis_requested_at'],
+  ['order_line_items', 'meshy_status', 'meshy_requested_at'],
+  ['order_line_items', 'ai_analysis_status', 'ai_analysis_requested_at'],
+  ['project_parts', 'meshy_status', 'meshy_requested_at'],
+  ['project_parts', 'ai_analysis_status', 'ai_analysis_requested_at'],
+];
+
+async function destravarPresos() {
+  const limite = new Date(Date.now() - MINUTOS_PRA_CONSIDERAR_TRAVADO * 60000).toISOString();
+  for (const [tabela, coluna, quando] of FILAS_COM_PROCESSING) {
+    const { data, error } = await supabase.from(tabela)
+      .update({ [coluna]: 'queued' })
+      .eq(coluna, 'processing')
+      .lt(quando, limite)
+      .select('id');
+    if (error) {
+      log('AVISO: não consegui destravar ' + tabela + '.' + coluna + ': ' + error.message);
+      continue;
+    }
+    if (data && data.length > 0) {
+      log('Destravei ' + data.length + ' item(ns) parados em ' + tabela + '.' + coluna +
+        ' há mais de ' + MINUTOS_PRA_CONSIDERAR_TRAVADO + ' min — voltaram pra fila e vão ser refeitos.');
+    }
+  }
+}
+
 // Diz pro sistema que este computador está ligado e com o agente
 // rodando. A tela usa isso pra oferecer a lista de computadores na hora
 // de escolher onde abrir o arquivo — sem ninguém ter que cadastrar nada
@@ -899,8 +944,15 @@ async function main() {
   log('OrcaSlicer: ' + ORCA_PATH);
   log('Verificando a fila a cada ' + (POLL_INTERVAL_MS / 1000) + 's. Ctrl+C para parar.');
   await darSinalDeVida();
+  // De 5 em 5 minutos, e não a cada volta: são seis consultas, e nada
+  // trava em 5 segundos.
+  let proximoDestrave = 0;
   for (;;) {
     try { await darSinalDeVida(); } catch (e) { log('Erro inesperado (sinal de vida): ' + e.message); }
+    if (Date.now() >= proximoDestrave) {
+      proximoDestrave = Date.now() + 5 * 60 * 1000;
+      try { await destravarPresos(); } catch (e) { log('Erro inesperado (destravar presos): ' + e.message); }
+    }
     try { await tick(); } catch (e) { log('Erro inesperado (fatiamento): ' + e.message); }
     try { await tickAI(); } catch (e) { log('Erro inesperado (análise IA): ' + e.message); }
     try { await tickAbrirFatiador(); } catch (e) { log('Erro inesperado (abrir no fatiador): ' + e.message); }
