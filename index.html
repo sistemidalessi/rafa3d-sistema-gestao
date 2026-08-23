@@ -87,6 +87,12 @@
     background: linear-gradient(90deg, rgba(0,97,247,0.28), rgba(0,97,247,0.05));
     border-left-color: var(--blue); color: #fff;
   }
+  /* "Ver a loja" é link, não aba: nunca fica ativo e vai pra fora do
+     sistema, então se separa das abas em vez de se misturar com elas. */
+  .nav-item.nav-externo {
+    color: inherit; text-decoration: none; margin-top: 10px; padding-top: 15px;
+    border-top: 1px solid rgba(255,255,255,0.08);
+  }
   .sidebar .who { margin-top: auto; padding: 16px 20px; font-size: 11.5px; color: #8ea0c0; border-top: 1px solid rgba(255,255,255,0.08); }
   .sidebar .who .who-name { color: #fff; font-weight: 700; font-family: 'Space Grotesk', sans-serif; font-size: 13px; margin-bottom: 2px; }
   .sidebar .who button { margin-top: 8px; }
@@ -185,6 +191,13 @@
     <div class="nav-item" data-tab="clientes"><span class="ic">👥</span> Clientes</div>
     <div class="nav-item" data-tab="financeiro"><span class="ic">💰</span> Financeiro</div>
     <div class="nav-item" data-tab="margem"><span class="ic">📈</span> Quanto sobrou</div>
+    <!-- Não é aba: abre a loja numa janela nova, do jeito que o cliente
+         vê. Serve pra conferir preço e foto no ar depois de mexer num
+         produto, sem ter que procurar o endereço. -->
+    <a class="nav-item nav-externo" href="catalogo/index.html" target="_blank" rel="noopener">
+      <span class="ic">🛒</span> Ver a loja
+      <span style="margin-left:auto; opacity:.6; font-size:11px;">↗</span>
+    </a>
     <div class="who">
       <div id="whoLabel"></div>
       <button class="btn ghost" onclick="doLogout()">Sair</button>
@@ -334,6 +347,9 @@ const TAB_TITLES = {
 function applyRolePermissions() {
   const isHelper = currentProfile && currentProfile.role === 'helper';
   document.querySelectorAll('.nav-item').forEach((item) => {
+    // Item sem aba não é tela do sistema — é o link pra loja, que é
+    // pública. Esconder dele não protegeria nada e só atrapalharia.
+    if (!item.dataset.tab) return;
     if (HELPER_ALLOWED_TABS.indexOf(item.dataset.tab) === -1) {
       item.classList.toggle('hidden', isHelper);
     }
