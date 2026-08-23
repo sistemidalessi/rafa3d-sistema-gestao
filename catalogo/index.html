@@ -799,6 +799,12 @@ class Component extends DCLogic {
       { name:"Caucasiano (Cor da Pele)", bg: gloss("#d9a878") },
     ];
 
+    // A tela de finalizar compra é JavaScript puro, fora deste framework
+    // (ver comentário lá embaixo), e precisa das mesmas cores pra montar
+    // o seletor. Publicar aqui evita manter duas listas que vão
+    // divergir na primeira cor nova que entrar.
+    window.RAFA_CORES = filaments.map(function (f) { return f.name; });
+
     const cars = this.state.cars || [];
     const holders = this.state.holders || [];
     const utils = this.state.utils || [];
@@ -925,7 +931,7 @@ class Component extends DCLogic {
   var SB_ANON = 'sb_publishable_UPFqlHbmOH84eYiF6ZRfsw_L_31GOqy';
   var WA_NUMBER = '5511987190466';
 
-  var CK = { cartItems: [], onSucesso: null, passo: 'dados', combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
+  var CK = { cartItems: [], onSucesso: null, passo: 'dados', cores: {}, combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
 
   function fmtMoney(n) { return 'R$ ' + Number(n || 0).toFixed(2).replace('.', ','); }
   function totalProdutos() { return CK.cartItems.reduce(function (s, it) { return s + it.qty * it.priceNum; }, 0); }
@@ -936,7 +942,7 @@ class Component extends DCLogic {
 
   window.abrirCheckoutModal = function (cartItems, onSucesso) {
     if (!cartItems || !cartItems.length) return;
-    CK = { cartItems: cartItems, onSucesso: onSucesso, passo: 'dados', combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
+    CK = { cartItems: cartItems, onSucesso: onSucesso, passo: 'dados', cores: {}, combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
     document.getElementById('checkoutOverlay').style.display = 'flex';
     ckRender();
   };
@@ -969,10 +975,40 @@ class Component extends DCLogic {
     return ckInputStyle() + (CK.cepEncontrado ? ' background:#f3f4f7; color:#7b879c;' : '');
   }
 
+  // A cor de cada peça é escolhida aqui, e não some depois: ela vai na
+  // mensagem que o cliente manda no WhatsApp junto com o comprovante.
+  // Ainda não fica gravada no pedido dentro do sistema — pra isso a
+  // Edge Function finalizar-pedido teria que aceitar e gravar a cor.
+  function ckHtmlCores() {
+    var cores = window.RAFA_CORES || [];
+    if (!cores.length) return '';
+    var html = '<div style="background:#f7f8fb; border:1px solid #e7e9ef; border-radius:10px; padding:12px 14px; margin-bottom:14px;">';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:13.5px; color:#0b1733; margin-bottom:2px;">Em qual cor você quer cada peça?</div>';
+    html += '<div style="font-size:11.5px; color:#7b879c; margin-bottom:10px;">Se não escolher, a gente combina depois pelo WhatsApp.</div>';
+    CK.cartItems.forEach(function (it, i) {
+      var escolhida = CK.cores[it.code] || '';
+      html += '<div style="margin-bottom:8px;">';
+      html += '<div style="font-size:12.5px; color:#0b1733; margin-bottom:3px;">' + it.qty + 'x ' + it.name + '</div>';
+      html += '<select id="ckCor' + i + '" onchange="ckCorEscolhida(' + i + ', this.value)" style="' + ckInputStyle() + '">';
+      html += '<option value="">— escolher depois —</option>';
+      cores.forEach(function (c) {
+        html += '<option value="' + c + '"' + (c === escolhida ? ' selected' : '') + '>' + c + '</option>';
+      });
+      html += '</select></div>';
+    });
+    return html + '</div>';
+  }
+
+  window.ckCorEscolhida = function (i, valor) {
+    var item = CK.cartItems[i];
+    if (item) CK.cores[item.code] = valor;
+  };
+
   function ckHtmlDados() {
     var e = CK.endereco;
     var achado = CK.cepEncontrado;
     return ckHtmlErro() +
+      ckHtmlCores() +
       ckLabel('Seu nome') + '<input id="ckNome" style="' + ckInputStyle() + '" value="' + (e.nome || '') + '">' +
       ckLabel('Seu WhatsApp') + '<input id="ckContato" style="' + ckInputStyle() + '" placeholder="(11) 90000-0000" value="' + (e.contato || '') + '">' +
       ckLabel('Seu CPF') + '<input id="ckDocumento" style="' + ckInputStyle() + '" placeholder="000.000.000-00" value="' + (e.documento || '') + '">' +
@@ -1191,6 +1227,23 @@ class Component extends DCLogic {
     });
   };
 
+  // A mensagem que o servidor devolve não conhece as cores — elas são
+  // escolhidas aqui no navegador. Então a lista vai anexada ao texto,
+  // que é como a cor chega no Rafa hoje.
+  function ckWhatsappComCores(r) {
+    var escolhidas = CK.cartItems
+      .filter(function (it) { return CK.cores[it.code]; })
+      .map(function (it) { return '• ' + it.qty + 'x ' + it.name + ': ' + CK.cores[it.code]; });
+    if (!escolhidas.length) return r.whatsapp_url;
+
+    var extra = '\n\nCores que escolhi:\n' + escolhidas.join('\n');
+    // O servidor já manda a URL pronta com o texto codificado; aqui só
+    // acrescentamos ao final dele, sem remontar a mensagem inteira.
+    var partes = String(r.whatsapp_url).split('?text=');
+    if (partes.length !== 2) return r.whatsapp_url;
+    return partes[0] + '?text=' + partes[1] + encodeURIComponent(extra);
+  }
+
   function ckHtmlPago() {
     var r = CK.resultado;
     var html = '<div style="text-align:center;">';
@@ -1204,7 +1257,7 @@ class Component extends DCLogic {
       html += '<div style="font-size:11px; color:#7b879c; margin-bottom:6px;">Ou copia e cola no app do seu banco:</div>';
       html += '<textarea readonly style="width:100%; height:60px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea>';
     }
-    html += '<a href="' + r.whatsapp_url + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">' +
+    html += '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">' +
       (r.combinar ? 'Combinar no WhatsApp' : 'Já paguei — mandar comprovante') + '</a>';
     html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
     html += '</div>';
