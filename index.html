@@ -813,7 +813,13 @@ async function renderProjetos() {
   }
 
   clearTimeout(_projetosPollTimer);
-  const emAndamento = projetos.some((li) =>
+  // As partes têm fila própria, na tabela project_parts. Sem consultar
+  // ela aqui, a tela concluía "não tem nada em andamento" quando só as
+  // partes estavam trabalhando, parava de se atualizar, e elas ficavam
+  // em "gerando…" pra sempre — mesmo já prontas no banco há minutos.
+  const partesEmAndamento = await q(SUPA.from('project_parts').select('id').limit(1)
+    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued'));
+  const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
     li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
     li.open_slicer_status === 'queued');
