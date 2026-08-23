@@ -10,8 +10,14 @@
 const fs = require('fs');
 const path = require('path');
 const AdmZip = require('adm-zip');
+const { montarZip } = require('./zip3mf');
 
 const TEMPLATE_SETTINGS = JSON.parse(fs.readFileSync(path.join(__dirname, 'template-3mf', 'project_settings.config'), 'utf8'));
+
+// O Bambu so le as configuracoes de dentro do arquivo quando reconhece
+// que ele veio de um Bambu Studio. Com outro nome aqui, ele importa so a
+// malha e mantem o perfil que estava na tela.
+const VERSAO_BAMBU = TEMPLATE_SETTINGS.version || '02.01.00.59';
 
 // ---- STL: binário ou ASCII, detecta e lê os dois -------------------
 function lerSTL(buf) {
@@ -133,7 +139,8 @@ function gerarManifestoXML(escala, translacao) {
     '<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" ' +
     'xmlns:BambuStudio="http://schemas.bambulab.com/package/2021" ' +
     'xmlns:p="http://schemas.microsoft.com/3dmanufacturing/production/2015/06" requiredextensions="p">\n' +
-    ' <metadata name="Application">Rafa3DSistemaGestao</metadata>\n' +
+    ' <metadata name="Application">BambuStudio-' + VERSAO_BAMBU + '</metadata>\n' +
+    ' <metadata name="Designer">Rafa 3D Dalessi</metadata>\n' +
     ' <metadata name="BambuStudio:3mfVersion">1</metadata>\n' +
     ' <resources>\n' +
     '  <object id="2" p:UUID="00000001-0000-4000-8000-000000000002" type="model">\n' +
@@ -178,27 +185,110 @@ function escapeXml(s) {
 // ajustes: o JSON estruturado que a colinha devolveu (ver PROMPT_ANALISE
 // em agent.js) — só sobrescreve as chaves que vieram, o resto do
 // template (impressora Bambu Lab A1 + PLA já testados) fica intacto.
+// Os campos de lista do Bambu Studio só aceitam palavras exatas dele. A
+// colinha escreve em linguagem de gente ("normal", "árvore"), e gravar
+// isso cru quebra TUDO: o Bambu recusa o arquivo inteiro e cai pra
+// importar só a geometria, perdendo junto os ajustes que estavam certos.
+//
+// Por isso a tradução é por lista fechada. Valor que não estiver aqui é
+// ignorado, e o template prevalece naquele campo.
+const LISTAS_DO_BAMBU = {
+  support_type: {
+    normal: 'normal(auto)', 'normal(auto)': 'normal(auto)',
+    tree: 'tree(auto)', 'tree(auto)': 'tree(auto)', arvore: 'tree(auto)', 'árvore': 'tree(auto)',
+  },
+  // Tudo cai em auto_brim de propósito. Esta versão do Bambu recusou
+  // 'outer_brim_only' e trocou por 'auto_brim' sozinha, avisando numa
+  // janela — o nome interno dos outros modos mudou e não foi confirmado.
+  // A LARGURA do brim continua valendo, então a intenção da colinha
+  // ("4mm porque a base é estreita") é respeitada igual.
+  brim_type: {
+    auto_brim: 'auto_brim', automatico: 'auto_brim', 'automático': 'auto_brim',
+    outer_brim_only: 'auto_brim', externo: 'auto_brim',
+    inner_brim_only: 'auto_brim', interno: 'auto_brim',
+    outer_and_inner: 'auto_brim', brim_ears: 'auto_brim',
+    no_brim: 'no_brim', nenhum: 'no_brim', sem: 'no_brim',
+  },
+  sparse_infill_pattern: {
+    grid: 'grid', grade: 'grid', gyroid: 'gyroid', giroide: 'gyroid', 'giróide': 'gyroid',
+    crosshatch: 'crosshatch', cubic: 'cubic', cubico: 'cubic', 'cúbico': 'cubic',
+    'zig-zag': 'zig-zag', zigzag: 'zig-zag', line: 'line', linha: 'line',
+    concentric: 'concentric', concentrico: 'concentric', 'concêntrico': 'concentric',
+    honeycomb: 'honeycomb', colmeia: 'honeycomb', triangles: 'triangles',
+    'tri-hexagon': 'tri-hexagon', adaptivecubic: 'adaptivecubic', lightning: 'lightning',
+    supportcubic: 'supportcubic', monotonic: 'monotonic',
+  },
+};
+
+// Em qual das três listas de "mexi neste aqui" cada campo entra. O Bambu
+// guarda isso separado por categoria: processo, filamento e impressora.
+const CATEGORIA = {
+  layer_height: 0, wall_loops: 0, sparse_infill_density: 0, sparse_infill_pattern: 0,
+  enable_support: 0, support_type: 0, support_threshold_angle: 0, brim_type: 0, brim_width: 0,
+  nozzle_temperature: 1, nozzle_temperature_initial_layer: 1,
+  hot_plate_temp: 1, hot_plate_temp_initial_layer: 1,
+};
+
+function traduzirParaOBambu(campo, valor) {
+  const lista = LISTAS_DO_BAMBU[campo];
+  if (!lista) return valor;
+  return lista[String(valor).trim().toLowerCase()] || null;
+}
+
 function aplicarAjustesColinha(ajustes) {
   const settings = { ...TEMPLATE_SETTINGS };
   if (!ajustes) return settings;
-  const mapa = {
-    layer_height_mm: (v) => { settings.layer_height = String(v); },
-    wall_loops: (v) => { settings.wall_loops = String(v); },
-    infill_density_pct: (v) => { settings.sparse_infill_density = v + '%'; },
-    infill_pattern: (v) => { settings.sparse_infill_pattern = v; },
-    support_enable: (v) => { settings.enable_support = v ? '1' : '0'; },
-    support_type: (v) => { settings.support_type = v; },
-    support_threshold_angle: (v) => { settings.support_threshold_angle = String(v); },
-    brim_type: (v) => { settings.brim_type = v; },
-    brim_width_mm: (v) => { settings.brim_width = String(v); },
-    nozzle_temp_c: (v) => { settings.nozzle_temperature = [String(v)]; settings.nozzle_temperature_initial_layer = [String(v)]; },
-    bed_temp_c: (v) => { settings.hot_plate_temp = [String(v)]; settings.hot_plate_temp_initial_layer = [String(v)]; },
+
+  // Guarda tudo que a colinha mexeu. Sem essa lista o Bambu carrega o
+  // perfil nomeado em print_settings_id e IGNORA os valores do arquivo:
+  // pra ele, campo que não está aqui é campo que continua igual ao
+  // perfil. Foi exatamente o que aconteceu no primeiro teste que abriu
+  // limpo — só a altura da camada "bateu", e mesmo assim por acaso,
+  // porque o template já usava 0.2.
+  const mexidos = [];
+  const gravar = (campo, valor) => { settings[campo] = valor; mexidos.push(campo); };
+  const escolha = (campo, valor) => {
+    const traduzido = traduzirParaOBambu(campo, valor);
+    if (traduzido !== null) gravar(campo, traduzido);
   };
+
+  const mapa = {
+    layer_height_mm: (v) => gravar('layer_height', String(v)),
+    wall_loops: (v) => gravar('wall_loops', String(v)),
+    infill_density_pct: (v) => gravar('sparse_infill_density', v + '%'),
+    infill_pattern: (v) => escolha('sparse_infill_pattern', v),
+    support_enable: (v) => gravar('enable_support', v ? '1' : '0'),
+    support_type: (v) => escolha('support_type', v),
+    support_threshold_angle: (v) => gravar('support_threshold_angle', String(v)),
+    brim_type: (v) => escolha('brim_type', v),
+    brim_width_mm: (v) => gravar('brim_width', String(v)),
+    nozzle_temp_c: (v) => {
+      gravar('nozzle_temperature', [String(v)]);
+      gravar('nozzle_temperature_initial_layer', [String(v)]);
+    },
+    bed_temp_c: (v) => {
+      gravar('hot_plate_temp', [String(v)]);
+      gravar('hot_plate_temp_initial_layer', [String(v)]);
+    },
+  };
+
   for (const chave of Object.keys(ajustes)) {
     if (mapa[chave] && ajustes[chave] !== null && ajustes[chave] !== undefined) {
       try { mapa[chave](ajustes[chave]); } catch (e) { /* ignora um campo ruim, não derruba o resto */ }
     }
   }
+
+  // Junta o que já vinha marcado no template com o que a colinha mexeu.
+  const listas = (settings.different_settings_to_system || ['', '', '']).slice();
+  mexidos.forEach((campo) => {
+    const i = CATEGORIA[campo];
+    if (i === undefined) return;
+    const atuais = String(listas[i] || '').split(';').filter(Boolean);
+    if (!atuais.includes(campo)) atuais.push(campo);
+    listas[i] = atuais.join(';');
+  });
+  settings.different_settings_to_system = listas;
+
   return settings;
 }
 
@@ -220,31 +310,47 @@ function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto, origem) {
 
   const settings = aplicarAjustesColinha(ajustes);
 
-  const zip = new AdmZip();
-  zip.addFile('[Content_Types].xml',
-    Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n' +
+  // A ORDEM AQUI IMPORTA: a norma do .3mf exige o [Content_Types].xml
+  // como primeira parte do pacote, e o Bambu Studio recusa quando não é.
+  // Por isso o zip é montado pelo zip3mf.js, e não pelo adm-zip — ele
+  // reordenava as entradas na hora de gravar e jogava o _rels na frente.
+  const buffer = montarZip([
+    { nome: '[Content_Types].xml', conteudo:
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\n' +
       ' <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\n' +
       ' <Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/>\n' +
-      '</Types>\n'));
-  zip.addFile('_rels/.rels',
-    Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n' +
-      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' +
-      ' <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n' +
-      '</Relationships>\n'));
-  zip.addFile('3D/3dmodel.model', Buffer.from(gerarManifestoXML(escala, translacao)));
-  zip.addFile('3D/_rels/3dmodel.model.rels',
-    Buffer.from('<?xml version="1.0" encoding="UTF-8"?>\n' +
+      ' <Default Extension="png" ContentType="image/png"/>\n' +
+      '</Types>\n' },
+    { nome: '3D/3dmodel.model', conteudo: gerarManifestoXML(escala, translacao) },
+    { nome: '3D/_rels/3dmodel.model.rels', conteudo:
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
       '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' +
       ' <Relationship Target="/3D/Objects/object_1.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n' +
-      '</Relationships>\n'));
-  zip.addFile('3D/Objects/object_1.model', Buffer.from(gerarMeshXML(vertices, triangulos)));
-  zip.addFile('Metadata/model_settings.config', Buffer.from(gerarModelSettingsXML(nomeObjeto)));
-  zip.addFile('Metadata/project_settings.config', Buffer.from(JSON.stringify(settings, null, 4)));
+      '</Relationships>\n' },
+    { nome: '3D/Objects/object_1.model', conteudo: gerarMeshXML(vertices, triangulos) },
+    { nome: '_rels/.rels', conteudo:
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">\n' +
+      ' <Relationship Target="/3D/3dmodel.model" Id="rel-1" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/>\n' +
+      '</Relationships>\n' },
+    { nome: 'Metadata/model_settings.config', conteudo: gerarModelSettingsXML(nomeObjeto) },
+    { nome: 'Metadata/project_settings.config', conteudo: JSON.stringify(settings, null, 4) },
+    // O Bambu Studio espera este arquivo em todo projeto dele. Sem ele o
+    // .3mf passa por modelo solto e as configurações são descartadas.
+    { nome: 'Metadata/slice_info.config', conteudo:
+      '<?xml version="1.0" encoding="UTF-8"?>\n' +
+      '<config>\n' +
+      '  <header>\n' +
+      '    <header_item key="X-BBL-Client-Type" value="slicer"/>\n' +
+      '    <header_item key="X-BBL-Client-Version" value="' + VERSAO_BAMBU + '"/>\n' +
+      '  </header>\n' +
+      '</config>\n' },
+  ]);
 
   const tamanhoFinalMm = bbox.tamanho.map((t) => t * escala);
   return {
-    buffer: zip.toBuffer(), escalaAplicada: escala, bbox, tamanhoFinalMm,
+    buffer, escalaAplicada: escala, bbox, tamanhoFinalMm,
     cabeNaMesa: Math.max(tamanhoFinalMm[0], tamanhoFinalMm[1]) <= MESA_MM && tamanhoFinalMm[2] <= MESA_MM,
   };
 }

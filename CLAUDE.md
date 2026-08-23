@@ -136,55 +136,36 @@ sai dali.
 - **O OrcaSlicer sai com código 0 mesmo falhando.** A única checagem confiável
   é ver se o arquivo de saída existe.
 
-## Abrir o fatiador já configurado: o que falta e o que já se sabe
 
-O `.3mf` que o [`gerar3mf.js`](slicer-agent/gerar3mf.js) monta abre no Bambu
-Studio com a peça no tamanho certo, mas **as configurações da colinha são
-ignoradas** — ele importa só a geometria e mantém o perfil que estava na tela.
+## Abrir o fatiador já configurado: por que é delicado
 
-Isto aqui é o resultado de uma investigação inteira, pra ninguém repetir os
-mesmos becos sem saída:
+O [`gerar3mf.js`](slicer-agent/gerar3mf.js) converte o `.stl` da Meshy num
+`.3mf` que abre no Bambu Studio com os ajustes da colinha já aplicados. Isso
+funciona hoje, mas foram **três defeitos empilhados** até funcionar, cada um
+escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelmente
+é um destes:
 
-**O que já foi descartado como causa:**
+1. **A ordem dentro do zip.** A norma do `.3mf` (OPC) exige o
+   `[Content_Types].xml` como **primeira** parte do pacote. O `adm-zip`
+   reordenava ao gravar e jogava o `_rels/.rels` na frente, e o Bambu recusava
+   o pacote. Por isso o zip é montado pelo [`zip3mf.js`](slicer-agent/zip3mf.js),
+   escrito à mão, que grava na ordem exata — **não troque por biblioteca de
+   zip sem garantir a ordem.**
+2. **O arquivo precisa se declarar como projeto do Bambu.** Ele decide entre
+   "leio as configurações" e "importo só a malha" pelo
+   `<metadata name="Application">BambuStudio-...` e pela presença do
+   `Metadata/slice_info.config`. Sem os dois, ignora tudo em silêncio.
+3. **`different_settings_to_system` é o que faz os valores valerem.** O Bambu
+   não lê os valores soltos: ele carrega o perfil nomeado em
+   `print_settings_id` e aplica por cima **só** os campos listados nesse
+   vetor de três posições (processo, filamento, impressora). Campo alterado
+   que não entra na lista é descartado — o sintoma é abrir limpo, sem erro
+   nenhum, e mesmo assim vir tudo com os valores do perfil.
 
-- **Não é a colinha.** A IA grava as 11 chaves certas em `ai_slicing_settings`
-  (`layer_height_mm`, `wall_loops`, `support_enable`...), conferido no banco.
-- **Não é a conversão.** Abrindo o `.3mf` gerado e lendo o
-  `Metadata/project_settings.config` por dentro, os 11 valores estão lá,
-  corretos. O arquivo sai certo; quem descarta é o Bambu.
-- **Não é a versão.** O template diz `02.08.01.55`, o Bambu instalado é
-  `02.08.02.61` — mais novo, e isso é tolerado.
-- **Não é o tamanho dos vetores.** Os campos por filamento
-  (`nozzle_temperature` etc.) já são de tamanho 1 no template, igual ao que se
-  grava.
-
-**O que se descobriu:**
-
-- O Bambu decide entre "projeto meu, leio tudo" e "modelo de terceiro, importo
-  só a malha" pelo `<metadata name="Application">` e pela presença de
-  `Metadata/slice_info.config`. Forçando os dois, ele passa a **tentar** ler —
-  e aí responde *"contém uma configuração inválida"*, que é um passo à frente.
-- `support_type` da colinha vem `"normal"`, e o Bambu só aceita
-  `normal(auto)` e `tree(auto)` (conferido nos perfis oficiais em
-  `resources/profiles`). Um valor de lista inválido faz ele rejeitar o
-  arquivo de configuração **inteiro**, não só aquele campo.
-- **A causa raiz parece ser o empacotamento.** Teste decisivo: pegar um `.3mf`
-  gerado pelo próprio Bambu Studio, mudar três números dentro do
-  `project_settings.config` e regravar com o `adm-zip` faz o arquivo **parar de
-  abrir** ("Falha no carregamento de um arquivo de modelo"). Ou seja, o
-  problema está uma camada abaixo dos valores — na forma como o zip é escrito
-  (provável: ordem das entradas, ou o `[Content_Types].xml` precisar ser a
-  primeira e sem compressão).
-
-**Por onde seguir, quando voltar a isso:**
-
-1. Investigar a escrita do zip antes de qualquer outra coisa — comparar entrada
-   por entrada (ordem, método de compressão, flags) entre um `.3mf` do Bambu e
-   um regravado. Enquanto isso não fechar, mexer em valor é perda de tempo.
-2. Se o caminho do `.3mf` não fechar, existe uma saída lateral: o agente roda
-   na mesma máquina que o Bambu Studio e pode escrever um **preset de processo
-   próprio** em `%APPDATA%\BambuStudio\user\...\process\`, com o nome da peça.
-   Aí o `.stl` abre puro e o perfil já aparece na lista pra escolher.
-3. Traduzir os campos de lista antes de gravar (`normal` → `normal(auto)`), e
-   **ignorar valor desconhecido em vez de gravar** — um campo perdido é melhor
-   que o arquivo inteiro recusado.
+Além disso, os campos de lista só aceitam as palavras exatas do Bambu, e
+**valor inválido derruba o arquivo de configuração inteiro**, não só aquele
+campo. Por isso `aplicarAjustesColinha()` traduz por lista fechada e ignora o
+que não conhece: `normal` → `normal(auto)`, e todo modo de brim → `auto_brim`
+(esta versão recusou `outer_brim_only`; o menu tem "Apenas brim externo", mas
+com outro nome interno que ainda não foi identificado — a largura do brim
+continua valendo de qualquer forma).
