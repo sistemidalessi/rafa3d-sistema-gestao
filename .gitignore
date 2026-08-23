@@ -24,3 +24,8 @@ slicer-agent/downloads/
 # é por máquina/sessão, não faz sentido compartilhar. launch.json (servidor
 # de preview local) continua indo pro repo, esse é o único que não vai.
 .claude/settings.local.json
+
+# Modelo 3D gerado solto na raiz (sobra de teste do agente ou do fatiador).
+# Arquivo de peca nao mora aqui: o do catalogo vai pro Storage do Supabase,
+# e o que o agente baixa fica em slicer-agent/downloads, ja ignorado.
+/*.3mf
