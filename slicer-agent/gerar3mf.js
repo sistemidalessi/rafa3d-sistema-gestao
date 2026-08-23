@@ -197,16 +197,18 @@ const LISTAS_DO_BAMBU = {
     normal: 'normal(auto)', 'normal(auto)': 'normal(auto)',
     tree: 'tree(auto)', 'tree(auto)': 'tree(auto)', arvore: 'tree(auto)', 'árvore': 'tree(auto)',
   },
-  // Tudo cai em auto_brim de propósito. Esta versão do Bambu recusou
-  // 'outer_brim_only' e trocou por 'auto_brim' sozinha, avisando numa
-  // janela — o nome interno dos outros modos mudou e não foi confirmado.
-  // A LARGURA do brim continua valendo, então a intenção da colinha
-  // ("4mm porque a base é estreita") é respeitada igual.
+  // Os nomes mudaram de versão: o que o formato antigo chamava de
+  // 'outer_brim_only' hoje é 'outer_only' (e 'inner_brim_only' virou
+  // 'inner_only'). Mandar o nome velho faz o Bambu trocar por auto_brim
+  // sozinho e avisar numa janela. A lista abaixo saiu da tabela de
+  // valores de dentro do BambuStudio.dll:
+  //   no_brim | outer_only | inner_only | outer_and_inner | auto_brim | brim_ears
   brim_type: {
     auto_brim: 'auto_brim', automatico: 'auto_brim', 'automático': 'auto_brim',
-    outer_brim_only: 'auto_brim', externo: 'auto_brim',
-    inner_brim_only: 'auto_brim', interno: 'auto_brim',
-    outer_and_inner: 'auto_brim', brim_ears: 'auto_brim',
+    outer_brim_only: 'outer_only', outer_only: 'outer_only', externo: 'outer_only',
+    inner_brim_only: 'inner_only', inner_only: 'inner_only', interno: 'inner_only',
+    outer_and_inner: 'outer_and_inner', ambos: 'outer_and_inner',
+    brim_ears: 'brim_ears', orelhas: 'brim_ears',
     no_brim: 'no_brim', nenhum: 'no_brim', sem: 'no_brim',
   },
   sparse_infill_pattern: {
