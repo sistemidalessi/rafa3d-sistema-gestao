@@ -549,9 +549,11 @@
     <div style="position:relative; background:rgba(0,97,247,0.08); border:1px solid rgba(0,97,247,0.25); border-radius:14px; padding:16px 20px; margin-bottom:22px;">
       <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; color:#5fa0ff; margin-bottom:8px;">COMO FAZER SEU PEDIDO</div>
       <div style="font-family:'Space Grotesk',sans-serif; font-size:13.5px; color:#cdd9ee; line-height:1.7;">
-        1. Escolha o item e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong>, depois finalize no carrinho<br/>
-        2. Preencha seus dados, incluindo a <strong style="color:#fff;">cor desejada</strong><br/>
-        3. Confirmação e envio de <strong style="color:#fff;">50% do valor (sinal)</strong> via PIX
+        1. Escolha as peças e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong><br/>
+        2. No carrinho, clique em <strong style="color:#fff;">"Finalizar a Compra"</strong> e preencha seus dados — é só digitar o CEP que o endereço vem sozinho<br/>
+        3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto<br/>
+        4. Pague o <strong style="color:#fff;">PIX que aparece na tela</strong> e mande o comprovante no nosso WhatsApp<br/>
+        <span style="color:#9fb4d8;">Quer uma cor específica? É só dizer no WhatsApp junto com o comprovante.</span>
       </div>
     </div>
     <div style="position:relative; display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-bottom:24px;">
@@ -636,7 +638,7 @@
               <span>Total</span><span>{{ cartTotal }}</span>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#7b879c; margin-bottom:14px;">
-              <span>Sinal (50% via PIX)</span><span>{{ cartHalf }}</span>
+              <span>+ frete, calculado no próximo passo</span>
             </div>
             <button onClick="{{ abrirCheckout }}" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:#fff; background:#0b1733; padding:12px; border-radius:10px;">Finalizar a Compra</button>
           </div>
