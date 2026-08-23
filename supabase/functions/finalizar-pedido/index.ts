@@ -8,6 +8,11 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import webpush from "web-push";
 
+// Quanto o cliente paga adiantado. O resto sai quando a peça fica
+// pronta. Tem que continuar batendo com o expected_deposit_pct que a
+// tabela orders já usa por padrão — se um dia mudar, mude nos dois.
+const PERCENTUAL_SINAL = 50;
+
 function tlv(id: string, value: string): string {
   return id + String(value.length).padStart(2, "0") + value;
 }
@@ -236,16 +241,25 @@ export default {
     await avisarPedidoNovoPorEmail(orderNumber, total, combinar).catch((e) =>
       console.error("Erro mandando e-mail de aviso:", e));
 
+    // O cliente paga metade agora e metade quando a peça fica pronta —
+    // é como a loja sempre trabalhou, e bate com o expected_deposit_pct
+    // que o pedido já grava. Por isso o PIX é do SINAL, não do total:
+    // gerar o PIX cheio faria o cliente pagar tudo adiantado sem saber.
+    const sinal = Math.round(total * PERCENTUAL_SINAL) / 100;
+
     const whatsappNumero = Deno.env.get("WHATSAPP_NUMBER") || "";
+    const dinheiro = (v: number) => v.toFixed(2).replace(".", ",");
     const mensagem = combinar
       ? `Olá! Fechei o pedido ${orderNumber} no catálogo e escolhi combinar a entrega. Podemos combinar?`
-      : `Olá! Fechei o pedido ${orderNumber} no catálogo (total ${total.toFixed(2).replace(".", ",")}) e já vou pagar o PIX. Assim que pagar, mando o comprovante aqui!`;
+      : `Olá! Fechei o pedido ${orderNumber} no catálogo (total ${dinheiro(total)}, sinal de ${dinheiro(sinal)}) e já vou pagar o PIX do sinal. Assim que pagar, mando o comprovante aqui!`;
     const whatsappUrl = "https://wa.me/" + whatsappNumero + "?text=" + encodeURIComponent(mensagem);
 
     return Response.json({
       pedido_numero: orderNumber,
       total,
-      pix_copia_cola: combinar ? null : gerarPixCopiaECola(total, orderNumber),
+      sinal: combinar ? null : sinal,
+      percentual_sinal: PERCENTUAL_SINAL,
+      pix_copia_cola: combinar ? null : gerarPixCopiaECola(sinal, orderNumber),
       whatsapp_url: whatsappUrl,
       combinar,
     });

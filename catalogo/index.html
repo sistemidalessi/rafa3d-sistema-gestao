@@ -552,7 +552,7 @@
         1. Escolha as peças e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong><br/>
         2. No carrinho, clique em <strong style="color:#fff;">"Finalizar a Compra"</strong> e preencha seus dados — é só digitar o CEP que o endereço vem sozinho<br/>
         3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto<br/>
-        4. Pague o <strong style="color:#fff;">PIX que aparece na tela</strong> e mande o comprovante no nosso WhatsApp<br/>
+        4. Pague o <strong style="color:#fff;">sinal de 50%</strong> pelo PIX que aparece na tela e mande o comprovante no nosso WhatsApp — o restante fica pra quando a peça estiver pronta<br/>
         <span style="color:#9fb4d8;">Quer uma cor específica? É só dizer no WhatsApp junto com o comprovante.</span>
       </div>
     </div>
@@ -638,7 +638,7 @@
               <span>Total</span><span>{{ cartTotal }}</span>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#7b879c; margin-bottom:14px;">
-              <span>+ frete, calculado no próximo passo</span>
+              <span>+ frete, e você paga 50% de sinal agora</span>
             </div>
             <button onClick="{{ abrirCheckout }}" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:#fff; background:#0b1733; padding:12px; border-radius:10px;">Finalizar a Compra</button>
           </div>
@@ -1252,7 +1252,11 @@ class Component extends DCLogic {
     if (r.combinar) {
       html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Agora é só combinar a entrega com a gente pelo WhatsApp.</div>';
     } else {
-      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Total a pagar: <strong>' + fmtMoney(r.total) + '</strong></div>';
+      var pct = r.percentual_sinal || 50;
+      var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Total do pedido: <strong>' + fmtMoney(r.total) + '</strong></div>';
+      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:19px; color:#0b1733; margin-top:6px;">Pague agora ' + fmtMoney(sinal) + '</div>';
+      html += '<div style="font-size:12px; color:#7b879c; margin-top:2px;">É o sinal de ' + pct + '%. O restante fica pra quando a peça estiver pronta.</div>';
       html += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="margin:14px auto; display:block; border:1px solid #e7e9ef; border-radius:10px;">';
       html += '<div style="font-size:11px; color:#7b879c; margin-bottom:6px;">Ou copia e cola no app do seu banco:</div>';
       html += '<textarea readonly style="width:100%; height:60px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea>';
