@@ -4,6 +4,28 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
+## Primeira coisa numa máquina nova
+
+O Anderson trabalha em dois computadores, e o agente precisa ser instalado em
+cada um — Node, dependências e o `.env` não viajam no repositório, de
+propósito (o `.env` carrega a `service_role`).
+
+**Se a sessão parecer estar numa máquina ainda não preparada** — o agente não
+roda, o `node` não existe, ou ele mencionar que trocou de computador — rode
+isto antes de qualquer outra coisa e diga o que apareceu:
+
+```
+powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
+```
+
+Ele confere Node, dependências, `.env` (inclusive se a chave está preenchida),
+Bambu Studio e se o agente está de pé — e imprime os comandos do que faltar, na
+ordem. É PowerShell e não Node de propósito: numa máquina nova o Node pode ser
+justamente o que falta.
+
+Sem isso, o sintoma é confuso: o sistema abre e funciona normal, mas todo botão
+de fatiador e de IA fica esperando na fila pra sempre, sem erro nenhum na tela.
+
 ## Escrevendo texto de tela
 
 Quem opera este sistema no dia a dia tem 10 anos. Todo texto que aparece na

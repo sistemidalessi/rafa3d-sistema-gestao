@@ -141,6 +141,16 @@ numa delas e o agente simplesmente não rodar.
 | **CLI do Supabase** | Publicar Edge Function (`supabase functions deploy`) | Em quem for mexer nelas |
 | **`slicer-agent/.env`** | Segredos do agente | Onde o agente roda |
 
+Pra saber o que falta nesta máquina sem conferir na mão, rode:
+
+```bash
+powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
+```
+
+Ele confere tudo da tabela acima e imprime os comandos do que faltar, na ordem.
+É PowerShell e não Node de propósito — numa máquina nova o Node pode ser
+justamente o que falta.
+
 No Windows, o que falta se instala com:
 
 ```bash
