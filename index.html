@@ -253,11 +253,31 @@ function initClient(url, key) {
       currentProfile = null;
       renderLoginScreen();
     }
+    // Chegou pelo link de "esqueci minha senha": entra direto na tela de
+    // criar senha nova, e não no sistema.
+    if (event === 'PASSWORD_RECOVERY') renderNovaSenhaScreen();
   });
   checkSession();
 }
 
+// Quando o link do e-mail vence ou já foi usado, o Supabase devolve o
+// motivo no fim do endereço. Sem ler isso, a pessoa cai numa tela de
+// login comum e não entende por que "não funcionou".
+function erroNoEndereco() {
+  const hash = window.location.hash || '';
+  if (hash.indexOf('error') === -1) return null;
+  const p = new URLSearchParams(hash.replace(/^#/, ''));
+  const codigo = p.get('error_code') || '';
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  if (codigo.indexOf('expired') !== -1) {
+    return 'Esse link de senha já venceu. Clica em "Esqueci minha senha" que eu mando outro.';
+  }
+  return 'Esse link de senha não vale mais. Clica em "Esqueci minha senha" que eu mando outro.';
+}
+
 async function checkSession() {
+  const aviso = erroNoEndereco();
+  if (aviso) { renderLoginScreen(aviso); return; }
   const { data } = await SUPA.auth.getSession();
   if (data && data.session) {
     currentUser = data.session.user;
@@ -283,7 +303,69 @@ function renderLoginScreen(errorMsg) {
       '<input id="loginPassword" type="password" autocomplete="current-password">' +
       (errorMsg ? '<div class="error">' + escapeHtml(errorMsg) + '</div>' : '') +
       '<button class="btn full" onclick="submitLogin()">Entrar</button>' +
+      '<div style="text-align:center; margin-top:14px;">' +
+        '<a href="#" onclick="pedirNovaSenha(); return false;" style="color:var(--muted); font-size:12.5px;">Esqueci minha senha</a>' +
+      '</div>' +
     '</div>';
+}
+
+// Quem opera isto tem 10 anos e vai esquecer a senha — sem esta tela,
+// a única saída seria alguém entrar no painel do Supabase por ele.
+async function pedirNovaSenha() {
+  const campo = document.getElementById('loginEmail');
+  const email = (campo ? campo.value : '').trim();
+  if (!email) { renderLoginScreen('Escreve seu e-mail ali em cima primeiro, aí eu mando o link.'); return; }
+
+  // O link do e-mail volta pra esta mesma página. Sem dizer isso, o
+  // Supabase manda pro endereço padrão dele (localhost:3000), que não
+  // existe em computador nenhum de vocês.
+  const voltarPara = window.location.href.split('#')[0];
+  const { error } = await SUPA.auth.resetPasswordForEmail(email, { redirectTo: voltarPara });
+  if (error) { renderLoginScreen('Não consegui mandar o e-mail: ' + error.message); return; }
+
+  document.getElementById('authScreen').innerHTML =
+    '<div class="auth-card">' +
+      '<img class="auth-logo" src="catalogo/assets/logo_clean.png" alt="Rafa 3D">' +
+      '<h1>Olha seu e-mail</h1>' +
+      '<p class="sub">Mandei um link pra <strong>' + escapeHtml(email) + '</strong>.<br>' +
+      'Abra o e-mail e clique no link pra criar uma senha nova.</p>' +
+      '<p class="sub" style="font-size:12px;">O link vale por pouco tempo. Se demorar, peça outro.</p>' +
+      '<button class="btn full secondary" onclick="renderLoginScreen()">Voltar</button>' +
+    '</div>';
+}
+
+// Depois de clicar no link do e-mail, a pessoa chega aqui já autenticada
+// só pra trocar a senha — não é o app aberto ainda.
+function renderNovaSenhaScreen(aviso) {
+  document.getElementById('appRoot').classList.add('hidden');
+  const el = document.getElementById('authScreen');
+  el.classList.remove('hidden');
+  el.innerHTML =
+    '<div class="auth-card">' +
+      '<img class="auth-logo" src="catalogo/assets/logo_clean.png" alt="Rafa 3D">' +
+      '<h1>Criar uma senha nova</h1>' +
+      '<p class="sub">Escolha uma senha que você consiga lembrar.</p>' +
+      '<label>Senha nova</label>' +
+      '<input id="senhaNova" type="password" autocomplete="new-password">' +
+      '<label>Escreve de novo</label>' +
+      '<input id="senhaNova2" type="password" autocomplete="new-password">' +
+      (aviso ? '<div class="error">' + escapeHtml(aviso) + '</div>' : '') +
+      '<button class="btn full" onclick="salvarNovaSenha()">Salvar</button>' +
+    '</div>';
+}
+
+async function salvarNovaSenha() {
+  const a = document.getElementById('senhaNova').value;
+  const b = document.getElementById('senhaNova2').value;
+  if (a.length < 6) { renderNovaSenhaScreen('A senha precisa ter pelo menos 6 letras ou números.'); return; }
+  if (a !== b) { renderNovaSenhaScreen('As duas senhas estão diferentes. Escreve de novo.'); return; }
+  const { error } = await SUPA.auth.updateUser({ password: a });
+  if (error) { renderNovaSenhaScreen('Não consegui salvar: ' + error.message); return; }
+  // Tira o token da barra de endereço pra o link não ser reaproveitado.
+  history.replaceState(null, '', window.location.pathname + window.location.search);
+  const { data } = await SUPA.auth.getSession();
+  if (data && data.session) { currentUser = data.session.user; enterApp(); }
+  else renderLoginScreen('Senha trocada! Agora entra com ela.');
 }
 
 async function submitLogin() {
