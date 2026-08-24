@@ -1270,9 +1270,15 @@ class Component extends DCLogic {
     var escolhidas = CK.cartItems
       .filter(function (it) { return CK.cores[it.code]; })
       .map(function (it) { return '• ' + it.qty + 'x ' + it.name + ': ' + CK.cores[it.code]; });
-    if (!escolhidas.length) return r.whatsapp_url;
 
-    var extra = '\n\nCores que escolhi:\n' + escolhidas.join('\n');
+    var extra = '';
+    // No pedido com entrega a combinar a mensagem do servidor não leva
+    // valor nenhum — e quem recebe fica sem saber quanto cobrar sem ir
+    // procurar o pedido no sistema.
+    if (r.combinar) extra += '\n\nMinhas peças deram ' + fmtMoney(r.total) + ' (falta combinar a entrega).';
+    if (escolhidas.length) extra += '\n\nCores que escolhi:\n' + escolhidas.join('\n');
+    if (!extra) return r.whatsapp_url;
+
     // O servidor já manda a URL pronta com o texto codificado; aqui só
     // acrescentamos ao final dele, sem remontar a mensagem inteira.
     var partes = String(r.whatsapp_url).split('?text=');
@@ -1389,11 +1395,33 @@ class Component extends DCLogic {
     var r = CK.resultado;
     var html = '<div style="text-align:center;">';
 
+    // Quem escolhe combinar a entrega não recebe PIX: sem o frete não
+    // dá pra saber o valor. Só que a versão anterior não dizia ISSO —
+    // dizia "é só combinar a entrega" e mais nada, e a pessoa terminava
+    // a compra sem nunca ver uma palavra sobre pagar. Era daí que vinha
+    // a pergunta "como faço pra pagar?": todos os pedidos que chegaram
+    // no primeiro dia vieram por este caminho.
     if (r.combinar) {
-      html += '<div style="font-size:34px;">&#127881;</div>';
-      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; margin-top:6px;">Pedido ' + r.pedido_numero + ' criado!</div>';
-      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Agora é só combinar a entrega com a gente pelo WhatsApp.</div>';
-      html += '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Combinar no WhatsApp</a>';
+      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
+      html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
+        + '<strong>Falta combinar a entrega.</strong> O pagamento vem logo depois disso — me chame que eu te explico tudo.</div>';
+
+      html += '<div style="background:#f2f7ff; border:1.5px solid #cfe0ff; border-radius:12px; padding:13px; margin-top:14px; text-align:left; font-size:13px; color:#33507d; line-height:1.8;">';
+      html += '<div style="display:flex; justify-content:space-between;"><span>Suas peças</span><strong>' + fmtMoney(r.total) + '</strong></div>';
+      html += '<div style="display:flex; justify-content:space-between;"><span>Entrega</span><strong>a combinar</strong></div>';
+      html += '</div>';
+
+      html += ckPasso(1, 'Me chame no WhatsApp',
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6; margin-bottom:7px;">Eu vejo de onde você é e a gente acerta a entrega.</div>'
+        + '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Combinar a entrega no WhatsApp</a>');
+
+      html += ckPasso(2, 'Aí eu te mando o PIX',
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Vai ser a <strong>metade</strong> do total (as peças mais a entrega), pra eu começar a imprimir.</div>');
+
+      html += ckPasso(3, 'A outra metade fica pro fim',
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Você paga quando a peça estiver pronta, antes de eu mandar.</div>');
+
+      html += '<div style="font-size:12px; color:#7b879c; margin-top:16px;">Guarde este número: <strong>pedido ' + r.pedido_numero + '</strong>.</div>';
       html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
       return html + '</div>';
     }
