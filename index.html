@@ -1512,7 +1512,7 @@ async function renderPedidoDetalhe(id) {
   const el = document.getElementById('tab-pedidos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
   const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', id).maybeSingle());
-  const items = await q(SUPA.from('order_line_items').select('*, products(name)').eq('order_id', id).order('created_at'));
+  const items = await q(SUPA.from('order_line_items').select('*, products(name), filament_colors(name)').eq('order_id', id).order('created_at'));
   const payments = await q(SUPA.from('payments').select('*').eq('order_id', id).order('created_at'));
   const ps = await q(SUPA.from('orders_payment_status').select('*').eq('order_id', id).maybeSingle());
 
@@ -1577,6 +1577,12 @@ async function renderPedidoDetalhe(id) {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       html += '<tr>';
       html += '<td>' + escapeHtml(nome) + (it.line_type === 'custom' ? ' <span style="color:var(--muted);font-size:11px;">(personalizado)</span>' : '');
+      // A cor que o cliente escolheu no catálogo. Fica logo embaixo do
+      // nome porque é a primeira coisa que o Rafa precisa saber pra
+      // botar a peça na impressora. O nome chega junto na consulta, pra
+      // não ter que ir buscar cor por cor.
+      const corPedida = it.filament_colors ? it.filament_colors.name : null;
+      if (corPedida) html += '<br><span style="font-size:11px;">🎨 quer na cor <strong>' + escapeHtml(corPedida) + '</strong></span>';
       if (it.custom_reference_link) html += '<br><a href="' + escapeHtml(it.custom_reference_link) + '" target="_blank" rel="noopener" style="font-size:11px;">🔗 referência do cliente</a>';
       html += '</td>';
       html += '<td>' + it.quantity + '</td>';

@@ -170,7 +170,31 @@ export default {
       return Response.json({ error: "Não consegui conferir os produtos agora." }, { status: 500 });
     }
 
-    const linhas: { product_id: string; quantity: number; unit_price: number }[] = [];
+    // A cor vem do navegador como texto, então não dá pra gravar como
+    // veio: o pedido guarda o id do filamento, e a lista que vale é a
+    // do banco. O que não bater vira null — melhor sem cor do que com
+    // uma cor inventada, que mandaria o Rafa procurar um filamento que
+    // a loja não tem.
+    const { data: coresDoBanco, error: erroCores } = await ctx.supabaseAdmin
+      .from("filament_colors").select("id, name");
+    if (erroCores) {
+      // Não derruba o pedido: a cor é um detalhe perto de perder a
+      // venda. Mas precisa aparecer no log, senão o sintoma é a cor
+      // sumir em silêncio e ninguém saber por quê.
+      console.error("Não consegui ler filament_colors (falta o grant do patch 26?):", erroCores);
+    }
+    const idPorNome = new Map<string, string>(
+      (coresDoBanco || []).map((c: any) => [String(c.name).trim().toLowerCase(), c.id]),
+    );
+    const corConferida = (bruta: unknown): string | null => {
+      const chave = String(bruta ?? "").trim().toLowerCase();
+      if (!chave) return null;
+      const id = idPorNome.get(chave);
+      if (!id) console.error('Cor pedida no catálogo não existe em filament_colors: "' + chave + '"');
+      return id ?? null;
+    };
+
+    const linhas: { product_id: string; quantity: number; unit_price: number; cor_id: string | null }[] = [];
     let totalProdutos = 0;
     for (const item of itens) {
       const produto = produtos.find((p: any) => p.catalog_code === item.codigo);
@@ -178,7 +202,12 @@ export default {
       if (!produto || !produto.active) {
         return Response.json({ error: "Um dos itens do carrinho não está mais disponível." }, { status: 409 });
       }
-      linhas.push({ product_id: produto.id, quantity: quantidade, unit_price: produto.sale_price });
+      linhas.push({
+        product_id: produto.id,
+        quantity: quantidade,
+        unit_price: produto.sale_price,
+        cor_id: corConferida(item.cor),
+      });
       totalProdutos += produto.sale_price * quantidade;
     }
 
@@ -225,6 +254,7 @@ export default {
     const itensParaGravar = linhas.map((l) => ({
       order_id: pedido.id, line_type: "catalog", product_id: l.product_id,
       quantity: l.quantity, unit_price: l.unit_price, line_status: "recebido",
+      requested_filament_color_id: l.cor_id,
     }));
     const { error: erroItens } = await ctx.supabaseAdmin.from("order_line_items").insert(itensParaGravar);
     if (erroItens) {

@@ -1222,7 +1222,9 @@ class Component extends DCLogic {
     CK.erro = '';
     ckRender();
     var payload = {
-      itens: CK.cartItems.map(function (it) { return { codigo: it.code, quantidade: it.qty }; }),
+      // A cor vai junto do item pra ficar gravada no pedido. O servidor
+      // confere contra os filamentos que a loja tem antes de aceitar.
+      itens: CK.cartItems.map(function (it) { return { codigo: it.code, quantidade: it.qty, cor: CK.cores[it.code] || null }; }),
       nome_cliente: CK.endereco.nome,
       contato_cliente: CK.endereco.contato,
       documento_cliente: CK.endereco.documento,
@@ -1288,6 +1290,7 @@ class Component extends DCLogic {
     function avisar() {
       botao.innerHTML = '&#10003; Copiado! Agora abra o banco';
       botao.style.background = '#0f7850';
+      ckLiberarComprovante();
       setTimeout(function () {
         botao.innerHTML = 'Copiar o código PIX';
         botao.style.background = '#0061f7';
@@ -1319,8 +1322,48 @@ class Component extends DCLogic {
     if (cru) {
       cru.style.display = 'block';
       cru.querySelector('textarea').select();
+      // Não copiou sozinho, mas o código está na tela pra copiar à mão.
+      ckLiberarComprovante();
     }
   }
+
+  // Quem chega no WhatsApp sem ter pago manda "como faço pra pagar?" e
+  // o Rafa não sabe nem de qual pedido é. Esta mensagem já vai com o
+  // número e o valor, então ele responde sem ter que investigar.
+  function ckLinkDuvida(r) {
+    var pct = r.percentual_sinal || 50;
+    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+    var texto = 'Olá! Fechei o pedido ' + r.pedido_numero + ' no catálogo (sinal de '
+      + fmtMoney(sinal).replace('R$ ', 'R$ ') + ') mas tive uma dúvida no pagamento. Pode me ajudar?';
+    var base = String(r.whatsapp_url || '').split('?text=')[0];
+    if (!base) return r.whatsapp_url || '#';
+    return base + '?text=' + encodeURIComponent(texto);
+  }
+
+  // Acende o botão do comprovante: a pessoa já pegou o código, então a
+  // partir daqui ir pro WhatsApp faz sentido.
+  //
+  // O aviso só some quando ela pegou o código de verdade. Quando o
+  // botão é liberado só porque insistiu, ele precisa continuar na tela
+  // — é justamente o texto que responde "como faço pra pagar?".
+  function ckLiberarComprovante(esconderAviso) {
+    var botao = document.getElementById('ckBotaoComprovante');
+    if (!botao) return;
+    botao.dataset.liberado = '1';
+    botao.style.background = '#0f7850';
+    var aviso = document.getElementById('ckAvisoComprovante');
+    if (aviso && esconderAviso !== false) aviso.style.display = 'none';
+  }
+
+  window.ckAntesDoComprovante = function (botao) {
+    if (botao.dataset.liberado === '1') return true;
+    var aviso = document.getElementById('ckAvisoComprovante');
+    if (aviso) aviso.style.display = 'block';
+    // O próximo toque passa — quem pagou pelo computador ou por outro
+    // celular não tem como provar isso pra esta tela.
+    ckLiberarComprovante(false);
+    return false;
+  };
 
   window.ckVerQr = function (link) {
     var box = document.getElementById('ckQrBox');
@@ -1328,6 +1371,8 @@ class Component extends DCLogic {
     var abrindo = box.style.display === 'none';
     box.style.display = abrindo ? 'block' : 'none';
     link.innerHTML = abrindo ? 'esconder o QR Code' : 'prefiro pagar pelo QR Code';
+    // Quem abriu o QR vai pagar por ele: o código também já está à mão.
+    if (abrindo) ckLiberarComprovante();
   };
 
   function ckHtmlPago() {
@@ -1370,9 +1415,18 @@ class Component extends DCLogic {
       + '<a onclick="ckVerQr(this)" style="display:inline-block; margin-top:7px; font-size:12px; color:#0061f7; text-decoration:underline; cursor:pointer;">prefiro pagar pelo QR Code</a>'
       + '<div id="ckQrBox" style="display:none; margin-top:8px;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="width:170px; border:1px solid #e7e9ef; border-radius:10px;"></div>');
 
+    // O botão verde do WhatsApp é o elemento mais familiar da tela, e
+    // era por ele que as pessoas saíam ANTES de pagar — chegavam no
+    // WhatsApp, onde o PIX não existe, e perguntavam "como faz pra
+    // pagar?". Agora ele só fica aceso depois do passo 1; antes disso,
+    // o primeiro toque explica em vez de levar embora. Não é uma
+    // tranca: o segundo toque passa, porque tem gente que paga por
+    // outro aparelho e o site não tem como saber.
     html += ckPasso(3, 'Me mande o comprovante',
       '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6; margin-bottom:7px;">É assim que eu descubro que o seu pagamento chegou.</div>'
-      + '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Mandar o comprovante no WhatsApp</a>');
+      + '<a id="ckBotaoComprovante" href="' + ckWhatsappComCores(r) + '" target="_blank" onclick="return ckAntesDoComprovante(this)" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#b9c4d2; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Mandar o comprovante no WhatsApp</a>'
+      + '<div id="ckAvisoComprovante" style="display:none; margin-top:7px; background:#fff6e5; border:1px solid #ffd894; border-radius:9px; padding:9px 11px; font-size:12px; color:#8a5b00; line-height:1.5;">Você ainda não copiou o código. Faça o passo <strong>1</strong> e pague os ' + fmtMoney(sinal) + ' primeiro — depois volte aqui e mande o comprovante.<br><span style="color:#a8803a;">Se você já pagou por outro aparelho, é só tocar de novo.</span></div>'
+      + '<a href="' + ckLinkDuvida(r) + '" target="_blank" style="display:block; text-align:center; margin-top:9px; font-size:12px; color:#5b6a85; text-decoration:underline;">Não consegui pagar / tenho uma dúvida</a>');
 
     html += '<div style="text-align:left; background:#f7f8fb; border-radius:10px; padding:12px 14px; margin-top:18px; font-size:12.5px; color:#5b6a85; line-height:1.7;">'
       + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:12.5px; color:#0b1733; margin-bottom:4px;">E depois, o que acontece?</div>'
