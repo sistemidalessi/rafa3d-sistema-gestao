@@ -357,4 +357,45 @@ function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto, origem) {
   };
 }
 
-module.exports = { gerarModelo3mfConfigurado, lerSTL, calcularBBox };
+// O Hi3D já devolve um .3mf pronto, com a malha dividida em partes e
+// cada uma numa cor/extrusora — não precisa (e não deve) recalcular
+// malha, escala ou posição, ele já manda tudo certo em milímetro real.
+// O único problema é que o project_settings.config de dentro não é do
+// Bambu Studio (é do Hi3D), então ele pede reparo e ignora a colinha.
+// Aqui só troca essa configuração pela nossa (impressora + filamento +
+// ajustes da colinha), mantendo a malha e as cores exatamente como
+// vieram — mesma ideia do gerarModelo3mfConfigurado, mas sem tocar em
+// vértice nenhum.
+function reconfigurarHi3d3mf(zipBuffer, ajustes) {
+  const zip = new AdmZip(zipBuffer);
+  const porNome = {};
+  for (const entrada of zip.getEntries()) porNome[entrada.entryName] = entrada.getData();
+
+  const contentTypes = porNome['[Content_Types].xml'];
+  if (!contentTypes) throw new Error('.3mf do Hi3D veio sem [Content_Types].xml — formato inesperado.');
+
+  const settings = aplicarAjustesColinha(ajustes);
+
+  // A ORDEM IMPORTA (ver comentário em gerarModelo3mfConfigurado): o
+  // [Content_Types].xml tem que ser a primeira parte do pacote.
+  const entradas = [{ nome: '[Content_Types].xml', conteudo: contentTypes }];
+  for (const nome of Object.keys(porNome)) {
+    if (nome === '[Content_Types].xml') continue;
+    if (nome === 'Metadata/project_settings.config') continue; // trocada abaixo
+    if (nome === 'Metadata/slice_info.config') continue; // recriada abaixo
+    entradas.push({ nome, conteudo: porNome[nome] });
+  }
+  entradas.push({ nome: 'Metadata/project_settings.config', conteudo: JSON.stringify(settings, null, 4) });
+  entradas.push({ nome: 'Metadata/slice_info.config', conteudo:
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<config>\n' +
+    '  <header>\n' +
+    '    <header_item key="X-BBL-Client-Type" value="slicer"/>\n' +
+    '    <header_item key="X-BBL-Client-Version" value="' + VERSAO_BAMBU + '"/>\n' +
+    '  </header>\n' +
+    '</config>\n' });
+
+  return montarZip(entradas);
+}
+
+module.exports = { gerarModelo3mfConfigurado, reconfigurarHi3d3mf, lerSTL, calcularBBox };

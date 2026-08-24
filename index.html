@@ -919,6 +919,7 @@ async function renderProjetos() {
     .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued'));
   const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
+    li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
     li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
     li.open_slicer_status === 'queued');
   if (emAndamento && !el.classList.contains('hidden')) {
@@ -1017,11 +1018,23 @@ async function abrirGerenciarProjeto(lineItemId) {
 
   html += '<div style="display:flex; flex-direction:column; gap:10px;">';
 
+  const modeloEmAndamento = li.meshy_status === 'queued' || li.meshy_status === 'processing' || li.hi3d_status === 'queued' || li.hi3d_status === 'processing';
+  const modeloErro = (li.meshy_status === 'error' && li.meshy_error) || (li.hi3d_status === 'error' && li.hi3d_error);
+  const ORIGEM_MODELO_LABEL = { meshy_generated: 'gerado por IA', hi3d_dividido: 'gerado e dividido por IA', manual_upload: 'anexado' };
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-  html += '<span>1. Modelo 3D — ' + (li.model_file_path ? '<span class="badge on">' + (li.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (li.meshy_status === 'queued' || li.meshy_status === 'processing') ? '<span class="badge off">gerando…</span>' : (li.meshy_status === 'error' && li.custom_reference_image_path) ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || '') + '">erro</span>' : !li.custom_reference_image_path ? '<span style="color:var(--muted); font-size:11px;">sem foto — anexe uma foto ou o modelo manualmente</span>' : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
+  html += '<span>1. Modelo 3D — ' + (li.model_file_path
+    ? '<span class="badge on">' + (ORIGEM_MODELO_LABEL[li.model_source] || 'anexado') + '</span>'
+    : modeloEmAndamento
+      ? '<span class="badge off">gerando…</span>'
+      : modeloErro
+        ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || li.hi3d_error || '') + '">erro</span>'
+        : !li.custom_reference_image_path
+          ? '<span style="color:var(--muted); font-size:11px;">sem foto — anexe uma foto ou o modelo manualmente</span>'
+          : '<span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>';
   html += '<span class="row-actions">';
-  if (li.meshy_status !== 'queued' && li.meshy_status !== 'processing' && li.custom_reference_image_path) {
+  if (!modeloEmAndamento && li.custom_reference_image_path) {
     html += '<button class="btn ghost" onclick="solicitarGerarModelo3D(\'' + li.id + '\')">🧬 Gerar por IA</button>';
+    html += '<button class="btn ghost" onclick="abrirDividirHi3D(\'' + li.id + '\')">🪄 Gerar e dividir em partes</button>';
   }
   html += '<button class="btn ghost" onclick="abrirAnexarModeloProjeto(\'' + li.id + '\')">+ Anexar</button>';
   html += '</span></div>';
@@ -1224,6 +1237,32 @@ async function solicitarGerarModelo3D(lineItemId) {
   toast('Geração de modelo 3D pedida — pode levar alguns minutos.');
   await renderProjetos();
   if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+function abrirDividirHi3D(lineItemId) {
+  openModal(
+    '<h3>Gerar a peça inteira e dividir em partes</h3>' +
+    '<div style="font-size:13px; color:var(--muted); margin-bottom:14px;">' +
+    'O sistema gera a peça inteira a partir da foto lá em cima e já corta sozinho em pedaços — cada um pode sair numa cor diferente. ' +
+    'As pontas do corte saem lisas, sem encaixe: a montagem é na cola, do jeito que já é hoje.' +
+    '</div>' +
+    '<label class="pergunta">Quantos pedaços você quer?</label>' +
+    '<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">' +
+    '<button class="btn" onclick="confirmarDividirHi3D(\'' + lineItemId + '\', \'low\')">Poucos pedaços grandes — mais fácil de montar</button>' +
+    '<button class="btn ghost" onclick="confirmarDividirHi3D(\'' + lineItemId + '\', \'medium\')">Vários pedaços — mais fiel às cores da peça</button>' +
+    '</div>' +
+    '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>'
+  );
+}
+
+async function confirmarDividirHi3D(lineItemId, nivel) {
+  const { error } = await SUPA.from('order_line_items').update({
+    hi3d_status: 'queued', hi3d_nivel: nivel, hi3d_requested_at: new Date().toISOString(), hi3d_error: null,
+  }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Gerando e dividindo a peça — pode levar alguns minutos.');
+  await renderProjetos();
+  abrirGerenciarProjeto(lineItemId);
 }
 
 async function solicitarAnaliseIAProjeto(lineItemId) {

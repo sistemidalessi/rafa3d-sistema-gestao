@@ -5,7 +5,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const AdmZip = require('adm-zip');
-const { gerarModelo3mfConfigurado } = require('./gerar3mf');
+const { gerarModelo3mfConfigurado, reconfigurarHi3d3mf } = require('./gerar3mf');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -30,6 +30,9 @@ const FOTOS_BUCKET = 'projetos-fotos';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
 const MESHY_API_KEY = process.env.MESHY_API_KEY;
+const HI3D_API = 'https://api.hitem3d.ai';
+const HI3D_ACCESS_KEY = process.env.HI3D_ACCESS_KEY;
+const HI3D_SECRET_KEY = process.env.HI3D_SECRET_KEY;
 
 function log(msg) {
   console.log('[' + new Date().toLocaleTimeString('pt-BR') + '] ' + msg);
@@ -60,6 +63,9 @@ if (!ANTHROPIC_API_KEY) {
 if (!MESHY_API_KEY) {
   log('Sem MESHY_API_KEY no .env — a geração de modelo 3D por IA (aba Projetos) fica desligada até configurar.');
 }
+if (!HI3D_ACCESS_KEY || !HI3D_SECRET_KEY) {
+  log('Sem HI3D_ACCESS_KEY / HI3D_SECRET_KEY no .env — "Gerar e dividir em partes" fica desligado até configurar.');
+}
 
 const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
 
@@ -85,6 +91,7 @@ const FILAS_COM_PROCESSING = [
   ['products', 'ai_analysis_status', 'ai_analysis_requested_at'],
   ['order_line_items', 'meshy_status', 'meshy_requested_at'],
   ['order_line_items', 'ai_analysis_status', 'ai_analysis_requested_at'],
+  ['order_line_items', 'hi3d_status', 'hi3d_requested_at'],
   ['project_parts', 'meshy_status', 'meshy_requested_at'],
   ['project_parts', 'ai_analysis_status', 'ai_analysis_requested_at'],
 ];
@@ -608,6 +615,151 @@ async function tickMeshy() {
   await gerarModeloMeshyUm(li);
 }
 
+/* ============================================================
+   HI3D — gera a peça inteira e já divide sozinho em partes por cor
+   (alternativa ao "Partes do projeto" manual, patch 23/27). Mesma foto
+   de referência de sempre; o Hi3D gera e corta, sem o Rafa descrever
+   pedaço por pedaço. Testado ao vivo em 24/08: divide bem por cor
+   (modo "general"), mas as juntas saem lisas — sem encaixe/conector —
+   então a montagem é na cola, igual já é hoje. Ver docs/decisao-hi3d.md.
+   ============================================================ */
+
+// O Hi3D não aceita a chave direto: troca o par access/secret por um
+// token de curta duração, em Basic base64(access:secret).
+async function hi3dPegarToken() {
+  const basic = Buffer.from(HI3D_ACCESS_KEY + ':' + HI3D_SECRET_KEY).toString('base64');
+  const res = await fetch(HI3D_API + '/open-api/v1/auth/token', {
+    method: 'POST',
+    headers: { Authorization: 'Basic ' + basic, 'content-type': 'application/json' },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.data || !json.data.accessToken) {
+    throw new Error('Hi3D recusou as chaves (HTTP ' + res.status + '): ' + JSON.stringify(json).slice(0, 300));
+  }
+  return json.data.accessToken;
+}
+
+async function hi3dCriarTarefaGerar(token, imagemBuf, mediaType, nomeArquivo) {
+  const form = new FormData();
+  form.append('images', new Blob([imagemBuf], { type: mediaType }), nomeArquivo);
+  form.append('request_type', '1'); // só geometria — peça impressa não usa textura
+  form.append('model', 'hi3dv3.0');
+  form.append('resolution', '2048quality');
+  // Mínimo que o Hi3D aceita. O site (sem esse limite) chegou a gerar 2
+  // milhões de triângulos — o que estoura o conversor de .3mf.
+  form.append('face', '100000');
+  form.append('format', '3'); // 3 = stl
+  const res = await fetch(HI3D_API + '/open-api/v1/submit-task', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: form,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.data || !json.data.task_id) {
+    throw new Error('Hi3D recusou a geração (HTTP ' + res.status + '): ' + JSON.stringify(json).slice(0, 400));
+  }
+  return json.data.task_id;
+}
+
+async function hi3dEsperarTarefa(token, taskId, caminho) {
+  const deadline = Date.now() + 20 * 60 * 1000;
+  let ultimo = '';
+  while (Date.now() < deadline) {
+    const res = await fetch(HI3D_API + caminho + encodeURIComponent(taskId), {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    const json = await res.json().catch(() => ({}));
+    const d = json.data || {};
+    if (d.state && d.state !== ultimo) { ultimo = d.state; log('  Hi3D: ' + d.state); }
+    if (d.state === 'success') return d;
+    if (d.state === 'failed') throw new Error('Hi3D não conseguiu terminar: ' + (json.msg || 'sem detalhe'));
+    await new Promise((r) => setTimeout(r, 8000));
+  }
+  throw new Error('Hi3D passou de 20 minutos.');
+}
+
+async function hi3dCriarTarefaDividir(token, stlBuf, nivel) {
+  const form = new FormData();
+  form.append('mesh', new Blob([stlBuf], { type: 'model/stl' }), 'peca.stl');
+  form.append('model', 'general');
+  form.append('level', nivel || 'low');
+  form.append('format', '6'); // 6 = .3mf direto
+  const res = await fetch(HI3D_API + '/open-api/v1/split/create-task', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token },
+    body: form,
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok || !json.data || !json.data.task_id) {
+    throw new Error('Hi3D recusou a divisão (HTTP ' + res.status + '): ' + JSON.stringify(json).slice(0, 400));
+  }
+  return json.data.task_id;
+}
+
+async function hi3dGerarEDividirUm(li) {
+  const nomeRef = li.requester_name || li.id;
+  try {
+    if (!li.custom_reference_image_path) throw new Error('projeto não tem foto de referência anexada.');
+    log('Baixando foto do projeto de "' + nomeRef + '" pra gerar e dividir com Hi3D...');
+    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(li.custom_reference_image_path);
+    if (dlErr) throw new Error('download da foto falhou: ' + dlErr.message);
+    const fotoBuf = Buffer.from(await fileData.arrayBuffer());
+
+    const token = await hi3dPegarToken();
+
+    log('Pedindo pro Hi3D gerar a peça inteira de "' + nomeRef + '"...');
+    const taskGerar = await hi3dCriarTarefaGerar(token, fotoBuf, mediaTypeFromPath(li.custom_reference_image_path), path.basename(li.custom_reference_image_path));
+    const resultGerar = await hi3dEsperarTarefa(token, taskGerar, '/open-api/v1/query-task?task_id=');
+    if (!resultGerar.url) throw new Error('Hi3D terminou de gerar mas não veio um .stl na resposta.');
+    const stlRes = await fetch(resultGerar.url);
+    if (!stlRes.ok) throw new Error('não consegui baixar o .stl gerado pelo Hi3D (HTTP ' + stlRes.status + ').');
+    const stlBuf = Buffer.from(await stlRes.arrayBuffer());
+
+    log('Dividindo a peça de "' + nomeRef + '" em partes (' + (li.hi3d_nivel || 'low') + ')...');
+    const taskDividir = await hi3dCriarTarefaDividir(token, stlBuf, li.hi3d_nivel);
+    const resultDividir = await hi3dEsperarTarefa(token, taskDividir, '/open-api/v1/split/query-task?task_id=');
+    if (!resultDividir.url) throw new Error('Hi3D terminou de dividir mas não veio um arquivo na resposta.');
+    const divididoRes = await fetch(resultDividir.url);
+    if (!divididoRes.ok) throw new Error('não consegui baixar o .3mf dividido (HTTP ' + divididoRes.status + ').');
+    const divididoBuf = Buffer.from(await divididoRes.arrayBuffer());
+
+    const modeloPath = 'projetos/' + li.id + '/hi3d-dividido.3mf';
+    const { error: upErr } = await supabase.storage.from(BUCKET).upload(modeloPath, divididoBuf, { upsert: true, contentType: 'model/3mf' });
+    if (upErr) throw new Error('upload do modelo dividido falhou: ' + upErr.message);
+
+    await supabase.from('order_line_items').update({
+      hi3d_status: 'done', hi3d_error: null, model_file_path: modeloPath, model_source: 'hi3d_dividido',
+      updated_at: new Date().toISOString(),
+    }).eq('id', li.id);
+    log('✅ Peça de "' + nomeRef + '" gerada e dividida com sucesso.');
+  } catch (e) {
+    log('❌ Gerar e dividir "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from('order_line_items').update({
+      hi3d_status: 'error', hi3d_error: String(e.message).slice(0, 2000),
+    }).eq('id', li.id);
+  }
+}
+
+async function tickHi3d() {
+  const { data: queued, error } = await supabase
+    .from('order_line_items')
+    .select('id, requester_name, custom_reference_image_path, hi3d_nivel')
+    .eq('line_type', 'custom').eq('hi3d_status', 'queued')
+    .order('hi3d_requested_at', { ascending: true })
+    .limit(1);
+  if (error) { log('Erro consultando a fila do Hi3D: ' + error.message); return; }
+  if (!queued || queued.length === 0) return;
+  const li = queued[0];
+  if (!HI3D_ACCESS_KEY || !HI3D_SECRET_KEY) {
+    await supabase.from('order_line_items').update({
+      hi3d_status: 'error', hi3d_error: 'HI3D_ACCESS_KEY / HI3D_SECRET_KEY não configuradas no agente local (.env).',
+    }).eq('id', li.id);
+    return;
+  }
+  await supabase.from('order_line_items').update({ hi3d_status: 'processing' }).eq('id', li.id);
+  await hi3dGerarEDividirUm(li);
+}
+
 // Colinha de fatiamento por IA pro projeto — mesma ficha técnica dos
 // produtos do catálogo. Como .stl não carrega miniatura embutida (ao
 // contrário do .3mf), usa a miniatura que a própria Meshy renderizou
@@ -686,7 +838,18 @@ async function abrirNoFatiadorProjeto(li) {
     // escolher nada na mão. Se der qualquer problema na conversão, cai
     // pro comportamento de sempre (.stl puro) em vez de travar o pedido.
     let localPath;
-    if (ext.toLowerCase() === '.stl' && li.ai_slicing_settings) {
+    if (li.model_source === 'hi3d_dividido' && ext.toLowerCase() === '.3mf') {
+      try {
+        const buffer = reconfigurarHi3d3mf(stlBuf, li.ai_slicing_settings);
+        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
+        fs.writeFileSync(localPath, buffer);
+        log('"' + nomeRef + '" (dividida pelo Hi3D) com a impressora e a colinha já aplicadas.');
+      } catch (e) {
+        log('AVISO: não consegui aplicar a colinha no .3mf dividido de "' + nomeRef + '" (' + e.message + ') — abrindo como veio do Hi3D mesmo.');
+        localPath = path.join(downloadsDir, nomeSeguro + ext);
+        fs.writeFileSync(localPath, stlBuf);
+      }
+    } else if (ext.toLowerCase() === '.stl' && li.ai_slicing_settings) {
       try {
         const resultado = gerarModelo3mfConfigurado(stlBuf, li.ai_slicing_settings, nomeSeguro + '.stl', li.model_source);
         localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
@@ -962,6 +1125,7 @@ async function main() {
     try { await tickMeshyPartes(); } catch (e) { log('Erro inesperado (Meshy - partes): ' + e.message); }
     try { await tickAIPartes(); } catch (e) { log('Erro inesperado (análise IA - partes): ' + e.message); }
     try { await tickAbrirFatiadorPartes(); } catch (e) { log('Erro inesperado (abrir no fatiador - partes): ' + e.message); }
+    try { await tickHi3d(); } catch (e) { log('Erro inesperado (Hi3D gerar e dividir): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }
