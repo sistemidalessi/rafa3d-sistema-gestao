@@ -237,9 +237,18 @@ function traduzirParaOBambu(campo, valor) {
   return lista[String(valor).trim().toLowerCase()] || null;
 }
 
-function aplicarAjustesColinha(ajustes) {
-  const settings = { ...TEMPLATE_SETTINGS };
+// settingsBase: de onde parte a configuração — o template padrão (peça
+// única) ou a config que o Hi3D já mandou (peça dividida, ver
+// reconfigurarHi3d3mf) preservando as cores por parte que ele escolheu.
+function aplicarAjustesColinha(ajustes, settingsBase) {
+  const settings = { ...(settingsBase || TEMPLATE_SETTINGS) };
   if (!ajustes) return settings;
+
+  // Quantos filamentos essa peça tem (1 numa peça única, N numa dividida
+  // por cor) — a temperatura da colinha vale pro material, não pra cor,
+  // então repete o mesmo valor pra cada slot em vez de sempre gravar um
+  // array de 1 posição só.
+  const numFilamentos = Array.isArray(settings.filament_settings_id) ? settings.filament_settings_id.length : 1;
 
   // Guarda tudo que a colinha mexeu. Sem essa lista o Bambu carrega o
   // perfil nomeado em print_settings_id e IGNORA os valores do arquivo:
@@ -265,12 +274,12 @@ function aplicarAjustesColinha(ajustes) {
     brim_type: (v) => escolha('brim_type', v),
     brim_width_mm: (v) => gravar('brim_width', String(v)),
     nozzle_temp_c: (v) => {
-      gravar('nozzle_temperature', [String(v)]);
-      gravar('nozzle_temperature_initial_layer', [String(v)]);
+      gravar('nozzle_temperature', Array(numFilamentos).fill(String(v)));
+      gravar('nozzle_temperature_initial_layer', Array(numFilamentos).fill(String(v)));
     },
     bed_temp_c: (v) => {
-      gravar('hot_plate_temp', [String(v)]);
-      gravar('hot_plate_temp_initial_layer', [String(v)]);
+      gravar('hot_plate_temp', Array(numFilamentos).fill(String(v)));
+      gravar('hot_plate_temp_initial_layer', Array(numFilamentos).fill(String(v)));
     },
   };
 
@@ -373,8 +382,21 @@ function reconfigurarHi3d3mf(zipBuffer, ajustes) {
 
   const contentTypes = porNome['[Content_Types].xml'];
   if (!contentTypes) throw new Error('.3mf do Hi3D veio sem [Content_Types].xml — formato inesperado.');
+  const projectSettingsHi3d = porNome['Metadata/project_settings.config'];
+  if (!projectSettingsHi3d) throw new Error('.3mf do Hi3D veio sem project_settings.config — formato inesperado.');
 
-  const settings = aplicarAjustesColinha(ajustes);
+  // Parte da config que o PRÓPRIO Hi3D mandou, não do nosso template do
+  // zero — ele já escolheu uma cor por parte (filament_colour) batendo
+  // com quantas partes a peça tem. Só troca o que precisa: a impressora
+  // pro perfil validado, e o material — o Hi3D rotula tudo como "Generic
+  // PETG" (só serve de rótulo de cor pra ele), mas quem imprime é PLA, e
+  // fatiar com perfil de PETG usa temperatura e resfriamento errados.
+  const settingsBase = JSON.parse(projectSettingsHi3d.toString('utf8'));
+  const numFilamentos = Array.isArray(settingsBase.filament_settings_id) ? settingsBase.filament_settings_id.length : 1;
+  settingsBase.printer_settings_id = TEMPLATE_SETTINGS.printer_settings_id;
+  settingsBase.filament_settings_id = Array(numFilamentos).fill(TEMPLATE_SETTINGS.filament_settings_id[0]);
+
+  const settings = aplicarAjustesColinha(ajustes, settingsBase);
 
   // A ORDEM IMPORTA (ver comentário em gerarModelo3mfConfigurado): o
   // [Content_Types].xml tem que ser a primeira parte do pacote.
