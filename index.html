@@ -1958,7 +1958,7 @@ async function openConcluirImpressao(itemId) {
   let options = '<option value="">— escolhe o rolo —</option>';
   spoolsDaCor.forEach((s) => {
     const cor = cores.find((c) => c.id === s.color_id);
-    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
+    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + fmtKg(s.remaining_weight_g) + ' restantes</option>';
   });
   openModal(
     '<h3>Terminei de imprimir essa peça</h3>' +
@@ -1995,7 +1995,7 @@ async function openMarcarFalha(itemId) {
   let options = '<option value="">— não perdi filamento —</option>';
   spools.filter((s) => s.status !== 'empty').forEach((s) => {
     const cor = cores.find((c) => c.id === s.color_id);
-    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + Number(s.remaining_weight_g).toFixed(0) + 'g restantes</option>';
+    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + fmtKg(s.remaining_weight_g) + ' restantes</option>';
   });
   openModal(
     '<h3>Essa peça deu errado</h3>' +
@@ -2064,6 +2064,26 @@ function estoquePorCor(colorId) {
     .reduce((sum, s) => sum + Number(s.remaining_weight_g), 0);
 }
 
+// O banco guarda tudo em grama — é a unidade que o fatiador cospe e que
+// as contas de custo usam. Mas ninguém compra filamento em grama: compra
+// rolo de 1 kg. Então a conversão vive só na tela, e nada do que já
+// estava calculado precisou mudar.
+//
+// "1000 g" vira "1 kg", "250 g" vira "0,250 kg" — inteiro sem casas,
+// quebrado com três, que é como o Anderson pediu.
+function fmtKg(gramas) {
+  const kg = Math.round(Number(gramas || 0)) / 1000;
+  return kg.toFixed(Number.isInteger(kg) ? 0 : 3).replace('.', ',') + ' kg';
+}
+
+// Aceita "1", "1,5", "0,250" e "0.250". Campo de número do navegador
+// recusa vírgula, e quem digita aqui usa vírgula — por isso o campo é de
+// texto e a leitura acontece aqui.
+function lerKgEmGramas(texto) {
+  const n = parseFloat(String(texto == null ? '' : texto).trim().replace(',', '.'));
+  return isNaN(n) ? NaN : n * 1000;
+}
+
 async function renderFilamentos() {
   const el = document.getElementById('tab-filamentos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
@@ -2086,12 +2106,17 @@ async function renderFilamentos() {
       html += '<td><span style="display:inline-block; width:42px; height:42px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:2px solid rgba(0,0,0,0.12); box-shadow:0 1px 3px rgba(0,0,0,0.15);"></span></td>';
       html += '<td>' + escapeHtml(c.name) + (c.active ? '' : ' <span style="color:var(--muted);font-size:11px;">(inativa)</span>') + '</td>';
       html += '<td>' + escapeHtml(c.material) + '</td>';
-      html += '<td><span class="badge ' + (baixo ? 'off' : 'on') + '">' + estoqueG.toFixed(0) + ' g' + (baixo ? ' · baixo!' : '') + '</span></td>';
+      html += '<td><span class="badge ' + (baixo ? 'off' : 'on') + '">' + fmtKg(estoqueG) + (baixo ? ' · baixo!' : '') + '</span></td>';
       html += '<td>' + fmtMoney(c.cost_per_kg) + '</td>';
       html += '<td class="row-actions">';
       html += '<button class="btn ghost" onclick="openFilamentoForm(\'' + c.id + '\')">Editar</button>';
       html += '<button class="btn ghost" onclick="openSpoolForm(\'' + c.id + '\')">+ Rolo</button>';
       html += '<button class="btn ghost" onclick="toggleSpoolsList(\'' + c.id + '\')">Rolos</button>';
+      // Guardar uma cor não pode ser porta de mão única — quem guardou
+      // sem querer precisa conseguir trazer de volta sozinho.
+      html += c.active
+        ? '<button class="btn ghost" onclick="apagarFilamento(\'' + c.id + '\')">Apagar</button>'
+        : '<button class="btn ghost" onclick="reativarFilamento(\'' + c.id + '\')">Trazer de volta</button>';
       html += '</td>';
       html += '</tr>';
       html += '<tr id="spools-' + c.id + '" class="hidden"><td colspan="6">' + renderSpoolsMini(c.id) + '</td></tr>';
@@ -2107,8 +2132,8 @@ function renderSpoolsMini(colorId) {
   if (spools.length === 0) return '<div class="empty">Nenhum rolo cadastrado pra essa cor.</div>';
   let html = '<table style="font-size:12px;"><tr><th>Comprado em</th><th>Inicial</th><th>Restante</th><th>Status</th></tr>';
   spools.forEach((s) => {
-    html += '<tr><td>' + fmtDate(s.purchased_at) + '</td><td>' + Number(s.initial_weight_g).toFixed(0) + ' g</td>';
-    html += '<td>' + Number(s.remaining_weight_g).toFixed(0) + ' g</td><td>' + escapeHtml(s.status) + '</td></tr>';
+    html += '<tr><td>' + fmtDate(s.purchased_at) + '</td><td>' + fmtKg(s.initial_weight_g) + '</td>';
+    html += '<td>' + fmtKg(s.remaining_weight_g) + '</td><td>' + escapeHtml(s.status) + '</td></tr>';
   });
   html += '</table>';
   return html;
@@ -2135,8 +2160,30 @@ function corEhDegrade(valor) {
   return (valor || '').indexOf('gradient') !== -1;
 }
 
-function escolherCorFilamento(hex) {
-  document.getElementById('flCor').value = hex;
+// Rolo mesclado vira um degradê com forma exata e reconhecível. Precisa
+// ser exata porque as 30 cores importadas do catálogo TAMBÉM são
+// degradês — se a leitura fosse solta ("tem gradient no texto"), abrir
+// o "Branco Marmorizado" pra editar acusaria mescla que não existe e
+// destruiria o degradê original ao salvar.
+const PADRAO_MESCLA = /^linear-gradient\(135deg, (#[0-9a-fA-F]{6}) 0%, \1 48%, (#[0-9a-fA-F]{6}) 52%, \2 100%\)$/;
+
+function montarMescla(corA, corB) {
+  return 'linear-gradient(135deg, ' + corA + ' 0%, ' + corA + ' 48%, ' + corB + ' 52%, ' + corB + ' 100%)';
+}
+
+function lerMescla(valor) {
+  return PADRAO_MESCLA.exec(valor || '');
+}
+
+function escolherCorFilamento() {
+  const mesclada = document.getElementById('flMesclada').checked;
+  const corA = document.getElementById('flCorPicker').value;
+  const corB = document.getElementById('flCorPicker2').value;
+  document.getElementById('flCorPicker2').style.display = mesclada ? 'inline-block' : 'none';
+  document.getElementById('flDicaCor').textContent = mesclada
+    ? 'Escolhe as duas cores do rolo.'
+    : 'Clica no quadradinho e escolhe a cor do rolo.';
+  document.getElementById('flCor').value = mesclada ? montarMescla(corA, corB) : corA;
   atualizarAmostraCor();
 }
 
@@ -2145,12 +2192,16 @@ function escolherCorFilamento(hex) {
 function atualizarAmostraCor() {
   const valor = document.getElementById('flCor').value.trim();
   document.getElementById('flAmostra').style.background = valor || '#ccc';
-  document.getElementById('flAvisoDegrade').style.display = corEhDegrade(valor) ? 'block' : 'none';
+  // Mescla também é degradê, mas é um degradê que a gente montou aqui —
+  // o aviso é só pros que vieram prontos do catálogo.
+  const avisar = corEhDegrade(valor) && !lerMescla(valor);
+  document.getElementById('flAvisoDegrade').style.display = avisar ? 'block' : 'none';
 }
 
 function openFilamentoForm(id) {
   const c = id ? filamentosCache.find((x) => x.id === id) : null;
   const corAtual = c ? (c.hex_or_gradient || '') : '';
+  const mescla = lerMescla(corAtual);
   openModal(
     '<h3>' + (c ? 'Editar cor' : 'Nova cor de filamento') + '</h3>' +
     '<label>Nome</label><input id="flNome" value="' + (c ? escapeHtml(c.name) : '') + '" placeholder="Ex: Azul Céu">' +
@@ -2159,17 +2210,36 @@ function openFilamentoForm(id) {
     '<label>Cor do rolo</label>' +
     '<input type="hidden" id="flCor" value="' + escapeHtml(corAtual) + '">' +
     '<div style="display:flex; align-items:center; gap:10px;">' +
-      '<input type="color" id="flCorPicker" value="' + corParaSeletor(corAtual) + '" oninput="escolherCorFilamento(this.value)" ' +
+      '<input type="color" id="flCorPicker" value="' + corParaSeletor(mescla ? mescla[1] : corAtual) + '" oninput="escolherCorFilamento()" ' +
         'style="width:54px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:10px; background:#fff; cursor:pointer;">' +
+      '<input type="color" id="flCorPicker2" value="' + corParaSeletor(mescla ? mescla[2] : corAtual) + '" oninput="escolherCorFilamento()" ' +
+        'style="display:' + (mescla ? 'inline-block' : 'none') + '; width:54px; height:38px; padding:2px; border:1.5px solid var(--border); border-radius:10px; background:#fff; cursor:pointer;">' +
       '<span id="flAmostra" style="display:inline-block; width:34px; height:34px; border-radius:50%; border:1px solid rgba(0,0,0,0.1);"></span>' +
-      '<span style="color:var(--muted); font-size:12px;">Clica no quadradinho e escolhe a cor do rolo.</span>' +
+      // O texto sai pronto daqui em vez de ser ajustado depois: chamar
+      // escolherCorFilamento() ao abrir reconstruiria a cor a partir dos
+      // seletores e apagaria o degradê que veio do catálogo.
+      '<span id="flDicaCor" style="color:var(--muted); font-size:12px;">' +
+        (mescla ? 'Escolhe as duas cores do rolo.' : 'Clica no quadradinho e escolhe a cor do rolo.') +
+      '</span>' +
     '</div>' +
+
+    // Filamento mesclado tem duas cores no mesmo rolo (azul e roxo, por
+    // exemplo). Guarda no mesmo campo de sempre, como degradê — não
+    // precisou de coluna nova, e a bolinha da lista já sabe desenhar
+    // degradê porque as 30 cores do catálogo vieram assim.
+    '<label style="display:flex; align-items:center; gap:8px; cursor:pointer; text-transform:none; font-size:13px; letter-spacing:0;">' +
+      '<input type="checkbox" id="flMesclada"' + (mescla ? ' checked' : '') + ' onchange="escolherCorFilamento()" style="width:auto; margin:0;">' +
+      'Esse rolo tem <strong>duas cores misturadas</strong>' +
+    '</label>' +
+
     '<div id="flAvisoDegrade" style="display:none; color:var(--muted); font-size:11px; margin-top:6px;">' +
       'Essa cor tem um degradê que veio do catálogo. Se você escolher no quadradinho, ela vira uma cor sozinha.' +
     '</div>' +
 
     '<label>Custo por kg (R$)</label><input id="flCusto" type="number" step="0.01" value="' + (c ? c.cost_per_kg : 0) + '">' +
-    '<label>Alerta de estoque baixo (gramas)</label><input id="flLimite" type="number" value="' + (c ? c.low_stock_threshold_g : 200) + '">' +
+    '<label class="pergunta">Avisar quando sobrar menos de quantos quilos?</label>' +
+    '<input id="flLimite" type="text" inputmode="decimal" value="' + fmtKg(c ? c.low_stock_threshold_g : 50).replace(' kg', '') + '">' +
+    '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">O padrão é <strong>0,050</strong> — o pouquinho que sobra no fim do rolo.</div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="saveFilamento(' + (c ? "'" + id + "'" : 'null') + ')">Salvar</button>' +
@@ -2183,7 +2253,8 @@ async function saveFilamento(id) {
   const material = document.getElementById('flMaterial').value.trim() || 'PLA';
   const hex_or_gradient = document.getElementById('flCor').value.trim() || null;
   const cost_per_kg = parseFloat(document.getElementById('flCusto').value) || 0;
-  const low_stock_threshold_g = parseFloat(document.getElementById('flLimite').value) || 200;
+  const limiteG = lerKgEmGramas(document.getElementById('flLimite').value);
+  const low_stock_threshold_g = (isNaN(limiteG) || limiteG < 0) ? 50 : limiteG;
   if (!name) { toast('Preenche o nome da cor.'); return; }
   const payload = { name, material, hex_or_gradient, cost_per_kg, low_stock_threshold_g };
   const { error } = id
@@ -2195,11 +2266,79 @@ async function saveFilamento(id) {
   await renderFilamentos();
 }
 
+// Apagar cor é delicado: três tabelas apontam pra ela (rolos comprados,
+// receitas de produto e pedidos que pediram essa cor). O banco recusaria
+// com erro de chave estrangeira, mas erro cru não ensina nada pra quem
+// tem 10 anos — então a conferência acontece aqui, e quando a cor está
+// em uso a tela oferece DESATIVAR, que resolve o problema real ("não
+// quero mais ver isso na lista") sem apagar histórico.
+async function apagarFilamento(id) {
+  const c = filamentosCache.find((x) => x.id === id);
+  if (!c) return;
+
+  const rolos = spoolsCache.filter((s) => s.color_id === id).length;
+  const pedidos = await q(SUPA.from('order_line_items').select('id').eq('requested_filament_color_id', id).limit(5));
+  const receitas = await q(SUPA.from('product_recipes').select('id').eq('filament_color_id', id).limit(5));
+
+  const usos = [];
+  if (rolos) usos.push(rolos + (rolos === 1 ? ' rolo comprado' : ' rolos comprados'));
+  if (pedidos.length) usos.push(pedidos.length + (pedidos.length === 1 ? ' pedido pediu' : ' pedidos pediram') + ' essa cor');
+  if (receitas.length) usos.push(receitas.length + (receitas.length === 1 ? ' produto usa' : ' produtos usam') + ' ela na receita');
+
+  if (usos.length) {
+    openModal(
+      '<h3>Não dá pra apagar "' + escapeHtml(c.name) + '"</h3>' +
+      '<p>Essa cor já tem história no sistema: <strong>' + usos.join('</strong>, <strong>') + '</strong>. ' +
+      'Apagar ela apagaria junto o que você já gastou e já vendeu.</p>' +
+      '<p>Mas dá pra <strong>guardar ela</strong>: some da lista de escolher cor, e os pedidos antigos continuam sabendo qual era.</p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn ghost" onclick="closeModal()">Deixa como está</button>' +
+        '<button class="btn" onclick="desativarFilamento(\'' + id + '\')">Guardar essa cor</button>' +
+      '</div>'
+    );
+    return;
+  }
+
+  openModal(
+    '<h3>Apagar "' + escapeHtml(c.name) + '"?</h3>' +
+    '<p>Essa cor nunca foi usada em rolo, pedido nem produto — dá pra apagar de vez, sem estragar nada.</p>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="confirmarApagarFilamento(\'' + id + '\')">Apagar de vez</button>' +
+    '</div>'
+  );
+}
+
+async function confirmarApagarFilamento(id) {
+  const { error } = await SUPA.from('filament_colors').delete().eq('id', id);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Cor apagada.');
+  await renderFilamentos();
+}
+
+async function desativarFilamento(id) {
+  const { error } = await SUPA.from('filament_colors').update({ active: false }).eq('id', id);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Cor guardada — não aparece mais na hora de escolher.');
+  await renderFilamentos();
+}
+
+async function reativarFilamento(id) {
+  const { error } = await SUPA.from('filament_colors').update({ active: true }).eq('id', id);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Cor de volta na lista.');
+  await renderFilamentos();
+}
+
 function openSpoolForm(colorId) {
   const c = filamentosCache.find((x) => x.id === colorId);
   openModal(
     '<h3>Novo rolo — ' + escapeHtml(c.name) + '</h3>' +
-    '<label>Peso inicial (gramas)</label><input id="spPeso" type="number" value="1000">' +
+    '<label class="pergunta">Quantos quilos tem esse rolo?</label>' +
+    '<input id="spPeso" type="text" inputmode="decimal" value="1">' +
+    '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">Rolo normal é <strong>1</strong>. Meio rolo é <strong>0,500</strong>. Rolinho pequeno é <strong>0,250</strong>.</div>' +
     '<label>Valor pago (R$)</label><input id="spCusto" type="number" step="0.01" value="' + (c.cost_per_kg || 0) + '">' +
     '<label>Fornecedor</label><input id="spFornecedor">' +
     '<label>Data da compra</label><input id="spData" type="date" value="' + todayISO() + '">' +
@@ -2211,11 +2350,13 @@ function openSpoolForm(colorId) {
 }
 
 async function saveSpool(colorId) {
-  const initial_weight_g = parseFloat(document.getElementById('spPeso').value);
+  // Digitado em quilo, guardado em grama — o resto do sistema (consumo,
+  // custo por peça, alerta de estoque) continua raciocinando em grama.
+  const initial_weight_g = lerKgEmGramas(document.getElementById('spPeso').value);
   const cost_paid = parseFloat(document.getElementById('spCusto').value) || null;
   const supplier = document.getElementById('spFornecedor').value.trim() || null;
   const purchased_at = document.getElementById('spData').value || null;
-  if (isNaN(initial_weight_g) || initial_weight_g <= 0) { toast('Preenche o peso do rolo.'); return; }
+  if (isNaN(initial_weight_g) || initial_weight_g <= 0) { toast('Escreve quantos quilos tem o rolo. Ex: 1'); return; }
   const { error } = await SUPA.rpc('add_filament_spool', {
     p_color_id: colorId, p_initial_weight_g: initial_weight_g, p_cost_paid: cost_paid, p_supplier: supplier, p_purchased_at: purchased_at,
   });
