@@ -33,14 +33,28 @@ do mapeamento da API se precisar mexer de novo.
 ## Frente 2 — Chaveiro de cereja com NFC + abridor de latinha (em andamento, não terminado)
 
 **Encomenda real, já vendida antes do sistema entrar no ar** — o dono
-quer isso "perfeito", não é só teste. Foi um dia difícil de CAD —
-leia a memória do projeto (entrada de 24/08 "chaveiro de cereja com
-NFC + abridor") antes de continuar, tem lição aprendida importante
-sobre o que NÃO funcionou.
+quer isso "perfeito", não é só teste. Foi um dia difícil de CAD; a
+lição aprendida está na seção "O que NÃO funcionou", mais abaixo.
+
+> A versão anterior desta nota mandava ler uma memória do agente. Não
+> faça isso: **memória fica na pasta local do Claude e não viaja entre
+> as máquinas** — na máquina de casa ela não existe. O que precisa
+> sobreviver à troca de computador tem que estar no repositório, aqui
+> ou no `CLAUDE.md`.
+
+> ⚠️ **Os arquivos gerados moram em `slicer-agent/downloads/`, que é
+> ignorado pelo Git.** Numa máquina que não seja a do dia 24/08, essa
+> pasta está vazia. O `base-abridor.3mf` é só rodar o script de novo,
+> mas **a cereja veio do Hi3D e não dá pra reproduzir igual** —
+> geração por IA não repete. Antes de qualquer coisa, veja se ela
+> ficou salva no Storage do Supabase; se não ficou, termine o chaveiro
+> na máquina onde ela está.
 
 ### O que já está pronto
 - **Forma da cereja+laço**: aprovada, gerada pelo Hi3D a partir de
-  foto de referência. Tem uma sobra/rampa esquisita de geração (não
+  foto de referência. **É esta que vale** — `slicer-agent/cereja-cad.js`
+  é a tentativa anterior, de desenhar por medida, e ficou como
+  histórico (o próprio arquivo avisa isso no topo). Tem uma sobra/rampa esquisita de geração (não
   atrapalha o formato principal) — resolve na hora de montar (corta
   com estilete ou esconde colando a base por cima).
 - **Base do abridor**: `slicer-agent/base-abridor.js` →

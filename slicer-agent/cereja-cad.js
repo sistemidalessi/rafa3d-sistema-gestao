@@ -1,3 +1,17 @@
+// ⚠️ CAMINHO ABANDONADO — não é daqui que sai a cereja do chaveiro.
+//
+// A cereja que o dono aprovou em 24/08/2026 foi gerada pelo Hi3D a
+// partir de foto de referência, e é essa que vale. Este arquivo é a
+// tentativa anterior, de desenhar a peça por medida: funciona e gera um
+// .3mf válido, mas a forma ficou dura perto da que o Hi3D devolveu.
+//
+// Fica no repositório só como referência das medidas que foram
+// combinadas com o dono (largura, raio das bolinhas, bolso do NFC) —
+// se algum dia precisar desenhar a cereja à mão de novo, o ponto de
+// partida está aqui. Pra qualquer outra coisa, ignore este arquivo.
+//
+// ----------------------------------------------------------------
+//
 // Desenha o corpo do chaveiro de cereja por medida exata (manifold-3d),
 // em vez de tentar gerar por foto — a peça é simples o bastante pra
 // modelar direto, e isso já resolve de graça o encaixe de precisão que
