@@ -772,6 +772,16 @@ class Component extends DCLogic {
     const products = this.state.products || [];
 
     const gloss = (c) => "radial-gradient(circle at 33% 27%, rgba(255,255,255,0.55), rgba(255,255,255,0) 42%), " + c;
+
+    // ATENÇÃO: estes nomes têm que ser IGUAIS aos de filament_colors no
+    // banco, acento por acento. A cor escolhida no checkout viaja como
+    // texto e a finalizar-pedido traduz o nome no id do filamento — nome
+    // que não casar vira nulo, e a cor some do pedido sem erro nenhum na
+    // tela. Renomeou uma cor na aba Filamentos? Renomeie aqui também.
+    //
+    // A lista fica fixa aqui, e não vem do banco, porque cada cor
+    // precisa do seu degradê pra virar a bolinha que a pessoa vê — isso
+    // é aparência, não dado de negócio.
     const filaments = [
       // neutros
       { name:"Branco",                bg: gloss("#f3f3f3") },
