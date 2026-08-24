@@ -561,8 +561,9 @@
         1. Escolha as peças e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong><br/>
         2. No carrinho, clique em <strong style="color:#fff;">"Finalizar a Compra"</strong> e preencha seus dados — é só digitar o CEP que o endereço vem sozinho<br/>
         3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto<br/>
-        4. Pague o <strong style="color:#fff;">sinal de 50%</strong> pelo PIX que aparece na tela e mande o comprovante no nosso WhatsApp — o restante fica pra quando a peça estiver pronta<br/>
-        <span style="color:#9fb4d8;">Quer uma cor específica? É só dizer no WhatsApp junto com o comprovante.</span>
+        4. No fim aparece o <strong style="color:#fff;">PIX já pronto</strong>, com o valor da <strong style="color:#fff;">metade</strong>: um toque copia o código, você cola no app do seu banco e manda o comprovante no nosso WhatsApp<br/>
+        5. A gente imprime, avisa quando ficar pronta, você paga a <strong style="color:#fff;">outra metade</strong> e a peça vai pro correio<br/>
+        <span style="color:#9fb4d8;">Fechou a página sem pagar? Sem problema — o PIX volta a aparecer quando você abrir a loja de novo.</span>
       </div>
     </div>
     <div style="position:relative; display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-bottom:24px;">
@@ -580,19 +581,21 @@
           <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:26px; color:#fff; letter-spacing:0.3px;">(11) 98719-0466</div>
         </div>
       </a>
-      <!-- pix -->
-      <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; min-width:0;">
-        <div style="display:flex; align-items:center; gap:14px; min-width:0;">
-          <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; flex:none;">
-            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 20.5 12 12 20.5 3.5 12z"/><path d="M8.5 8.5 12 12l-3.5 3.5"/></svg>
-          </div>
-          <div style="min-width:0;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:12px; letter-spacing:2px; color:#5fa0ff;">PAGAMENTO VIA PIX</div>
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; color:#fff; letter-spacing:0.2px;">dalessi.rafa&#64;gmail.com</div>
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:13px; color:#8ea0c0; margin-top:2px;">Titular: Rafael A. Dalessi</div>
-          </div>
+      <!-- pix — aqui NÃO entra QR Code nem convite a pagar. O QR que
+           existia neste rodapé não levava valor nem número de pedido:
+           quem pagava por ele mandava um PIX solto, e depois ninguém
+           descobria de qual pedido era. O PIX certo é o que aparece no
+           fim da compra, já com o valor do sinal. Isto aqui ficou só
+           como conferência de titular, que é o que dá segurança. -->
+      <div style="display:flex; align-items:center; gap:14px; min-width:0;">
+        <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; flex:none;">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5 20.5 12 12 20.5 3.5 12z"/><path d="M8.5 8.5 12 12l-3.5 3.5"/></svg>
         </div>
-        <img src="https://api.qrserver.com/v1/create-qr-code/?size=90x90&margin=4&data=00020126440014BR.GOV.BCB.PIX0122dalessi.rafa%40gmail.com5204000053039865802BR5916RAFAEL%20A%20DALESSI6009SAO%20PAULO62070503%2A%2A%2A63047D41" alt="QR Code PIX" style="width:66px; height:66px; border-radius:8px; background:#fff; padding:5px; flex:none;" />
+        <div style="min-width:0;">
+          <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:12px; letter-spacing:2px; color:#5fa0ff;">O PIX SAI NO FIM DA COMPRA</div>
+          <div style="font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:13px; color:#cdd9ee; line-height:1.55; margin-top:3px;">Ele já vem com o valor certo e com o número do seu pedido — não precisa digitar nada.</div>
+          <div style="font-family:'Space Grotesk',sans-serif; font-weight:500; font-size:12px; color:#8ea0c0; margin-top:5px;">Vai cair para <strong style="color:#cdd9ee;">Rafael A. Dalessi</strong></div>
+        </div>
       </div>
     </div>
     <div style="position:relative; border-top:1px solid rgba(255,255,255,0.10); padding:13px 0; display:flex; align-items:center; justify-content:center; gap:12px; color:#8ea0c0; font-size:12.5px;">
@@ -953,10 +956,13 @@ class Component extends DCLogic {
     if (!cartItems || !cartItems.length) return;
     CK = { cartItems: cartItems, onSucesso: onSucesso, passo: 'dados', cores: {}, combinar: false, endereco: {}, fretes: [], freteEscolhido: null, resultado: null, carregando: false, erro: '' };
     document.getElementById('checkoutOverlay').style.display = 'flex';
+    esconderAvisoPedidoAberto();
     ckRender();
   };
   window.fecharCheckoutModal = function () {
     document.getElementById('checkoutOverlay').style.display = 'none';
+    // Fechou sem pagar: o aviso volta, senão o PIX some de vista de novo.
+    mostrarAvisoPedidoAberto();
   };
 
   function ckRender() {
@@ -1198,6 +1204,14 @@ class Component extends DCLogic {
     html += '<div style="display:flex; justify-content:space-between;"><span>Frete</span><strong>' + (CK.combinar ? 'a combinar' : fmtMoney(CK.freteEscolhido.preco)) + '</strong></div>';
     html += '</div><hr style="border:none; border-top:1px solid #e7e9ef; margin:12px 0;">';
     html += '<div style="display:flex; justify-content:space-between; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:18px;"><span>Total</span><span>' + (CK.combinar ? fmtMoney(totalProdutos()) + ' + frete' : fmtMoney(totalGeral())) + '</span></div>';
+
+    // Dizer aqui quanto sai agora evita a surpresa na tela seguinte:
+    // muita gente esperava pagar o total e travava ao ver outro valor.
+    if (!CK.combinar) {
+      html += '<div style="background:#f2f7ff; border:1px solid #cfe0ff; border-radius:10px; padding:11px 13px; margin-top:12px; font-size:12.5px; color:#33507d; line-height:1.6;">'
+        + 'No próximo passo você paga só <strong>' + fmtMoney(totalGeral() / 2) + '</strong> por PIX — é a metade, pra eu começar a imprimir. '
+        + 'Os outros <strong>' + fmtMoney(totalGeral() - totalGeral() / 2) + '</strong> ficam pra quando a peça estiver pronta.</div>';
+    }
     html += '<button onclick="ckVoltarPara(\'' + (CK.combinar ? 'dados' : 'frete') + '\')" style="width:100%; margin-top:16px; padding:10px; border:1.5px solid #dde1e8; border-radius:10px; background:#fff; color:#0b1733; font-weight:700; font-size:13px; cursor:pointer;">&larr; Voltar</button>';
     html += '<button onclick="ckConfirmar()" style="width:100%; margin-top:8px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' + (CK.carregando ? 'Enviando...' : 'Confirmar pedido') + '</button>';
     return html;
@@ -1227,6 +1241,7 @@ class Component extends DCLogic {
       if (resp.error) { CK.erro = resp.error; ckRender(); return; }
       CK.resultado = resp;
       CK.passo = 'pago';
+      guardarPedido(resp);
       ckRender();
       if (CK.onSucesso) CK.onSucesso();
     }).catch(function () {
@@ -1253,28 +1268,200 @@ class Component extends DCLogic {
     return partes[0] + '?text=' + partes[1] + encodeURIComponent(extra);
   }
 
+  // Um passo da tela de pagamento: número na bolinha, título e o que
+  // vier dentro. A numeração existe porque a versão anterior mostrava
+  // tudo de uma vez e a pessoa não sabia por onde começar.
+  function ckPasso(numero, titulo, corpo) {
+    var html = '<div style="display:flex; gap:11px; text-align:left; margin-top:16px;">';
+    html += '<div style="flex:none; width:25px; height:25px; border-radius:50%; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:13px; display:flex; align-items:center; justify-content:center;">' + numero + '</div>';
+    html += '<div style="flex:1; min-width:0;">';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; color:#0b1733; margin-bottom:5px;">' + titulo + '</div>';
+    html += corpo + '</div></div>';
+    return html;
+  }
+
+  // O código do PIX é longo demais pra digitar e comprido demais pra
+  // selecionar no celular. Um toque tem que resolver.
+  window.ckCopiarPix = function (botao) {
+    var codigo = (CK.resultado && CK.resultado.pix_copia_cola) || '';
+    if (!codigo) return;
+    function avisar() {
+      botao.innerHTML = '&#10003; Copiado! Agora abra o banco';
+      botao.style.background = '#0f7850';
+      setTimeout(function () {
+        botao.innerHTML = 'Copiar o código PIX';
+        botao.style.background = '#0061f7';
+      }, 2600);
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(codigo).then(avisar, function () { ckCopiarNaMarra(codigo, avisar); });
+    } else {
+      ckCopiarNaMarra(codigo, avisar);
+    }
+  };
+
+  // Navegador de celular antigo não tem clipboard. Sem isto, o botão
+  // simplesmente não faz nada — e a pessoa fica sem saber por quê.
+  function ckCopiarNaMarra(texto, aoConseguir) {
+    try {
+      var area = document.createElement('textarea');
+      area.value = texto;
+      area.style.position = 'fixed';
+      area.style.opacity = '0';
+      document.body.appendChild(area);
+      area.focus();
+      area.select();
+      var ok = document.execCommand('copy');
+      document.body.removeChild(area);
+      if (ok) { aoConseguir(); return; }
+    } catch (e) { /* cai no aviso abaixo */ }
+    var cru = document.getElementById('ckPixCru');
+    if (cru) {
+      cru.style.display = 'block';
+      cru.querySelector('textarea').select();
+    }
+  }
+
+  window.ckVerQr = function (link) {
+    var box = document.getElementById('ckQrBox');
+    if (!box) return;
+    var abrindo = box.style.display === 'none';
+    box.style.display = abrindo ? 'block' : 'none';
+    link.innerHTML = abrindo ? 'esconder o QR Code' : 'prefiro pagar pelo QR Code';
+  };
+
   function ckHtmlPago() {
     var r = CK.resultado;
     var html = '<div style="text-align:center;">';
-    html += '<div style="font-size:34px;">🎉</div>';
-    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; margin-top:6px;">Pedido ' + r.pedido_numero + ' criado!</div>';
+
     if (r.combinar) {
+      html += '<div style="font-size:34px;">&#127881;</div>';
+      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; margin-top:6px;">Pedido ' + r.pedido_numero + ' criado!</div>';
       html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Agora é só combinar a entrega com a gente pelo WhatsApp.</div>';
-    } else {
-      var pct = r.percentual_sinal || 50;
-      var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
-      html += '<div style="color:#7b879c; font-size:13.5px; margin-top:8px;">Total do pedido: <strong>' + fmtMoney(r.total) + '</strong></div>';
-      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:19px; color:#0b1733; margin-top:6px;">Pague agora ' + fmtMoney(sinal) + '</div>';
-      html += '<div style="font-size:12px; color:#7b879c; margin-top:2px;">É o sinal de ' + pct + '%. O restante fica pra quando a peça estiver pronta.</div>';
-      html += '<img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="margin:14px auto; display:block; border:1px solid #e7e9ef; border-radius:10px;">';
-      html += '<div style="font-size:11px; color:#7b879c; margin-bottom:6px;">Ou copia e cola no app do seu banco:</div>';
-      html += '<textarea readonly style="width:100%; height:60px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea>';
+      html += '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Combinar no WhatsApp</a>';
+      html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
+      return html + '</div>';
     }
-    html += '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; margin-top:16px; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">' +
-      (r.combinar ? 'Combinar no WhatsApp' : 'Já paguei — mandar comprovante') + '</a>';
+
+    var pct = r.percentual_sinal || 50;
+    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+    var resto = Math.max(0, r.total - sinal);
+
+    // Nada de "🎉 pedido criado" aqui: o pedido ainda não está de pé, e
+    // a versão anterior comemorava justamente na hora em que faltava o
+    // passo mais importante. Muita gente fechava achando que acabou.
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
+    html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
+      + '<strong>Ainda falta o sinal.</strong> Eu começo a imprimir a sua peça assim que ele cair.</div>';
+
+    html += '<div style="background:#f2f7ff; border:1.5px solid #cfe0ff; border-radius:12px; padding:14px; margin-top:14px;">';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:600; font-size:11px; letter-spacing:1.6px; color:#4a7fd0;">PAGUE AGORA</div>';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:30px; color:#0b1733; line-height:1.2;">' + fmtMoney(sinal) + '</div>';
+    html += '<div style="font-size:12px; color:#5b6a85; margin-top:3px;">é a metade de ' + fmtMoney(r.total) + ' &middot; os outros ' + fmtMoney(resto) + ' só quando a peça ficar pronta</div>';
+    html += '</div>';
+
+    html += ckPasso(1, 'Copie o código do PIX',
+      '<button onclick="ckCopiarPix(this)" style="width:100%; padding:13px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14.5px; cursor:pointer;">Copiar o código PIX</button>'
+      + '<div id="ckPixCru" style="display:none; margin-top:8px;"><div style="font-size:11px; color:#7b879c; margin-bottom:4px;">Copie este código à mão:</div>'
+      + '<textarea readonly style="width:100%; height:58px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea></div>');
+
+    html += ckPasso(2, 'Cole no app do seu banco',
+      '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Abra o banco, procure <strong>PIX</strong> e depois <strong>&ldquo;Pix Copia e Cola&rdquo;</strong>. Cole o código e confira: tem que aparecer <strong>' + fmtMoney(sinal) + '</strong> para <strong>Rafael A. Dalessi</strong>.</div>'
+      + '<a onclick="ckVerQr(this)" style="display:inline-block; margin-top:7px; font-size:12px; color:#0061f7; text-decoration:underline; cursor:pointer;">prefiro pagar pelo QR Code</a>'
+      + '<div id="ckQrBox" style="display:none; margin-top:8px;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="width:170px; border:1px solid #e7e9ef; border-radius:10px;"></div>');
+
+    html += ckPasso(3, 'Me mande o comprovante',
+      '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6; margin-bottom:7px;">É assim que eu descubro que o seu pagamento chegou.</div>'
+      + '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Mandar o comprovante no WhatsApp</a>');
+
+    html += '<div style="text-align:left; background:#f7f8fb; border-radius:10px; padding:12px 14px; margin-top:18px; font-size:12.5px; color:#5b6a85; line-height:1.7;">'
+      + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:12.5px; color:#0b1733; margin-bottom:4px;">E depois, o que acontece?</div>'
+      + 'Confirmo o seu sinal &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você paga os outros ' + fmtMoney(resto) + ' &rarr; eu envio.</div>';
+
+    html += '<div style="font-size:12px; color:#7b879c; margin-top:12px;">Pode fechar sem medo: guardei o seu <strong>pedido ' + r.pedido_numero + '</strong> aqui e o PIX volta a aparecer quando você abrir a loja de novo.</div>';
     html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
     html += '</div>';
     return html;
+  }
+
+  /* ====== PEDIDO GUARDADO ======
+     Fechar a aba fazia o PIX sumir pra sempre, e a pessoa vinha
+     perguntar no WhatsApp. Agora o último pedido não pago fica
+     guardado no navegador e volta num aviso no topo da loja. */
+
+  var CHAVE_PEDIDO = 'rafa3d_pedido_aguardando';
+
+  function guardarPedido(r) {
+    if (!r || r.combinar || !r.pix_copia_cola) return;
+    try {
+      localStorage.setItem(CHAVE_PEDIDO, JSON.stringify({
+        resultado: r,
+        cores: CK.cores,
+        itens: CK.cartItems,
+        quando: Date.now(),
+      }));
+    } catch (e) { /* navegador sem armazenamento: só não guarda */ }
+  }
+
+  window.ckEsquecerPedido = function () {
+    try { localStorage.removeItem(CHAVE_PEDIDO); } catch (e) {}
+    esconderAvisoPedidoAberto();
+  };
+
+  window.ckReabrirPedido = function () {
+    var guardado = lerPedidoGuardado();
+    if (!guardado) return;
+    CK.resultado = guardado.resultado;
+    CK.cores = guardado.cores || {};
+    CK.cartItems = guardado.itens || [];
+    CK.passo = 'pago';
+    document.getElementById('checkoutOverlay').style.display = 'flex';
+    // A barra fica acima do modal na ordem de empilhamento, então ela
+    // taparia o botão do WhatsApp se continuasse na tela.
+    esconderAvisoPedidoAberto();
+    ckRender();
+  };
+
+  function esconderAvisoPedidoAberto() {
+    var aviso = document.getElementById('avisoPedidoAberto');
+    if (aviso) aviso.remove();
+  }
+
+  function lerPedidoGuardado() {
+    try {
+      var cru = localStorage.getItem(CHAVE_PEDIDO);
+      if (!cru) return null;
+      var g = JSON.parse(cru);
+      // Passou de uma semana: o pedido já foi resolvido de um jeito ou
+      // de outro, e insistir no aviso só confunde.
+      if (!g.resultado || (Date.now() - g.quando) > 7 * 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(CHAVE_PEDIDO);
+        return null;
+      }
+      return g;
+    } catch (e) { return null; }
+  }
+
+  function mostrarAvisoPedidoAberto() {
+    var g = lerPedidoGuardado();
+    if (!g || document.getElementById('avisoPedidoAberto')) return;
+    var r = g.resultado;
+    var pct = r.percentual_sinal || 50;
+    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+
+    var barra = document.createElement('div');
+    barra.id = 'avisoPedidoAberto';
+    barra.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:9998; background:#0b1733; color:#fff; padding:11px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; box-shadow:0 -3px 14px rgba(0,0,0,0.25); font-family:\'Space Grotesk\',sans-serif;';
+    barra.innerHTML = '<span style="font-size:13px; line-height:1.4;">O seu <strong>pedido ' + r.pedido_numero + '</strong> está esperando o sinal de <strong>' + fmtMoney(sinal) + '</strong>.</span>'
+      + '<button onclick="ckReabrirPedido()" style="border:none; border-radius:9px; background:#0061f7; color:#fff; font-family:inherit; font-weight:700; font-size:13px; padding:9px 15px; cursor:pointer;">Ver o PIX de novo</button>'
+      + '<button onclick="ckEsquecerPedido()" style="border:none; background:none; color:#8ea0c0; font-size:12px; cursor:pointer; text-decoration:underline;">já paguei</button>';
+    document.body.appendChild(barra);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', mostrarAvisoPedidoAberto);
+  } else {
+    mostrarAvisoPedidoAberto();
   }
 })();
 </script>
