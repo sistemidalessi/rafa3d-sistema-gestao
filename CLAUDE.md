@@ -4,31 +4,33 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — de 23/08/2026
+## ⏳ TAREFAS EM ABERTO — de 24/08/2026
 
-**Assim que a sessão começar, lembre o Anderson destas três.** Ele parou no
-meio de duas frentes e vai retomar de outro computador. O detalhe de cada
-uma está em [docs/continuar-daqui.md](docs/continuar-daqui.md) — leia antes
-de responder qualquer coisa sobre catálogo ou geração de modelo 3D.
+**Assim que a sessão começar, lembre o Anderson destas duas.** Ele parou no
+meio do chaveiro de cereja (encomenda real, já vendida) e vai retomar de
+outro computador. O detalhe está em
+[docs/continuar-daqui.md](docs/continuar-daqui.md) — leia antes de
+responder qualquer coisa sobre o chaveiro ou geração de modelo 3D.
 
 1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
-   de tudo (veja a seção seguinte). E avisar que **as chaves do Hi3D só
-   estão no `.env` da outra máquina** — se for mexer no Hi3D, tem que
-   copiar `HI3D_ACCESS_KEY` e `HI3D_SECRET_KEY` à mão.
-2. **Testar o botão de copiar o PIX num celular de verdade.** Tem que
-   aparecer "✓ Copiado! Agora abra o banco" e o botão do WhatsApp, que
-   começa cinza, ficar verde. É a única parte do checkout que não deu pra
-   verificar por aqui — a automação trava no pedido de permissão da área
-   de transferência.
-3. **Decidir o pacote de API do Hi3D.** A recomendação registrada é
-   comprar o menor (~US$ 10) e provar a cadeia inteira antes do plano
-   anual. Detalhes em [docs/decisao-hi3d.md](docs/decisao-hi3d.md).
+   de tudo (veja a seção seguinte). **As chaves do Hi3D são por máquina** —
+   se a de casa não tiver `HI3D_ACCESS_KEY`/`HI3D_SECRET_KEY` preenchidas,
+   crie uma chave nova em platform.hi3d.ai (o segredo só aparece uma vez).
+2. **Terminar o chaveiro de cereja com NFC + abridor.** Já tem a forma da
+   cereja aprovada e a base do abridor pronta — falta escalar pra 78mm,
+   rodar a ferramenta da altura de pausa do NFC, e imprimir um teste de
+   verdade. Detalhe completo, incluindo o que **não** funcionou (não tentar
+   de novo sem ideia nova), em docs/continuar-daqui.md e na memória do
+   projeto.
 
-Também ficou pendente, mas é com ele e não com o agente: **falar com os 4
-clientes** que compraram na tela antiga e não souberam como pagar.
+Também ainda pendente, mas antigo (23/08): **testar o botão de copiar o
+PIX num celular de verdade** (tem que aparecer "✓ Copiado! Agora abra o
+banco" e o botão do WhatsApp ficar verde) e **falar com os 4 clientes**
+que compraram na tela antiga e não souberam como pagar — isso é com o
+Anderson, não com o agente.
 
-**Apague esta seção quando as três estiverem resolvidas** — nota de tarefa
-que fica pra trás vira ruído e mente sobre o estado do projeto.
+**Apague esta seção quando as duas de cima estiverem resolvidas** — nota
+de tarefa que fica pra trás vira ruído e mente sobre o estado do projeto.
 
 
 ## Primeira coisa numa máquina nova
