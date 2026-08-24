@@ -2127,13 +2127,21 @@ async function renderFilamentos() {
   el.innerHTML = html;
 }
 
+// "in_use" e "empty" não dizem nada pra quem tem 10 anos.
+const STATUS_ROLO = { in_use: 'usando', empty: 'acabou', stored: 'guardado' };
+
 function renderSpoolsMini(colorId) {
   const spools = spoolsCache.filter((s) => s.color_id === colorId);
   if (spools.length === 0) return '<div class="empty">Nenhum rolo cadastrado pra essa cor.</div>';
-  let html = '<table style="font-size:12px;"><tr><th>Comprado em</th><th>Inicial</th><th>Restante</th><th>Status</th></tr>';
+  let html = '<table style="font-size:12px;"><tr><th>Comprado em</th><th>Veio com</th><th>Ainda tem</th><th>Como está</th><th></th></tr>';
   spools.forEach((s) => {
     html += '<tr><td>' + fmtDate(s.purchased_at) + '</td><td>' + fmtKg(s.initial_weight_g) + '</td>';
-    html += '<td>' + fmtKg(s.remaining_weight_g) + '</td><td>' + escapeHtml(s.status) + '</td></tr>';
+    html += '<td>' + fmtKg(s.remaining_weight_g) + '</td>';
+    html += '<td>' + (STATUS_ROLO[s.status] || escapeHtml(s.status)) + '</td>';
+    html += '<td class="row-actions">';
+    html += '<button class="btn ghost" onclick="openSpoolForm(\'' + colorId + '\', \'' + s.id + '\')">Corrigir</button>';
+    html += '<button class="btn ghost" onclick="apagarRolo(\'' + s.id + '\')">Apagar</button>';
+    html += '</td></tr>';
   });
   html += '</table>';
   return html;
@@ -2332,37 +2340,112 @@ async function reativarFilamento(id) {
   await renderFilamentos();
 }
 
-function openSpoolForm(colorId) {
+// Serve pra cadastrar rolo novo e pra corrigir um que já existe. Muda
+// pouca coisa entre os dois: no novo, o peso digitado é quanto o rolo
+// veio de fábrica; corrigindo, é quanto AINDA TEM — que é a pergunta
+// que faz sentido depois que ele já rodou.
+function openSpoolForm(colorId, spoolId) {
   const c = filamentosCache.find((x) => x.id === colorId);
+  const s = spoolId ? spoolsCache.find((x) => x.id === spoolId) : null;
+  const pesoAtual = s ? fmtKg(s.remaining_weight_g).replace(' kg', '') : '1';
   openModal(
-    '<h3>Novo rolo — ' + escapeHtml(c.name) + '</h3>' +
-    '<label class="pergunta">Quantos quilos tem esse rolo?</label>' +
-    '<input id="spPeso" type="text" inputmode="decimal" value="1">' +
-    '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">Rolo normal é <strong>1</strong>. Meio rolo é <strong>0,500</strong>. Rolinho pequeno é <strong>0,250</strong>.</div>' +
-    '<label>Valor pago (R$)</label><input id="spCusto" type="number" step="0.01" value="' + (c.cost_per_kg || 0) + '">' +
-    '<label>Fornecedor</label><input id="spFornecedor">' +
-    '<label>Data da compra</label><input id="spData" type="date" value="' + todayISO() + '">' +
+    '<h3>' + (s ? 'Corrigir rolo' : 'Novo rolo') + ' — ' + escapeHtml(c.name) + '</h3>' +
+    (s
+      ? '<div style="background:var(--bg); border-radius:8px; padding:8px 11px; font-size:12px; color:var(--muted); margin-bottom:4px;">Esse rolo veio com <strong>' + fmtKg(s.initial_weight_g) + '</strong>, comprado em ' + fmtDate(s.purchased_at) + '.</div>'
+      : '') +
+    '<label class="pergunta">' + (s ? 'Quantos quilos ainda tem nesse rolo?' : 'Quantos quilos tem esse rolo?') + '</label>' +
+    '<input id="spPeso" type="text" inputmode="decimal" value="' + pesoAtual + '">' +
+    '<div style="color:var(--muted); font-size:11px; margin:-2px 0 6px;">' +
+      (s ? 'Pesa o rolo na balança e tira o peso do carretel vazio (uns 0,200).'
+         : 'Rolo normal é <strong>1</strong>. Meio rolo é <strong>0,500</strong>. Rolinho pequeno é <strong>0,250</strong>.') +
+    '</div>' +
+    '<label>Valor pago (R$)</label><input id="spCusto" type="number" step="0.01" value="' + (s ? (s.cost_paid || 0) : (c.cost_per_kg || 0)) + '">' +
+    '<label>Fornecedor</label><input id="spFornecedor" value="' + (s ? escapeHtml(s.supplier || '') : '') + '">' +
+    '<label>Data da compra</label><input id="spData" type="date" value="' + (s ? (s.purchased_at || '') : todayISO()) + '">' +
+    (s
+      ? '<label class="pergunta">Como está esse rolo?</label>' +
+        '<select id="spStatus">' +
+          ['in_use', 'empty', 'stored'].map((k) =>
+            '<option value="' + k + '"' + (k === s.status ? ' selected' : '') + '>' + STATUS_ROLO[k] + '</option>').join('') +
+        '</select>'
+      : '') +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn" onclick="saveSpool(\'' + colorId + '\')">Adicionar rolo</button>' +
+      '<button class="btn" onclick="saveSpool(\'' + colorId + '\'' + (s ? ", '" + s.id + "'" : '') + ')">' + (s ? 'Salvar correção' : 'Adicionar rolo') + '</button>' +
     '</div>'
   );
 }
 
-async function saveSpool(colorId) {
+async function saveSpool(colorId, spoolId) {
   // Digitado em quilo, guardado em grama — o resto do sistema (consumo,
   // custo por peça, alerta de estoque) continua raciocinando em grama.
-  const initial_weight_g = lerKgEmGramas(document.getElementById('spPeso').value);
+  const pesoG = lerKgEmGramas(document.getElementById('spPeso').value);
   const cost_paid = parseFloat(document.getElementById('spCusto').value) || null;
   const supplier = document.getElementById('spFornecedor').value.trim() || null;
   const purchased_at = document.getElementById('spData').value || null;
-  if (isNaN(initial_weight_g) || initial_weight_g <= 0) { toast('Escreve quantos quilos tem o rolo. Ex: 1'); return; }
-  const { error } = await SUPA.rpc('add_filament_spool', {
-    p_color_id: colorId, p_initial_weight_g: initial_weight_g, p_cost_paid: cost_paid, p_supplier: supplier, p_purchased_at: purchased_at,
-  });
+
+  if (isNaN(pesoG) || pesoG < 0) { toast('Escreve quantos quilos tem o rolo. Ex: 1'); return; }
+  if (!spoolId && pesoG <= 0) { toast('Um rolo novo não pode vir com zero.'); return; }
+
+  // Corrigir passa pela função do banco, e não por um update direto: o
+  // peso que sobra é a base do estoque, e mudar ele sem registrar o
+  // movimento faria a conta de filamento parar de fechar em silêncio.
+  const { error } = spoolId
+    ? await SUPA.rpc('editar_rolo', {
+        p_spool_id: spoolId, p_remaining_weight_g: pesoG, p_cost_paid: cost_paid,
+        p_supplier: supplier, p_purchased_at: purchased_at,
+        p_status: document.getElementById('spStatus').value,
+      })
+    : await SUPA.rpc('add_filament_spool', {
+        p_color_id: colorId, p_initial_weight_g: pesoG, p_cost_paid: cost_paid,
+        p_supplier: supplier, p_purchased_at: purchased_at,
+      });
   if (error) { toast('Erro: ' + error.message); return; }
   closeModal();
-  toast('Rolo adicionado.');
+  toast(spoolId ? 'Rolo corrigido.' : 'Rolo adicionado.');
+  await renderFilamentos();
+}
+
+// Mesmo cuidado das cores: rolo que já imprimiu peça carrega histórico
+// de custo, e apagar reescreveria quanto cada peça vendida custou pra
+// fazer. Nesse caso a tela oferece marcar como acabado/guardado.
+async function apagarRolo(spoolId) {
+  const s = spoolsCache.find((x) => x.id === spoolId);
+  if (!s) return;
+  const cor = filamentosCache.find((x) => x.id === s.color_id);
+  const nome = (cor ? cor.name : 'rolo') + ' de ' + fmtDate(s.purchased_at);
+
+  const movimentos = await q(SUPA.from('filament_stock_movements').select('id').eq('spool_id', spoolId).neq('reason', 'new_spool').limit(1));
+  const usos = await q(SUPA.from('order_line_items').select('id').eq('filament_spool_id', spoolId).limit(1));
+
+  if (movimentos.length || usos.length) {
+    openModal(
+      '<h3>Esse rolo já foi usado</h3>' +
+      '<p>O <strong>' + escapeHtml(nome) + '</strong> já imprimiu peça. Apagar ele mudaria quanto essas peças custaram pra fazer.</p>' +
+      '<p>Se ele acabou ou saiu da impressora, marque isso em <strong>Corrigir</strong> — ele some da fila de escolher rolo e o histórico continua certo.</p>' +
+      '<div class="modal-actions">' +
+        '<button class="btn ghost" onclick="closeModal()">Deixa como está</button>' +
+        '<button class="btn" onclick="closeModal(); openSpoolForm(\'' + s.color_id + '\', \'' + spoolId + '\')">Corrigir esse rolo</button>' +
+      '</div>'
+    );
+    return;
+  }
+
+  openModal(
+    '<h3>Apagar o ' + escapeHtml(nome) + '?</h3>' +
+    '<p>Esse rolo nunca imprimiu nada — dá pra apagar de vez, sem estragar nenhuma conta.</p>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="confirmarApagarRolo(\'' + spoolId + '\')">Apagar de vez</button>' +
+    '</div>'
+  );
+}
+
+async function confirmarApagarRolo(spoolId) {
+  const { error } = await SUPA.rpc('apagar_rolo', { p_spool_id: spoolId });
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Rolo apagado.');
   await renderFilamentos();
 }
 
