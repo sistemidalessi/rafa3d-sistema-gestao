@@ -14,11 +14,26 @@ const { gerarModelo3mfConfigurado } = require('./gerar3mf');
 // ---- medidas (mm) ------------------------------------------------
 // Correção 24/08: o vão é um retângulo NA PONTA (parte negativa),
 // não uma cápsula no meio — o dono corrigiu depois de ver o rascunho.
-const LARGURA = 55;   // cobre as duas bolinhas
-const PROFUNDIDADE = 28;
-const ESPESSURA = 4;
-const RAIO_CANTO = 12; // arredonda o lado que acompanha o contorno da cereja
-const VAO_LARGURA = 14;   // retângulo vazado, na ponta
+//
+// As medidas estão em dois grupos, e a diferença importa na hora de
+// mudar de tamanho:
+//
+//   PROPORÇÃO — acompanham a cereja. Cresceram junto quando ela foi
+//   pra 78mm (24/08): a base era 55mm de largura, pensada pra uma
+//   cereja de 60mm, e ficou curta demais.
+//
+//   FUNÇÃO — medida do mundo real, NÃO escalam. O vão é o que agarra o
+//   anel da tampinha, e tampinha tem o tamanho que tem. Escalar ele
+//   junto faria a peça ficar bonita e parar de abrir garrafa.
+
+// proporção (acompanham a cereja)
+const LARGURA = 71;        // cobre as duas bolinhas da cereja de 78mm
+const PROFUNDIDADE = 36;   // mantém a proporção da placa original (55x28)
+const RAIO_CANTO = 15.5;   // arredonda o lado que acompanha o contorno da cereja
+
+// função (não mexer sem uma tampinha na mão)
+const ESPESSURA = 4;        // rigidez pra fazer alavanca sem entortar
+const VAO_LARGURA = 14;     // retângulo vazado, na ponta — pega o anel da tampinha
 const VAO_ALTURA = 10;
 const VAO_MARGEM_PONTA = 6; // distância do vão até a borda reta
 
