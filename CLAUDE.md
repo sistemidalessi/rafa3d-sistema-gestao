@@ -186,6 +186,17 @@ sai dali.
   ([`catalogo/support.js`](catalogo/support.js)). Foi de propósito: aquele
   framework re-renderiza a página inteira a cada scroll, e um formulário dentro
   dele perderia o que a pessoa digitou.
+- **O arquivo NÃO troca a placa no Bambu Studio.** Gravar `curr_bed_type`
+  descreve pra que placa a peça foi pensada, mas não muda nada: a placa é
+  preferência do **aplicativo** (fica em `BambuStudio.conf` como
+  `"curr_bed_type": "1"`, um número). Testado em 25/08/2026 abrindo o
+  Bambu do zero — ele continua na placa anterior. Quem troca é a pessoa,
+  na tela do fatiador; por isso o sistema avisa qual escolher ao abrir.
+- **`filament_settings_id` é o nome de um perfil que precisa existir** na
+  instalação (`resources\profiles\BBL\filament`). Trocar o material troca
+  esse perfil junto — sem isso o arquivo abria como "Bambu PLA Basic" com
+  temperatura de PETG, e corrigir o filamento na mão fazia o fatiador
+  reescrever as temperaturas e jogar a colinha fora.
 - **Cada placa da Bambu tem o SEU campo de temperatura**, e o fatiador só
   lê o da placa selecionada em `curr_bed_type`. Escrever em
   `hot_plate_temp` com o perfil em `Cool Plate` não dá erro nenhum — o

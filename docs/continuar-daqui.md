@@ -114,9 +114,31 @@ nenhum até imprimir. Entrou tudo isto:
 - **O `conferir-maquina.ps1` parou de mentir** sobre o agente: ele dava
   "rodando" se existisse qualquer processo Node, inclusive um servidor de
   teste. Agora procura `agent.js` na linha de comando.
+- **Anexar arquivo e ver a colinha não tiram você do pedido.** Antes os
+  dois botões jogavam pra aba Produtos e deixavam a pessoa lá. Agora
+  abrem numa janela por cima, e depois de enviar o arquivo o botão da
+  peça já vira "Abrir no Fatiador" na mesma tela.
+- **A colinha pergunta o MATERIAL** (patch 33), logo depois da placa. As
+  duas conversam: PETG com a placa fria marcada dispara um aviso na hora
+  de escolher. A IA recebe as duas faixas e aplica as regras do material
+  — testado: PLA 220°C/40°C virou PETG 240°C/75°C, com ventoinha em 40% e
+  30% mais devagar, sem ninguém pedir esses dois últimos.
+
+  Junto foi o perfil de filamento: trocar o material troca o
+  `filament_settings_id` inteiro. Sem isso o arquivo abria como "Bambu
+  PLA Basic" com temperatura de PETG, e corrigir na mão fazia o fatiador
+  reescrever as temperaturas.
 
 O caminho do pedido até a impressão está escrito em
 [roteiro-pedido.md](roteiro-pedido.md), no nível do Rafa.
+
+### Uma coisa que o sistema NÃO resolve, de propósito
+
+**A placa tem que ser trocada na mão, no Bambu Studio.** O arquivo não
+consegue: a placa é preferência do aplicativo, não do projeto (testado
+abrindo o Bambu do zero). O sistema avisa qual escolher ao mandar pro
+fatiador, e o Bambu reclama sozinho quando a combinação não fecha — mas
+o clique é da pessoa. Trocar a placa física na impressora também, óbvio.
 
 ### O gargalo que sobrou
 
