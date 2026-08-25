@@ -276,10 +276,16 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '  "support_threshold_angle": 40,\n' +
   '  "brim_type": "outer_brim_only",\n' +
   '  "brim_width_mm": 3,\n' +
+  '  "ironing_type": "no ironing",\n' +
   '  "nozzle_temp_c": 220,\n' +
   '  "bed_temp_c": 55\n' +
   '}\n' +
   '```\n\n' +
+  'Sobre "ironing_type": alisa a superfície de cima passando o bico de novo quase sem extrudar — deixa mais lento ' +
+  'de imprimir, então só vale usar "top" (ou "topmost", se só o topo mais alto importar) quando aquela superfície ' +
+  'de cima vai ficar À MOSTRA numa peça decorativa/de venda e uma textura de linha visível seria um problema ' +
+  'estético real. Em peça funcional, com pouca área de topo plana, ou que já vai ser pintada por cima, mantenha ' +
+  '"no ironing" — é o padrão.\n\n' +
   '2) Depois do bloco JSON, a ficha técnica pra humano ler, nesta estrutura exata, preenchendo cada campo com um ' +
   'valor concreto (pode marcar "não se aplica" só quando genuinely não fizer sentido pra essa peça, nunca por ' +
   'preguiça de decidir):\n\n' +
@@ -837,15 +843,23 @@ async function abrirNoFatiadorProjeto(li) {
     // filamento e os ajustes da colinha já aplicados — pra abrir sem
     // escolher nada na mão. Se der qualquer problema na conversão, cai
     // pro comportamento de sempre (.stl puro) em vez de travar o pedido.
+    //
+    // model_source 'manual_upload' entra na MESMA reconfiguração que
+    // 'hi3d_dividido' — um .3mf anexado à mão (ex: baixado direto do
+    // workspace do Hi3D) tem exatamente o mesmo problema: veio pronto,
+    // com a malha e as cores certas, mas com a configuração de fatiamento
+    // de quem gerou, não a nossa. Sem isso, "Analisar com IA" podia gerar
+    // uma colinha ótima que nunca chegava a ser aplicada de verdade —
+    // foi exatamente o que aconteceu com o chaveiro de cereja em 25/08.
     let localPath;
-    if (li.model_source === 'hi3d_dividido' && ext.toLowerCase() === '.3mf') {
+    if ((li.model_source === 'hi3d_dividido' || li.model_source === 'manual_upload') && ext.toLowerCase() === '.3mf') {
       try {
         const buffer = reconfigurarHi3d3mf(stlBuf, li.ai_slicing_settings);
         localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
         fs.writeFileSync(localPath, buffer);
-        log('"' + nomeRef + '" (dividida pelo Hi3D) com a impressora e a colinha já aplicadas.');
+        log('"' + nomeRef + '" (' + li.model_source + ') com a impressora e a colinha já aplicadas.');
       } catch (e) {
-        log('AVISO: não consegui aplicar a colinha no .3mf dividido de "' + nomeRef + '" (' + e.message + ') — abrindo como veio do Hi3D mesmo.');
+        log('AVISO: não consegui aplicar a colinha no .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo como veio, sem mexer.');
         localPath = path.join(downloadsDir, nomeSeguro + ext);
         fs.writeFileSync(localPath, stlBuf);
       }
@@ -1050,7 +1064,18 @@ async function abrirNoFatiadorParte(parte) {
     const stlBuf = Buffer.from(await fileData.arrayBuffer());
 
     let localPath;
-    if (ext.toLowerCase() === '.stl' && parte.ai_slicing_settings) {
+    if (parte.model_source === 'manual_upload' && ext.toLowerCase() === '.3mf') {
+      try {
+        const buffer = reconfigurarHi3d3mf(stlBuf, parte.ai_slicing_settings);
+        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
+        fs.writeFileSync(localPath, buffer);
+        log('"' + nomeRef + '" (anexada à mão) com a impressora e a colinha já aplicadas.');
+      } catch (e) {
+        log('AVISO: não consegui aplicar a colinha no .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo como veio, sem mexer.');
+        localPath = path.join(downloadsDir, nomeSeguro + ext);
+        fs.writeFileSync(localPath, stlBuf);
+      }
+    } else if (ext.toLowerCase() === '.stl' && parte.ai_slicing_settings) {
       try {
         const resultado = gerarModelo3mfConfigurado(stlBuf, parte.ai_slicing_settings, nomeSeguro + '.stl', parte.model_source);
         localPath = path.join(downloadsDir, nomeSeguro + '.3mf');

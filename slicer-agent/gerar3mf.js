@@ -220,6 +220,15 @@ const LISTAS_DO_BAMBU = {
     'tri-hexagon': 'tri-hexagon', adaptivecubic: 'adaptivecubic', lightning: 'lightning',
     supportcubic: 'supportcubic', monotonic: 'monotonic',
   },
+  // "no ironing" é o padrão (desligado). Os outros três passam o bico de
+  // novo por cima quase sem extrudar, pra alisar — mais lento, só vale a
+  // pena quando aquela superfície realmente vai ficar à mostra.
+  ironing_type: {
+    'no ironing': 'no ironing', nenhum: 'no ironing', desligado: 'no ironing', sem: 'no ironing',
+    top: 'top', topo: 'top',
+    topmost: 'topmost',
+    solid: 'solid', solido: 'solid', 'sólido': 'solid',
+  },
 };
 
 // Em qual das três listas de "mexi neste aqui" cada campo entra. O Bambu
@@ -227,6 +236,7 @@ const LISTAS_DO_BAMBU = {
 const CATEGORIA = {
   layer_height: 0, wall_loops: 0, sparse_infill_density: 0, sparse_infill_pattern: 0,
   enable_support: 0, support_type: 0, support_threshold_angle: 0, brim_type: 0, brim_width: 0,
+  ironing_type: 0,
   nozzle_temperature: 1, nozzle_temperature_initial_layer: 1,
   hot_plate_temp: 1, hot_plate_temp_initial_layer: 1,
 };
@@ -273,6 +283,7 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
     support_threshold_angle: (v) => gravar('support_threshold_angle', String(v)),
     brim_type: (v) => escolha('brim_type', v),
     brim_width_mm: (v) => gravar('brim_width', String(v)),
+    ironing_type: (v) => escolha('ironing_type', v),
     nozzle_temp_c: (v) => {
       gravar('nozzle_temperature', Array(numFilamentos).fill(String(v)));
       gravar('nozzle_temperature_initial_layer', Array(numFilamentos).fill(String(v)));
@@ -366,15 +377,16 @@ function gerarModelo3mfConfigurado(stlBuffer, ajustes, nomeObjeto, origem) {
   };
 }
 
-// O Hi3D já devolve um .3mf pronto, com a malha dividida em partes e
-// cada uma numa cor/extrusora — não precisa (e não deve) recalcular
-// malha, escala ou posição, ele já manda tudo certo em milímetro real.
-// O único problema é que o project_settings.config de dentro não é do
-// Bambu Studio (é do Hi3D), então ele pede reparo e ignora a colinha.
-// Aqui só troca essa configuração pela nossa (impressora + filamento +
-// ajustes da colinha), mantendo a malha e as cores exatamente como
-// vieram — mesma ideia do gerarModelo3mfConfigurado, mas sem tocar em
-// vértice nenhum.
+// Reconfigura um .3mf que JÁ VEIO PRONTO — seja porque o Hi3D dividiu a
+// peça em partes, seja porque alguém anexou um .3mf à mão (ex: baixado
+// direto do workspace do Hi3D, sem passar pela geração automática) — não
+// precisa (e não deve) recalcular malha, escala ou posição, o arquivo já
+// traz isso certo em milímetro real. O problema é que o
+// project_settings.config de dentro não é do nosso perfil validado (é do
+// Hi3D, ou de qualquer outra origem), então ele ignora a colinha. Aqui só
+// troca essa configuração pela nossa (impressora + filamento + ajustes da
+// colinha), mantendo a malha e as cores exatamente como vieram — mesma
+// ideia do gerarModelo3mfConfigurado, mas sem tocar em vértice nenhum.
 function reconfigurarHi3d3mf(zipBuffer, ajustes) {
   const zip = new AdmZip(zipBuffer);
   const porNome = {};
