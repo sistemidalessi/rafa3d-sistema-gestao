@@ -36,10 +36,10 @@
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </helmet>
 
-<div style="width:1080px; margin:0 auto; background:#eceef2; background-image:radial-gradient(rgba(11,23,51,0.045) 1.2px, transparent 1.2px); background-size:24px 24px; font-family:'Manrope',sans-serif; color:#0e1626; position:relative;">
+<div style="width:100%; max-width:1080px; margin:0 auto; background:#eceef2; background-image:radial-gradient(rgba(11,23,51,0.045) 1.2px, transparent 1.2px); background-size:24px 24px; font-family:'Manrope',sans-serif; color:#0e1626; position:relative;">
 
   <!-- ===================== HEADER ===================== -->
-  <div style="position:relative; background:#000817; overflow:hidden; padding:30px 40px 28px; min-height:508px; display:flex; align-items:stretch;">
+  <div style="position:relative; background:#000817; overflow:hidden; padding:30px clamp(16px,4vw,40px) 28px; min-height:508px; display:flex; align-items:stretch;">
     <!-- foto do Rafa em plano de fundo -->
     <div style="position:absolute; inset:0; background-image:url('assets/rafa_header.png'); background-size:cover; background-position:center 12%; pointer-events:none;"></div>
     <!-- degradê navy: forte à esquerda (texto legível) → revela o Rafa à direita -->
@@ -78,7 +78,7 @@
   </div>
 
   <!-- ===================== BENEFITS BAR ===================== -->
-  <div style="background:#011a44; display:grid; grid-template-columns:repeat(4,1fr); padding:16px 40px;">
+  <div style="background:#011a44; display:grid; grid-template-columns:repeat(4,1fr); padding:16px clamp(14px,4vw,40px);">
     <div style="display:flex; align-items:center; gap:11px; color:#dfe7f5; font-size:13.5px; font-weight:600;">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="#0061f7" stroke="none" style="flex:none;"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.29 1.49 4.04 3 5.5l7 7Z"/></svg>
       <span>Peças leves<br>e resistentes</span>
@@ -98,14 +98,14 @@
   </div>
 
   <sc-if value="{{ !catalogLoaded }}">
-    <div style="padding:50px 40px; text-align:center; color:#8ea0c0; font-family:'Space Grotesk',sans-serif; font-weight:600; letter-spacing:1px;">Carregando catálogo...</div>
+    <div style="padding:50px clamp(14px,4vw,40px); text-align:center; color:#8ea0c0; font-family:'Space Grotesk',sans-serif; font-weight:600; letter-spacing:1px;">Carregando catálogo...</div>
   </sc-if>
   <sc-if value="{{ catalogError }}">
-    <div style="padding:16px 40px; text-align:center; color:#c0392b; background:#fdeaea; font-size:13px;">Não foi possível carregar os produtos agora. Tenta recarregar a página em alguns instantes.</div>
+    <div style="padding:16px clamp(14px,4vw,40px); text-align:center; color:#c0392b; background:#fdeaea; font-size:13px;">Não foi possível carregar os produtos agora. Tenta recarregar a página em alguns instantes.</div>
   </sc-if>
 
   <!-- ===================== ÍNDICE DE CATEGORIAS ===================== -->
-  <div style="padding:26px 40px 0;">
+  <div style="padding:26px clamp(14px,4vw,40px) 0;">
     <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:12px; letter-spacing:3.5px; color:#0061f7; margin-bottom:11px;">ÍNDICE DE CATEGORIAS</div>
     <div style="display:flex; gap:9px; flex-wrap:wrap;">
       <a href="#sec-vasos" style="text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0061f7; padding:8px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(0,97,247,0.30); cursor:pointer;">01 · Vasos &amp; Decoração</a>
@@ -127,7 +127,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 01 · VASOS ===================== -->
-  <div id="sec-vasos" style="margin-top:24px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-vasos" style="margin-top:24px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">01</div>
@@ -140,7 +140,7 @@
   </div>
 
   <!-- grade de vasos -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ products }}" as="p" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -167,7 +167,7 @@
                 <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:700; color:#13348f;">{{ p.promo }}</div>
               </sc-if>
             </sc-if>
-            <button onClick="{{ p.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ p.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -175,7 +175,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 02 · BRINQUEDOS &amp; EXPOSITORES ===================== -->
-  <div id="sec-brinquedos" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-brinquedos" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">02</div>
@@ -188,7 +188,7 @@
   </div>
 
   <!-- grade de brinquedos -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ cars }}" as="c" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -211,7 +211,7 @@
                 <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:700; color:#13348f;">{{ c.nota }}</div>
               </sc-if>
             </sc-if>
-            <button onClick="{{ c.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ c.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -219,7 +219,7 @@
   </div>
 
       <!-- ===================== SEÇÃO 03 · PORTA CARDS ===================== -->
-  <div id="sec-portacards" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-portacards" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">03</div>
@@ -232,7 +232,7 @@
   </div>
 
   <!-- grade de porta cards -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ holders }}" as="h" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -251,7 +251,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ h.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ h.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ h.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -259,7 +259,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 04 · SUPORTES & UTILIDADES ===================== -->
-  <div id="sec-suportes" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-suportes" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">04</div>
@@ -272,7 +272,7 @@
   </div>
 
   <!-- grade de suportes/utilidades -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ utils }}" as="u" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -291,7 +291,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ u.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ u.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ u.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -299,7 +299,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 05 · BAR & VINHOS ===================== -->
-  <div id="sec-vinhos" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-vinhos" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">05</div>
@@ -312,7 +312,7 @@
   </div>
 
   <!-- grade de bar &amp; vinhos -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ wines }}" as="w" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -331,7 +331,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ w.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ w.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ w.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -339,7 +339,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 06 · CHAVEIROS ===================== -->
-  <div id="sec-chaveiros" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-chaveiros" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">06</div>
@@ -352,7 +352,7 @@
   </div>
 
   <!-- grade de chaveiros -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ keychains }}" as="k" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -371,7 +371,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ k.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ k.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ k.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -379,7 +379,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 07 · SUPORTES PARA CELULAR ===================== -->
-  <div id="sec-celular" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-celular" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">07</div>
@@ -392,7 +392,7 @@
   </div>
 
   <!-- grade de suportes para celular -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ phoneStands }}" as="ps" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -411,7 +411,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ ps.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ ps.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ ps.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -419,7 +419,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 08 · ORGANIZADORES DE MESA ===================== -->
-  <div id="sec-mesa" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-mesa" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">08</div>
@@ -432,7 +432,7 @@
   </div>
 
   <!-- grade de organizadores de mesa -->
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ deskOrganizers }}" as="d" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -451,7 +451,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ d.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ d.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ d.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -459,7 +459,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 09 · LIVROS & LEITURA ===================== -->
-  <div id="sec-livros" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-livros" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">09</div>
@@ -471,7 +471,7 @@
     <div style="position:relative; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#cdd9ee; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16); padding:7px 16px; border-radius:999px;">{{ bookCount }} modelos</div>
   </div>
 
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ books }}" as="b" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -490,7 +490,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ b.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ b.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ b.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -498,7 +498,7 @@
   </div>
 
   <!-- ===================== SEÇÃO 10 · MINIATURAS & PERSONAGENS ===================== -->
-  <div id="sec-minis" style="margin-top:18px; background:#000817; padding:22px 40px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+  <div id="sec-minis" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
     <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; display:flex; align-items:center; gap:18px;">
       <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">10</div>
@@ -510,7 +510,7 @@
     <div style="position:relative; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#cdd9ee; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16); padding:7px 16px; border-radius:999px;">{{ miniCount }} modelos</div>
   </div>
 
-  <div style="padding:22px 40px 8px;">
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
     <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
       <sc-for list="{{ minis }}" as="m" hint-placeholder-count="0">
         <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
@@ -529,7 +529,7 @@
                 <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ m.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ m.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#fff; background:#0b1733; padding:8px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ m.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -537,12 +537,12 @@
   </div>
 
   <!-- ===================== FILAMENTS ===================== -->
-  <div style="padding:26px 40px 30px;">
+  <div style="padding:26px clamp(14px,4vw,40px) 30px;">
     <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
       <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:18px; letter-spacing:0.5px; color:#0b1733;">CORES DE FILAMENTO DISPONÍVEIS</div>
       <div style="flex:1; height:1px; background:linear-gradient(90deg,#cfd4dd,transparent);"></div>
     </div>
-    <div style="display:grid; grid-template-columns:repeat(10,1fr); gap:14px 10px;">
+    <div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(46px,1fr)); gap:14px 10px;">
       <sc-for list="{{ filaments }}" as="f" hint-placeholder-count="19">
         <div style="display:flex; flex-direction:column; align-items:center; text-align:center; gap:7px;">
           <div style="width:46px; height:46px; border-radius:50%; background:{{ f.bg }}; box-shadow:inset 0 0 0 1px rgba(0,0,0,0.10), 0 2px 5px rgba(11,23,51,0.12);"></div>
@@ -553,7 +553,7 @@
   </div>
 
   <!-- ===================== FOOTER ===================== -->
-  <div style="background:#000817; position:relative; overflow:hidden; padding:26px 40px 0;">
+  <div style="background:#000817; position:relative; overflow:hidden; padding:26px clamp(14px,4vw,40px) 0;">
     <div style="position:absolute; top:-100px; left:-60px; width:420px; height:300px; background:radial-gradient(circle, rgba(0,97,247,0.22), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
     <div style="position:relative; background:rgba(0,97,247,0.08); border:1px solid rgba(0,97,247,0.25); border-radius:14px; padding:16px 20px; margin-bottom:22px;">
       <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; letter-spacing:1px; color:#5fa0ff; margin-bottom:8px;">COMO FAZER SEU PEDIDO</div>
@@ -566,7 +566,7 @@
         <span style="color:#9fb4d8;">Fechou a página sem pagar? Sem problema — o PIX volta a aparecer quando você abrir a loja de novo.</span>
       </div>
     </div>
-    <div style="position:relative; display:grid; grid-template-columns:1fr 1fr; gap:24px; padding-bottom:24px;">
+    <div style="position:relative; display:grid; grid-template-columns:repeat(auto-fit, minmax(220px,1fr)); gap:24px; padding-bottom:24px;">
       <!-- whatsapp -->
       <div style="background:rgba(15,120,80,0.16); border:1.5px solid rgba(95,200,150,0.5); border-radius:14px; padding:14px 18px; margin-bottom:16px;">
         <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; letter-spacing:1px; color:#6fe0b0; margin-bottom:6px;">NÃO ENCONTROU O QUE PROCURAVA?</div>
@@ -678,13 +678,14 @@ const CATALOG_CATEGORY_KEYS = ['products', 'cars', 'holders', 'utils', 'wines', 
 class Component extends DCLogic {
   state = {
     cart: {}, cartOpen: false, scrollY: 0, viewportH: (typeof window !== 'undefined' ? window.innerHeight : 800),
+    viewportW: (typeof window !== 'undefined' ? window.innerWidth : 1200),
     products: [], cars: [], holders: [], utils: [], wines: [], keychains: [], phoneStands: [], deskOrganizers: [], books: [], minis: [],
     catalogLoaded: false, catalogError: false,
   };
 
   componentDidMount() {
     this._onScroll = () => this.setState({ scrollY: window.scrollY });
-    this._onResize = () => this.setState({ viewportH: window.innerHeight });
+    this._onResize = () => this.setState({ viewportH: window.innerHeight, viewportW: window.innerWidth });
     window.addEventListener('scroll', this._onScroll, { passive: true });
     window.addEventListener('resize', this._onResize);
     this._onScroll();
@@ -891,7 +892,14 @@ class Component extends DCLogic {
       item.addToCart = () => this.addToCart(item);
     }));
 
-    const cols = parseInt(this.props.columns ?? "5", 10) || 5;
+    // Quantas colunas cabem de verdade na tela — poucas no celular, mais
+    // no computador. Antes disso era sempre 5 (o valor padrão do prop
+    // "columns" do editor de design, pensado só pra pré-visualização de
+    // 1080px de largura) — não importava o tamanho da tela de quem
+    // acessava, e no celular virava produto minúsculo e ilegível.
+    // O tamanho de tela real manda mais que aquele padrão do editor.
+    const vw = this.state.viewportW || 1200;
+    const cols = vw < 480 ? 2 : vw < 768 ? 3 : vw < 1000 ? 4 : 5;
 
     const cartItems = Object.keys(this.state.cart).map(key => ({
       key, ...this.state.cart[key],
