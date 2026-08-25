@@ -2045,19 +2045,90 @@ async function salvarAprovacaoOrcamento(itemId, orderId) {
   await renderPedidoDetalhe(orderId);
 }
 
-function openPagamentoForm(orderId) {
+// Guarda a conta do pedido enquanto a janela está aberta, pra trocar o
+// valor sozinha quando a pessoa muda o tipo de pagamento.
+let _contaDoPagamento = null;
+
+// Quanto cada tipo de pagamento vale, calculado — não digitado. Pedir
+// pra digitar um número que o sistema já sabe é a forma mais fácil de
+// entrar valor errado, e quem opera tem 10 anos.
+function valorSugerido(tipo) {
+  const c = _contaDoPagamento;
+  if (!c) return '';
+  if (tipo === 'reembolso') return c.pago.toFixed(2);
+  if (tipo === 'sinal') return Math.min(c.metade, c.falta).toFixed(2);
+  return c.falta.toFixed(2); // saldo e pagamento_integral: o que estiver faltando
+}
+
+window.pgTipoMudou = function () {
+  const tipo = document.getElementById('pgTipo').value;
+  document.getElementById('pgValor').value = valorSugerido(tipo);
+  const dica = document.getElementById('pgDica');
+  if (!dica) return;
+  const c = _contaDoPagamento;
+  dica.textContent = tipo === 'reembolso'
+    ? 'Devolvendo tudo o que ele já tinha pago.'
+    : (tipo === 'sinal' ? 'Metade do pedido, pra começar a imprimir.' : 'Tudo o que ainda falta pagar.');
+  if (c && c.falta <= 0 && tipo !== 'reembolso') dica.textContent = 'Esse pedido já está pago por inteiro.';
+};
+
+async function openPagamentoForm(orderId) {
+  const order = await q(SUPA.from('orders').select('total_amount, shipping_price, expected_deposit_pct').eq('id', orderId).maybeSingle());
+  const pagos = await q(SUPA.from('payments').select('amount, payment_type, status').eq('order_id', orderId)) || [];
+  const pago = pagos
+    .filter((p) => p.status === 'confirmado' && p.payment_type !== 'reembolso')
+    .reduce((s, p) => s + Number(p.amount || 0), 0);
+  const total = Number(order.total_amount || 0);
+  const frete = Number(order.shipping_price || 0);
+  const pct = Number(order.expected_deposit_pct || 100);
+  _contaDoPagamento = {
+    total, pago, frete, pct,
+    falta: Math.max(0, total - pago),
+    // "Uma parte" quer dizer metade, e ponto — não o percentual da regra
+    // do pedido. Com a regra em 100% a opção sugeria o valor cheio, o
+    // que fazia a palavra "metade" mentir na própria tela.
+    metade: Math.round(total * 50) / 100,
+  };
+
   openModal(
     '<h3>Anotar um pagamento</h3>' +
+
+    // A conta do pedido aberta, pra ninguém precisar procurar noutra
+    // tela quanto era e quanto já entrou.
+    '<div style="background:var(--bg); border-radius:10px; padding:11px 13px; font-size:13px; line-height:1.9; margin-bottom:6px;">' +
+      '<div style="display:flex; justify-content:space-between;"><span>Total do pedido</span><strong>' + fmtMoney(total) + '</strong></div>' +
+      (frete > 0
+        ? '<div style="display:flex; justify-content:space-between; color:var(--muted); font-size:12px;"><span>&nbsp;&nbsp;sendo ' + fmtMoney(total - frete) + ' das peças e ' + fmtMoney(frete) + ' da entrega</span></div>'
+        : '') +
+      '<div style="display:flex; justify-content:space-between;"><span>Já pagou</span><strong>' + fmtMoney(pago) + '</strong></div>' +
+      '<div style="display:flex; justify-content:space-between; border-top:1px solid var(--border); margin-top:5px; padding-top:5px;"><span>Falta</span><strong>' + fmtMoney(Math.max(0, total - pago)) + '</strong></div>' +
+    '</div>' +
+
     '<label class="pergunta">O cliente pagou o quê?</label>' +
-    '<select id="pgTipo"><option value="sinal">Uma parte agora</option><option value="saldo">O resto que faltava</option><option value="pagamento_integral">Tudo de uma vez</option><option value="reembolso">Devolvi o dinheiro pra ele</option></select>' +
+    '<select id="pgTipo" onchange="pgTipoMudou()">' +
+      '<option value="pagamento_integral">Tudo o que faltava</option>' +
+      '<option value="sinal">Só uma parte (metade)</option>' +
+      '<option value="saldo">O resto que faltava</option>' +
+      '<option value="reembolso">Devolvi o dinheiro pra ele</option>' +
+    '</select>' +
+
     '<label>Valor (R$)</label><input id="pgValor" type="number" step="0.01">' +
+    '<div id="pgDica" style="font-size:11.5px; color:var(--muted); margin:-2px 0 6px;"></div>' +
+
     '<label class="pergunta">Como ele pagou?</label>' +
     '<select id="pgMetodo"><option value="pix">PIX</option><option value="dinheiro">Dinheiro</option><option value="cartao">Cartão</option><option value="outro">Outro</option></select>' +
+
+    (frete > 0
+      ? '<div style="font-size:11.5px; color:var(--muted); margin-top:10px; line-height:1.5;">'
+        + 'Os ' + fmtMoney(frete) + ' da entrega são repasse — vão pro correio, não são ganho seu. A aba <strong>Quanto sobrou</strong> já deixa eles de fora da conta.</div>'
+      : '') +
+
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="salvarPagamento(\'' + orderId + '\')">Salvar</button>' +
     '</div>'
   );
+  pgTipoMudou();
 }
 
 async function salvarPagamento(orderId) {
