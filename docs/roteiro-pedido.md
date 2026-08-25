@@ -27,15 +27,31 @@ Aqui tem dois caminhos, e da segunda venda em diante é sempre o rápido.
 
 ### Primeira vez que essa peça é vendida
 
-O botão vai dizer **📎 Anexar o arquivo 3D**. Clique nele: a tela de
-anexar abre direto, já no produto certo.
+Primeiro **guarde o arquivo na pasta certa**:
 
-Escolha o `.3mf` ou o `.stl` da peça e salve.
+```
+Documentos\Rafa 3D\pecas-do-catalogo\
+```
+
+E dê o nome **começando pelo código do catálogo**:
+
+```
+01.27 - Arvore do Amor.3mf
+04.11 - Organizador de Controle Remoto II.3mf
+```
+
+O código na frente faz a lista ficar na mesma ordem do catálogo — e é
+por ele que você acha a peça quando o próximo pedido dela chegar.
 
 > `.3mf` é melhor que `.stl` quando você tiver os dois: ele guarda a
-> miniatura da peça, e a IA usa essa imagem pra montar a colinha.
+> miniatura da peça dentro dele, e a IA usa essa imagem pra escrever a
+> colinha. O `.stl` não tem miniatura.
 
-**Isso é uma vez só por peça.** Depois de anexado, fica pra sempre.
+Aí sim, no pedido, clique em **📎 Anexar o arquivo 3D**. A tela de
+anexar abre direto, já no produto certo — é só escolher o arquivo.
+
+**Isso é uma vez só por peça.** Depois de anexado, fica no sistema pra
+sempre, e a pasta vira só a sua bancada de trabalho.
 
 ### Peça que já foi vendida antes
 

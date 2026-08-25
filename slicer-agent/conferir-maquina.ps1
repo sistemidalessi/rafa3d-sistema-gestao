@@ -78,6 +78,20 @@ else {
   Write-Host "  [aviso] Bambu Studio nao encontrado - so precisa na maquina que abre o fatiador" -ForegroundColor DarkGray
 }
 
+# --- pasta dos arquivos 3D --------------------------------------------
+# Onde ficam os .3mf/.stl antes de subir pro sistema. Cria sozinha em
+# vez de so avisar: e pasta vazia, nao tem risco, e sem um lugar padrao
+# os arquivos se espalham por Downloads e ninguem acha depois.
+$pastaPecas = Join-Path $env:USERPROFILE "Documents\Rafa 3D"
+$subpastas = @("pecas-do-catalogo", "projetos-sob-medida")
+$criou = $false
+foreach ($sub in $subpastas) {
+  $alvo = Join-Path $pastaPecas $sub
+  if (-not (Test-Path $alvo)) { New-Item -ItemType Directory -Force -Path $alvo | Out-Null; $criou = $true }
+}
+if ($criou) { Ok "Pasta dos arquivos 3D criada em: $pastaPecas" }
+else { Ok "Pasta dos arquivos 3D existe ($pastaPecas)" }
+
 # --- agente rodando agora? --------------------------------------------
 $rodando = Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*nodejs*" }
 if ($rodando) { Ok "Agente rodando agora" }
