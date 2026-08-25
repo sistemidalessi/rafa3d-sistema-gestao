@@ -1,7 +1,6 @@
 # Continuar daqui
 
-Onde as coisas pararam em **24/08/2026**, à noite. O dia foi quase todo
-no sistema; o chaveiro parou numa decisão de tamanho.
+Onde as coisas pararam em **25/08/2026**, à noite.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
@@ -13,122 +12,98 @@ no sistema; o chaveiro parou numa decisão de tamanho.
 powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
 ```
 
-O `.env` não viaja (carrega a `service_role`). A máquina de casa foi
-preparada em 24/08 e tem as quatro chaves preenchidas —
-`SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `HI3D_ACCESS_KEY`,
-`HI3D_SECRET_KEY`. **A do escritório tem as dela, criadas antes.**
+O `.env` não viaja (carrega a `service_role`). Cada máquina tem o seu, e
+as chaves da Anthropic e do Hi3D **só aparecem na hora de criar** —
+guarde no gerenciador de senhas, é o que evita recriar toda vez.
 
-Chave da Anthropic e do Hi3D só aparecem uma vez. Guarde no gerenciador
-de senhas — é o que evita recriar a cada máquina.
+`MESHY_API_KEY` pode ficar vazia: o Hi3D tomou o lugar dela.
 
-Saldo do Hi3D em 24/08: **1630 créditos** (~US$ 32).
+Se o agente estiver parado, dois cliques em `slicer-agent\start-hidden.vbs`.
+Sem ele, todo botão de fatiador e de IA fica girando pra sempre, **sem
+erro nenhum na tela** — o sintoma mais confuso do projeto.
 
-## Frente 1 — o chaveiro de cereja (parado numa decisão sua)
+## Frente 1 — o chaveiro de cereja (falta imprimir)
 
-**Encomenda real, já vendida.** O arquivo bom é o
-`cereja-inteira.3mf`, gerado pelo Hi3D e baixado do workspace em
-"Single file". **Não está no repositório** (`downloads/` é ignorado) —
-está em `C:\Users\ander\Downloads` na máquina de casa, e dá pra baixar
-de novo do Hi3D.
+**Encomenda real, já vendida.** Está no sistema como projeto
+**PRJ-MT94B82V — "JJ Solene / Chaveiro cereja"**.
 
-Mede **102,4 × 29,8 × 91,4 mm**, 2 milhões de triângulos, 4 partes
-coloridas. Peça em pé: laço em cima, duas cerejas embaixo.
+### O que já está feito
 
-### A descoberta que quase custou caro
+- Modelo gerado no Hi3D e **cortado pra impressão** (split to print): as
+  cerejas e o laço separados e deitados na mesa, o que evita suporte.
+- Arquivo **no servidor** (`model_source = manual_upload`), 1,5 milhão de
+  triângulos.
+- **Colinha da IA pronta e aplicada** — 0,2mm de camada, 3 paredes, 15%
+  em grade, ironing no topo, brim externo, sem suporte.
+- **Aberto no fatiador** com sucesso.
 
-Aquela placa retangular saindo da cereja **é a ABA DO ABRIDOR**,
-copiada da foto de referência — confirmado pelo dono. Eu passei a tarde
-achando que era sobra de geração e cheguei a propor apagar e refazer a
-peça no CAD. Era o abridor.
+### O que falta: imprimir de verdade
 
-Use `node ver-peca.js arquivo.3mf` antes de julgar qualquer modelo: ele
-desenha a peça de quatro ângulos. Foi o que desfez o engano em trinta
-segundos, depois de horas de achismo.
+Nada foi impresso ainda. Falta, na peça já fatiada:
 
-### ⏸️ A decisão que falta: 78mm ou 92mm
+1. **O entalhe do abridor.** A aba já está na peça (é ela a placa
+   retangular — não apague). Tampinha tem 32mm, e o entalhe precisa de
+   **20 a 22mm de abertura** com pelo menos **5mm de parede** em volta,
+   senão quebra na primeira garrafa.
+2. **O bolso do NFC de 23mm** e a pausa pra encaixar o chip.
+3. **Imprimir e testar**: colar, abrir uma garrafa, encostar o celular.
 
-A aba do abridor mede, no arquivo original: **12–16mm de saliência,
-34,5mm de altura, 18,5mm de espessura**.
+O bolso e o entalhe saem por **Add negative part** no Bambu Studio, não
+cortando a malha. **Cortar não funciona** — tentado de duas formas em
+24/08 (booleana com `manifold-3d` e remendo à mão), as duas esbarraram em
+defeito de malha mais fundo que costura solta. Não tente de novo sem uma
+ideia nova.
 
-Tampinha tem 32mm. O entalhe precisa de **20 a 22mm** de abertura.
-
-| Tamanho da peça | Altura da aba | Parede sobrando | Resultado |
-|---|---|---|---|
-| 78 mm | 26 mm | 2,5 mm | quebra na primeira garrafa |
-| **92 mm** | 31 mm | 5 mm | **abridor funciona** |
-| 102 mm (original) | 34,5 mm | 6,7 mm | folgado |
-
-A recomendação registrada é **~92mm ou não escalar**: a aba já está na
-peça, é só abrir o entalhe — sem cola, sem duas partes pra alinhar.
-
-A 78mm a aba vira enfeite, e aí o abridor de verdade seria a
-`base-abridor.3mf` (71 × 36 × 4mm) colada atrás.
-
-### O que já está pronto
-
-- **`ver-peca.js`** — desenha a malha em imagem, sem fatiador.
-- **`extrair-stl-do-3mf.js`** — tira a malha do `.3mf` e escala.
-- **`achar-altura-pausa-nfc.js`** — acha onde o NFC cabe. Foi
-  **reescrito em 24/08**: a versão anterior dava resposta confiante e
-  errada (mandava pausar na primeira camada, e media a caixa da fatia
-  em vez do material). Agora mede o maior círculo que cabe dentro.
-- **`base-abridor.js`** — placa de 71 × 36 × 4mm, só se a peça for 78mm.
-
-### Números do NFC (**refazer se mudar o tamanho**)
-
-Com o **NFC de 23mm** e a peça a **78mm**: pausar em **Z = 1,2mm**,
-centro em **X = −9,3 / Y = 15,2**, cabendo 35,4mm de material.
-
-**Esses números valem só pra 78mm.** Decidindo 92mm, rode de novo:
+Pra recalcular a altura da pausa depois de qualquer mudança de tamanho:
 
 ```
-node extrair-stl-do-3mf.js downloads/cereja-inteira.3mf --largura=92
-node achar-altura-pausa-nfc.js downloads/cereja-inteira-92.stl 23
+node extrair-stl-do-3mf.js <arquivo>.3mf --largura=<mm>
+node achar-altura-pausa-nfc.js <arquivo>-<mm>.stl 23
 ```
 
-### Como imprimir, quando o tamanho estiver decidido
+### As ferramentas que existem pra isso
 
-1. Abrir o **`.3mf`** no Bambu Studio (não o `.stl` — o `.stl` perde as cores)
-2. Escalar, se for o caso
-3. **Add negative part → Cylinder** pro bolso do NFC: diâmetro **24mm**,
-   ~1mm de altura, topo na altura da pausa
-4. **Add negative part** pro entalhe do abridor, na aba
-5. **Add pause** na altura calculada
-6. Imprimir. Na pausa, encaixar o NFC e continuar
+| | |
+|---|---|
+| `ver-peca.js` | desenha a peça de 4 ângulos, sem abrir fatiador |
+| `extrair-stl-do-3mf.js` | tira a malha do `.3mf` e escala |
+| `achar-altura-pausa-nfc.js` | acha onde o NFC cabe **dentro do material** |
+| `base-abridor.js` | placa de abridor separada, 71 × 36 × 4mm |
 
-O bolso e o entalhe saem por *negative part* de propósito: **cortar a
-malha não funciona** — foi tentado de duas formas em 24/08 (booleana com
-`manifold-3d` e remendo à mão) e as duas esbarraram em defeito de malha
-mais fundo que costura solta. Não tente de novo sem uma ideia nova.
+A `base-abridor.js` só faz sentido se a aba da peça acabar virando
+enfeite. Com a aba funcionando, ela não é necessária.
 
-## Frente 2 — o sistema (tudo no ar, nada pendente)
+## Frente 2 — o sistema e a loja (tudo no ar)
 
-Entrou em 24/08, tudo testado e publicado:
+Nada pendente de deploy. O que entrou:
 
-- **Filamento em quilo** — o banco continua em grama; a conversão é só de tela
-- **Cor mesclada** — duas cores no mesmo rolo; o Rafa já cadastrou cinco
-- **Apagar cor e corrigir/apagar rolo** — com aviso quando tem histórico
-- **Aviso de estoque em 50g** nas 35 cores
-- **Cores do catálogo vêm do banco** — acabou a lista dupla
-- **Pagamento integral** (era metade) — patch 31 + deploy
-- **Entrega a combinar corre por conta do cliente**, dito em 4 momentos
-- **Cor obrigatória**, escolhida em bolinhas coloridas
-- **PIX na hora também pra quem combina a entrega**
+**24/08** — filamento em quilo, cor mesclada, apagar cor, corrigir e
+apagar rolo, aviso de estoque em 50g, cores do catálogo vindas do banco,
+pagamento integral (era metade), entrega a combinar por conta do cliente,
+cor obrigatória escolhida em bolinhas, PIX na hora também pra quem
+combina a entrega. Patches 26 a 31.
 
-Patches 26 a 31 rodados. `finalizar-pedido` publicada.
+**25/08** — **o catálogo passou a se adaptar ao celular** (nunca teve
+nenhuma media query): grade de 2 a 5 colunas conforme a tela, bolinhas de
+cor em quantas colunas couberem, respiro de borda com `clamp()`, botão de
+adicionar maior pro dedo. E a colinha ganhou `ironing_type`, junto com a
+correção de `manual_upload` nunca receber a colinha.
 
-### O que sobrou de pendente
+### O que sobrou de pendente, e é com o Anderson
 
-1. **Ctrl+F5 na tela do Rafa** — ele ainda pode estar vendo a versão antiga.
+1. **Ctrl+F5 na tela do Rafa** — ele pode estar vendo versão antiga.
 2. **Testar o botão de copiar o PIX num celular de verdade** — a
    automação trava no pedido de permissão da área de transferência.
-3. **Falar com os 4 clientes** de 23/08. Eles ficaram na **regra antiga
-   de 50%** de propósito, e as mensagens escritas pra eles falam em
-   metade — está coerente, pode mandar como está.
+   Tem que aparecer "✓ Copiado! Agora abra o banco".
+3. **Falar com os clientes de 23/08** (Batista, Evelyn, Bernardo). Eles
+   ficaram na **regra antiga de 50%** de propósito, e as mensagens
+   escritas pra eles falam em metade — está coerente.
 
-### Pedido novo que chegou durante o trabalho
+## Duas coisas sem resposta
 
-**SITE-MT7YZQ9T — Jesielle Araújo** (11 91744-7474): 1x Vaso Bloom,
-R$ 47,90, cor **Vermelho Marsala**, entrega a combinar, paga o valor
-cheio. Foi o primeiro pedido a passar por tudo que foi construído hoje
-— e não perguntou como pagar.
+- **`slicer-agent/_teste-3cores.js`** — gera um `.3mf` sintético de 3
+  cores pra testar. O `_` no nome sugere temporário, e ele menciona um
+  "Split3mf" que não existe no repositório. Fica ou sai?
+- **O tamanho final da peça da cereja.** O arquivo no servidor está
+  cortado e deitado, então a caixa dele (60 × 32 × 28mm) não diz o
+  tamanho da peça montada.

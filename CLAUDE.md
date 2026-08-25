@@ -4,36 +4,32 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — fim de 24/08/2026
+## ⏳ TAREFAS EM ABERTO — 25/08/2026
 
-**Assim que a sessão começar, lembre o Anderson destas.** Ele estava na
-máquina de casa e vai retomar do escritório. O detalhe está em
-[docs/continuar-daqui.md](docs/continuar-daqui.md) — **leia antes de
-responder qualquer coisa sobre o chaveiro**.
+**Assim que a sessão começar, lembre o Anderson destas.** O detalhe está
+em [docs/continuar-daqui.md](docs/continuar-daqui.md).
 
 1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
    de tudo (veja a seção seguinte). **As chaves são por máquina** e o
    segredo só aparece na hora de criar.
-2. **Decidir o tamanho do chaveiro de cereja: 78mm ou 92mm.** É a única
-   coisa que trava a encomenda (real, já vendida). A aba do abridor **já
-   está na peça** — a 78mm ela vira enfeite (2,5mm de parede, quebra na
-   primeira garrafa); a partir de 92mm o abridor funciona de verdade. As
-   medidas todas estão no continuar-daqui.
-3. **O arquivo bom não está no repositório.** É o `cereja-inteira.3mf`,
-   que mora em `Downloads` da máquina de casa — `downloads/` é ignorado
-   pelo Git. No escritório, baixe de novo do workspace do Hi3D em
-   "Single file".
+2. **Terminar o chaveiro de cereja** (encomenda real, já vendida). Já tem
+   projeto no sistema, arquivo no servidor, colinha da IA pronta e aberto
+   no fatiador — falta **imprimir um teste de verdade**: o entalhe do
+   abridor, o bolso do NFC de 23mm e a pausa pra encaixar o chip. Nada
+   disso foi impresso ainda, só validado em arquivo.
 
 Também pendente, e é com o Anderson e não com o agente: **testar o botão
 de copiar o PIX num celular de verdade**, **pedir pro Rafa recarregar a
-tela (Ctrl+F5)** e **falar com os 4 clientes de 23/08** — esses ficaram
-na regra antiga de 50% de propósito, e as mensagens escritas pra eles
-falam em metade, então estão coerentes.
+tela (Ctrl+F5)** e **falar com os clientes de 23/08** — esses ficaram na
+regra antiga de 50% de propósito, e as mensagens escritas pra eles falam
+em metade, então estão coerentes.
 
 **Antes de julgar qualquer modelo 3D, rode `node ver-peca.js arquivo.3mf`.**
-Em 24/08 eu passei horas achando que a cereja estava ruim porque olhei ela
-achatada numa janela do Bambu, e cheguei a propor apagar a aba do abridor
-achando que era lixo de geração. Ver a peça desfez tudo em trinta segundos.
+Ele desenha a peça de quatro ângulos, sem abrir fatiador. Em 24/08 eu
+passei horas achando que a cereja estava ruim porque olhei ela achatada
+numa janela do Bambu, e cheguei a propor apagar a aba do abridor achando
+que era lixo de geração — a aba **é** o abridor. Ver a peça desfez tudo em
+trinta segundos.
 
 **Apague esta seção quando as duas de cima estiverem resolvidas** — nota
 de tarefa que fica pra trás vira ruído e mente sobre o estado do projeto.
@@ -98,7 +94,7 @@ trocado de propósito, pra bater com o que ele já usa há tempo.
 
 ## Onde as coisas ficam
 
-[`index.html`](index.html) é o sistema de gestão inteiro em ~3400 linhas, nesta
+[`index.html`](index.html) é o sistema de gestão inteiro em ~3900 linhas, nesta
 ordem: `<style>` no topo → HTML das abas → `<script>` com todo o JavaScript,
 dividido por faixas de comentário (`/* ====== FILA ====== */`). Pra achar uma
 tela, procure pela faixa da aba, não pelo nome do arquivo.
@@ -133,9 +129,10 @@ sempre:
    **registrar essa `tickX()` no laço da `main()`**, que é onde é fácil
    esquecer.
 
-Hoje são nove filas: as mesmas três operações (Meshy, colinha de IA, abrir no
-fatiador) sobre `products`, `order_line_items` e `project_parts`. Mexeu numa,
-confira se as outras duas precisam da mesma coisa.
+Hoje são **dez** filas: as mesmas três operações (gerar modelo, colinha de IA,
+abrir no fatiador) sobre `products`, `order_line_items` e `project_parts`, mais
+a do Hi3D (`tickHi3d`, patch-27), que gera a peça inteira e já divide em partes
+coloridas. Mexeu numa, confira se as irmãs precisam da mesma coisa.
 
 
 ## Mexendo nas Edge Functions
@@ -182,6 +179,17 @@ sai dali.
   ([`catalogo/support.js`](catalogo/support.js)). Foi de propósito: aquele
   framework re-renderiza a página inteira a cada scroll, e um formulário dentro
   dele perderia o que a pessoa digitou.
+- **`model_source` decide se o arquivo recebe a colinha.** Quem reconfigura o
+  `.3mf` olha essa coluna, e por um tempo `manual_upload` ficou de fora: a IA
+  analisava, gerava uma ficha ótima, e ela nunca era aplicada no arquivo que de
+  fato abria no fatiador. Sintoma: colinha linda na tela, fatiador com os
+  valores do perfil. Origem nova precisa entrar nessa lista.
+- **A adaptação do catálogo ao celular é feita em JavaScript, não em CSS.** O
+  framework de template tem um prop `columns` que **vence qualquer media
+  query** — ele foi pensado pra pré-visualizar em 1080px fixos. Por isso a
+  grade lê `viewportW` do estado (atualizado no `resize`) e decide o número de
+  colunas na mão. Se um dia a grade voltar a ficar com produto do tamanho de um
+  selo no celular, é esse prop brigando de novo — não adianta escrever CSS.
 - **Colunas mortas:** `post_processing_minutes` e `post_processing_labor_rate`
   ficaram órfãs quando o patch-15 trocou a conta de custo por `has_painting` —
   nenhuma linha de código as usa. As `ai_viability_*` do patch 09 tiveram o
@@ -221,8 +229,16 @@ escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelment
 
 Além disso, os campos de lista só aceitam as palavras exatas do Bambu, e
 **valor inválido derruba o arquivo de configuração inteiro**, não só aquele
-campo. Por isso `aplicarAjustesColinha()` traduz por lista fechada e ignora o
-que não conhece: `normal` → `normal(auto)`, e todo modo de brim → `auto_brim`
-(esta versão recusou `outer_brim_only`; o menu tem "Apenas brim externo", mas
-com outro nome interno que ainda não foi identificado — a largura do brim
-continua valendo de qualquer forma).
+campo. Por isso `aplicarAjustesColinha()` traduz por lista fechada
+(`LISTAS_DO_BAMBU`) e descarta o que não conhece.
+
+Os nomes mudaram entre versões, e é aí que se erra: `normal` virou
+`normal(auto)`, e o `outer_brim_only` do formato antigo hoje é **`outer_only`**
+(o `inner_brim_only` virou `inner_only`). Mandar o nome velho não dá erro — o
+Bambu troca por `auto_brim` sozinho e avisa numa janela, e a peça sai com o
+brim errado. Os valores válidos, tirados da tabela de dentro do
+`BambuStudio.dll`:
+
+```
+no_brim | outer_only | inner_only | outer_and_inner | auto_brim | brim_ears
+```
