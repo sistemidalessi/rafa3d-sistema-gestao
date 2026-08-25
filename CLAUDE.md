@@ -148,6 +148,13 @@ sai dali.
 
 ## Pegadinhas conhecidas
 
+- **Mexeu no `agent.js` ou no `gerar3mf.js`? Reinicie o agente.** Ele lê o
+  código uma vez, ao iniciar — testar sem reiniciar é testar a versão
+  velha e concluir errado. Isso enganou duas vezes em 25/08: um teste
+  "falhou" e a conclusão quase foi de que o código não funcionava.
+  Parar e subir: `Stop-Process` no `node.exe` cuja linha de comando tem
+  `agent.js`, depois dois cliques em `start-hidden.vbs`.
+
 - **`GRANT` é separado de RLS, e vale até pro `service_role`.** Essa mesma
   pegadinha derrubou os patches 06, 09, 17 e 19: sem `grant`, a consulta nem
   chega a ser avaliada pela política (erro 42501, "permission denied"). Tabela

@@ -83,11 +83,51 @@ pagamento integral (era metade), entrega a combinar por conta do cliente,
 cor obrigatória escolhida em bolinhas, PIX na hora também pra quem
 combina a entrega. Patches 26 a 31.
 
-**25/08** — **o catálogo passou a se adaptar ao celular** (nunca teve
-nenhuma media query): grade de 2 a 5 colunas conforme a tela, bolinhas de
-cor em quantas colunas couberem, respiro de borda com `clamp()`, botão de
-adicionar maior pro dedo. E a colinha ganhou `ironing_type`, junto com a
-correção de `manual_upload` nunca receber a colinha.
+**25/08, de manhã** — **o catálogo passou a se adaptar ao celular**
+(nunca teve nenhuma media query): grade de 2 a 5 colunas conforme a tela,
+bolinhas de cor em quantas colunas couberem, respiro de borda com
+`clamp()`, botão de adicionar maior pro dedo. E a colinha ganhou
+`ironing_type`, junto com a correção de `manual_upload` nunca receber a
+colinha.
+
+**25/08, à noite** — a aba Pedidos tinha ficado pra trás: pedido que
+chegava do catálogo só dava pra abrir ou excluir, e não havia caminho
+nenhum até imprimir. Entrou tudo isto:
+
+- **Do pedido dá pra mandar a peça pro fatiador**, com o código do
+  catálogo à vista e o botão certo pro estado (abrir, esperando, ver a
+  colinha, pedir uma). Item personalizado não ganha isso de propósito —
+  o caminho dele é a aba Projetos.
+- **A colinha finalmente chega no arquivo do produto.** Antes o
+  `abrirNoFatiador` dos produtos abria o arquivo cru: a IA escrevia uma
+  ficha ótima que ficava só bonita na tela. A lógica virou função única
+  (`prepararArquivoPraFatiador`) porque já existiam duas cópias e o
+  produto não tinha nenhuma.
+- **A colinha pergunta em qual placa a peça vai** (patch 32). Cada placa
+  tem o seu campo de temperatura no arquivo, e escrever no campo errado
+  não dá erro — o valor é ignorado em silêncio. Era o que acontecia.
+- **Status ganharam cor**, as mesmas cinco em todo o sistema. De quebra,
+  tudo que estava em andamento aparecia em vermelho, com cara de erro.
+- **Pasta padrão dos arquivos 3D**, criada sozinha pelo
+  `conferir-maquina.ps1`: `Documentos\Rafa 3D\pecas-do-catalogo\`, com o
+  arquivo nomeado pelo código (`01.27 - Arvore do Amor.3mf`).
+- **O `conferir-maquina.ps1` parou de mentir** sobre o agente: ele dava
+  "rodando" se existisse qualquer processo Node, inclusive um servidor de
+  teste. Agora procura `agent.js` na linha de comando.
+
+O caminho do pedido até a impressão está escrito em
+[roteiro-pedido.md](roteiro-pedido.md), no nível do Rafa.
+
+### O gargalo que sobrou
+
+**Nenhum dos 161 produtos tem arquivo 3D anexado.** O catálogo foi
+montado com fotos. Por isso o botão do pedido diz "📎 Anexar o arquivo
+3D" e leva direto pra tela de anexar: sobe conforme vende, e cada peça dá
+esse trabalho uma vez na vida.
+
+Consequência: as colinhas antigas de 01.01, 03.09 e 05.07 **não podem ser
+refeitas** enquanto não houver arquivo — a IA precisa da miniatura que
+vive dentro do `.3mf`.
 
 ### O que sobrou de pendente, e é com o Anderson
 
