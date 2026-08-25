@@ -1278,11 +1278,11 @@ async function solicitarGerarModeloParte(parteId) {
 }
 
 async function solicitarAnaliseIAParte(parteId) {
-  const placa = garantirPlaca(() => solicitarAnaliseIAParte(parteId));
-  if (!placa) return;
+  const escolha = garantirPlacaEMaterial(() => solicitarAnaliseIAParte(parteId));
+  if (!escolha) return;
   const { error } = await SUPA.from('project_parts').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
-    bed_plate: placa,
+    bed_plate: escolha.placa, material: escolha.material,
   }).eq('id', parteId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Análise pedida — o agente local processa em instantes.');
@@ -1354,11 +1354,11 @@ async function confirmarDividirHi3D(lineItemId, nivel) {
 }
 
 async function solicitarAnaliseIAProjeto(lineItemId) {
-  const placa = garantirPlaca(() => solicitarAnaliseIAProjeto(lineItemId));
-  if (!placa) return;
+  const escolha = garantirPlacaEMaterial(() => solicitarAnaliseIAProjeto(lineItemId));
+  if (!escolha) return;
   const { error } = await SUPA.from('order_line_items').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
-    bed_plate: placa,
+    bed_plate: escolha.placa, material: escolha.material,
   }).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Análise pedida — o agente local processa em instantes.');
@@ -3014,8 +3014,21 @@ async function solicitarAbrirFatiador(productId, voltarPara) {
     open_slicer_error: null, open_slicer_agent: pc,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
-  toast('Abrindo no fatiador — o agente local faz isso em instantes.');
+  // A placa não é escolhida pelo arquivo — o Bambu guarda a última que
+  // foi usada e ignora o que o projeto diz. Por isso o lembrete vem
+  // aqui, no momento em que a janela vai abrir.
+  toast(lembreteDaPlaca());
   await redesenharDepoisDaFila(voltarPara, productId);
+}
+
+function lembreteDaPlaca() {
+  const p = PLACAS_DA_LOJA.find((x) => x.id === placaEscolhida());
+  const m = MATERIAIS_DA_LOJA.find((x) => x.id === materialEscolhido());
+  if (!p && !m) return 'Abrindo no fatiador — o agente local faz isso em instantes.';
+  let t = 'Abrindo no fatiador…';
+  if (p) t += ' Confira se a ' + p.nome.toLowerCase() + ' está selecionada no Bambu';
+  if (m) t += (p ? ' e' : ' Confira se') + ' o filamento é ' + m.nome;
+  return t + '.';
 }
 
 /* ====== PLACA DA IMPRESSORA ======
@@ -3062,6 +3075,66 @@ window.escolherPlaca = function (id) {
   if (acao) acao(id);
 };
 
+/* ====== MATERIAL ======
+   Muda quase tudo: bico, mesa, ventoinha, velocidade. E conversa com a
+   placa — PETG na placa fria gruda forte demais e leva pedaço do
+   revestimento junto. */
+
+const CHAVE_MATERIAL = 'rafa3d_material';
+
+const MATERIAIS_DA_LOJA = [
+  { id: 'pla', nome: 'PLA', dica: 'o de sempre — fácil de imprimir, mas amolece no sol e no carro', cor: '#7fc99a' },
+  { id: 'petg', nome: 'PETG', dica: 'quando a peça precisa aguentar esforço ou calor', cor: '#5b9bd5' },
+  { id: 'tpu', nome: 'TPU', dica: 'o borrachudo, que dobra', cor: '#d59b5b' },
+  { id: 'abs', nome: 'ABS', dica: 'resistente, mas empena com vento — precisa de câmara fechada', cor: '#b57fc9' },
+];
+
+// Combinações que não funcionam na prática. Melhor avisar na hora de
+// escolher do que descobrir com a peça grudada na placa.
+function avisoCombinacao(material, placa) {
+  if (material === 'petg' && placa === 'cool') {
+    return 'PETG gruda forte demais na placa fria e pode arrancar o revestimento ao soltar. Use a texturizada.';
+  }
+  if (material === 'abs' && placa === 'cool') {
+    return 'ABS precisa de mesa quente — a placa fria não segura a peça.';
+  }
+  return '';
+}
+
+function materialEscolhido() {
+  try { return localStorage.getItem(CHAVE_MATERIAL) || ''; } catch (e) { return ''; }
+}
+
+let _acaoDepoisDoMaterial = null;
+
+function perguntarMaterial(aoEscolher) {
+  const atual = materialEscolhido();
+  const placa = placaEscolhida();
+  let html = '<h3>De qual material é essa peça?</h3>'
+    + '<p style="color:var(--muted); font-size:13px;">Muda a temperatura, a ventoinha e a velocidade. O de sempre é o PLA.</p>';
+  MATERIAIS_DA_LOJA.forEach((m) => {
+    const problema = avisoCombinacao(m.id, placa);
+    html += '<button class="btn ghost" style="width:100%; text-align:left; margin-bottom:8px; padding:12px; display:flex; align-items:center; gap:12px;" onclick="escolherMaterial(\'' + m.id + '\')">'
+      + '<span style="flex:none; width:30px; height:30px; border-radius:7px; background:' + m.cor + '; border:1px solid rgba(0,0,0,0.15);"></span>'
+      + '<span><strong>' + m.nome + (m.id === atual ? ' (o de sempre)' : '') + '</strong>'
+      + '<br><span style="color:var(--muted); font-size:12px;">' + m.dica + '</span>'
+      + (problema ? '<br><span style="color:#a62828; font-size:12px;">⚠️ ' + problema + '</span>' : '')
+      + '</span></button>';
+  });
+  html += '<div style="color:var(--muted); font-size:11.5px; margin-top:4px;">Fica guardado — só pergunto de novo se você trocar de material.</div>'
+    + '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  _acaoDepoisDoMaterial = aoEscolher || null;
+  openModal(html);
+}
+
+window.escolherMaterial = function (id) {
+  try { localStorage.setItem(CHAVE_MATERIAL, id); } catch (e) {}
+  closeModal();
+  const acao = _acaoDepoisDoMaterial;
+  _acaoDepoisDoMaterial = null;
+  if (acao) acao(id);
+};
+
 // Igual ao garantirComputador: se já sabe, segue; se não, pergunta e
 // repete a ação depois.
 function garantirPlaca(acaoDepois) {
@@ -3071,12 +3144,31 @@ function garantirPlaca(acaoDepois) {
   return null;
 }
 
+function garantirMaterial(acaoDepois) {
+  const ja = materialEscolhido();
+  if (ja) return ja;
+  perguntarMaterial(() => acaoDepois());
+  return null;
+}
+
+// As duas perguntas juntas, na ordem: placa primeiro (é o que limita o
+// material), material depois. Cada uma só aparece se ainda não souber.
+// Devolve null enquanto faltar alguma — quem chamou volta sozinho
+// depois que a pessoa responder.
+function garantirPlacaEMaterial(acaoDepois) {
+  const placa = garantirPlaca(acaoDepois);
+  if (!placa) return null;
+  const material = garantirMaterial(acaoDepois);
+  if (!material) return null;
+  return { placa, material };
+}
+
 async function solicitarAnaliseIA(productId, voltarPara) {
-  const placa = garantirPlaca(() => solicitarAnaliseIA(productId, voltarPara));
-  if (!placa) return;
+  const escolha = garantirPlacaEMaterial(() => solicitarAnaliseIA(productId, voltarPara));
+  if (!escolha) return;
   const { error } = await SUPA.from('products').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
-    bed_plate: placa,
+    bed_plate: escolha.placa, material: escolha.material,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Colinha pedida — o agente local processa em instantes.');

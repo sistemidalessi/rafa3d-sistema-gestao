@@ -224,7 +224,7 @@ async function sliceOne(product) {
 async function tick() {
   const { data: queued, error } = await supabase
     .from('products')
-    .select('id, name, catalog_code, model_file_path, bed_plate')
+    .select('id, name, catalog_code, model_file_path, bed_plate, material')
     .eq('slice_status', 'queued')
     .order('slice_requested_at', { ascending: true })
     .limit(1);
@@ -266,15 +266,36 @@ const PLACAS_PRA_IA = {
   high_temp: 'Placa de alta temperatura. PLA entre 55 e 65°C, materiais técnicos acima disso.',
 };
 
-function trechoDaPlaca(bedPlate) {
-  const descricao = PLACAS_PRA_IA[String(bedPlate || '').trim().toLowerCase()];
-  if (!descricao) {
-    return '\n\nA placa de impressão não foi informada. Decida a temperatura de mesa assumindo placa ' +
-      'texturizada PEI (PLA 55-65°C) e diga na ficha que assumiu isso.\n\n';
-  }
-  return '\n\nIMPORTANTE — a peça vai ser impressa nesta placa: ' + descricao +
-    '\nA "bed_temp_c" que você devolver TEM que estar dentro da faixa dessa placa. ' +
-    'Cite a placa na seção de temperatura da ficha.\n\n';
+// Material muda quase tudo, e não só a temperatura: PETG quer ventoinha
+// baixa e mais lento, TPU quer retração quase zero. Sem isso a ficha
+// saía sempre com números de PLA.
+const MATERIAIS_PRA_IA = {
+  pla: 'PLA. Bico 200-220°C. Ventoinha no máximo. Fácil de imprimir, mas amolece perto de 60°C — não serve pra peça que fica no sol ou no carro.',
+  petg: 'PETG. Bico 235-250°C. Ventoinha BAIXA (30-50%) — muito vento deixa a camada fraca e a peça quebradiça. ' +
+    'Imprima mais devagar que PLA (uns 30% a menos na parede externa). Aguenta bem mais esforço e calor que PLA, ' +
+    'e por isso é o que se usa em peça que precisa de resistência. Tende a formar fios: retração um pouco maior.',
+  tpu: 'TPU (flexível). Bico 220-235°C. Devagar (20-30mm/s), retração quase zero, sem suporte se der pra evitar.',
+  abs: 'ABS. Bico 250-270°C, mesa quente, e empena com corrente de ar — precisa de câmara fechada.',
+};
+
+function trechoDoContexto(bedPlate, material) {
+  const placa = PLACAS_PRA_IA[String(bedPlate || '').trim().toLowerCase()];
+  const mat = MATERIAIS_PRA_IA[String(material || '').trim().toLowerCase()];
+  let t = '\n\nIMPORTANTE — esta peça vai ser impressa assim:\n';
+
+  t += mat
+    ? '\nMATERIAL: ' + mat
+    : '\nMATERIAL: não foi informado. Assuma PLA e diga na ficha que assumiu isso.';
+
+  t += placa
+    ? '\n\nPLACA: ' + placa
+    : '\n\nPLACA: não foi informada. Assuma placa texturizada PEI e diga na ficha que assumiu isso.';
+
+  t += '\n\nOs valores de "nozzle_temp_c" e "bed_temp_c" que você devolver TÊM que respeitar as duas faixas ' +
+    'acima ao mesmo tempo. Se o material e a placa não combinarem (PETG na placa fria, por exemplo), ' +
+    'DIGA ISSO com todas as letras logo no começo da ficha, e devolva os números da combinação mais ' +
+    'segura possível. Cite o material e a placa na seção de temperatura.\n\n';
+  return t;
 }
 
 const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializado em impressão 3D FDM profissional, ' +
@@ -367,8 +388,8 @@ async function buscarHistoricoFeedback(coluna, id) {
   return linhas.join('\n');
 }
 
-async function chamarClaude(imagemBuf, mediaType, historico, bedPlate) {
-  let promptFinal = PROMPT_ANALISE + trechoDaPlaca(bedPlate);
+async function chamarClaude(imagemBuf, mediaType, historico, bedPlate, material) {
+  let promptFinal = PROMPT_ANALISE + trechoDoContexto(bedPlate, material);
   if (historico) {
     promptFinal += '\nHistórico real de impressões anteriores dessa mesma peça — leve em conta pra não repetir ' +
       'o que já deu errado, e ajuste a ficha especificamente pra evitar esses problemas de novo:\n' + historico;
@@ -421,7 +442,7 @@ async function analisarUm(product) {
 
     log('Analisando "' + product.name + '" com IA...');
     const historico = await buscarHistoricoFeedback('product_id', product.id);
-    const respostaCompleta = await chamarClaude(miniatura, undefined, historico, product.bed_plate);
+    const respostaCompleta = await chamarClaude(miniatura, undefined, historico, product.bed_plate, product.material);
     const ajustes = extrairAjustesEstruturados(respostaCompleta);
     const tips = removerBlocoJSON(respostaCompleta);
 
@@ -441,7 +462,7 @@ async function analisarUm(product) {
 async function tickAI() {
   const { data: queued, error } = await supabase
     .from('products')
-    .select('id, name, catalog_code, model_file_path, bed_plate')
+    .select('id, name, catalog_code, model_file_path, bed_plate, material')
     .eq('ai_analysis_status', 'queued')
     .order('ai_analysis_requested_at', { ascending: true })
     .limit(1);
@@ -480,14 +501,16 @@ async function tickAI() {
 //
 //   .stl cru — não tem configuração nenhuma, então monta um .3mf do
 //   zero com impressora, filamento e a colinha.
-function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSeguro, downloadsDir, nomeRef, bedPlate) {
+function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSeguro, downloadsDir, nomeRef, bedPlate, material) {
   const e = String(ext || '').toLowerCase();
   const veioPronto = modelSource === 'hi3d_dividido' || modelSource === 'manual_upload';
 
   // A placa não vem da IA — vem da escolha de quem mandou imprimir. Ela
   // entra junto da colinha porque é o gerador que sabe traduzir "placa
   // fria" no campo de temperatura certo do arquivo.
-  const ajustes = (ajustesCrus && bedPlate) ? { ...ajustesCrus, bed_plate: bedPlate } : ajustesCrus;
+  const ajustes = (ajustesCrus && (bedPlate || material))
+    ? { ...ajustesCrus, bed_plate: bedPlate, material: material }
+    : ajustesCrus;
 
   if (veioPronto && e === '.3mf') {
     try {
@@ -529,7 +552,7 @@ async function abrirNoFatiador(product) {
     const nomeSeguro = (product.catalog_code + '-' + product.name).replace(/[^a-z0-9À-ÿ]+/gi, '_');
     const localPath = prepararArquivoPraFatiador(
       Buffer.from(await fileData.arrayBuffer()), ext,
-      product.ai_slicing_settings, product.model_source, nomeSeguro, downloadsDir, product.name, product.bed_plate
+      product.ai_slicing_settings, product.model_source, nomeSeguro, downloadsDir, product.name, product.bed_plate, product.material
     );
 
     log('Abrindo "' + product.name + '" no fatiador...');
@@ -564,7 +587,7 @@ async function tickAbrirFatiador() {
     // ai_slicing_settings e model_source entram aqui porque é com eles
     // que a colinha é aplicada. Sem trazer as colunas, chegam vazias e o
     // arquivo abre cru — sem erro nenhum, que é o pior jeito de falhar.
-    .select('id, name, catalog_code, model_file_path, model_source, ai_slicing_settings, bed_plate')
+    .select('id, name, catalog_code, model_file_path, model_source, ai_slicing_settings, bed_plate, material')
     .eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -875,7 +898,7 @@ async function analisarProjetoUm(li) {
 
     log('Analisando projeto de "' + nomeRef + '" com IA...');
     const historico = await buscarHistoricoFeedback('order_line_item_id', li.id);
-    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico, li.bed_plate);
+    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico, li.bed_plate, li.material);
     const ajustes = extrairAjustesEstruturados(respostaCompleta);
     const tips = removerBlocoJSON(respostaCompleta);
 
@@ -895,7 +918,7 @@ async function analisarProjetoUm(li) {
 async function tickAIProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, meshy_thumbnail_path, custom_reference_image_path, bed_plate')
+    .select('id, requester_name, meshy_thumbnail_path, custom_reference_image_path, bed_plate, material')
     .eq('line_type', 'custom').eq('ai_analysis_status', 'queued')
     .order('ai_analysis_requested_at', { ascending: true })
     .limit(1);
@@ -943,7 +966,7 @@ async function abrirNoFatiadorProjeto(li) {
     // uma colinha ótima que nunca chegava a ser aplicada de verdade —
     // foi exatamente o que aconteceu com o chaveiro de cereja em 25/08.
     const localPath = prepararArquivoPraFatiador(
-      stlBuf, ext, li.ai_slicing_settings, li.model_source, nomeSeguro, downloadsDir, nomeRef, li.bed_plate
+      stlBuf, ext, li.ai_slicing_settings, li.model_source, nomeSeguro, downloadsDir, nomeRef, li.bed_plate, li.material
     );
 
     log('Abrindo projeto de "' + nomeRef + '" no fatiador...');
@@ -972,7 +995,7 @@ async function abrirNoFatiadorProjeto(li) {
 async function tickAbrirFatiadorProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, model_file_path, ai_slicing_settings, model_source, bed_plate')
+    .select('id, requester_name, model_file_path, ai_slicing_settings, model_source, bed_plate, material')
     .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -1078,7 +1101,7 @@ async function analisarParteUm(parte) {
 
     log('Analisando a "' + nomeRef + '" com IA...');
     const historico = await buscarHistoricoFeedback('order_line_item_id', parte.order_line_item_id);
-    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico, parte.bed_plate);
+    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico, parte.bed_plate, parte.material);
     const ajustes = extrairAjustesEstruturados(respostaCompleta);
     const tips = removerBlocoJSON(respostaCompleta);
 
@@ -1098,7 +1121,7 @@ async function analisarParteUm(parte) {
 async function tickAIPartes() {
   const { data: queued, error } = await supabase
     .from('project_parts')
-    .select('id, order_line_item_id, nome, ordem, meshy_thumbnail_path, reference_image_path, bed_plate')
+    .select('id, order_line_item_id, nome, ordem, meshy_thumbnail_path, reference_image_path, bed_plate, material')
     .eq('ai_analysis_status', 'queued')
     .order('ai_analysis_requested_at', { ascending: true })
     .limit(1);
@@ -1131,7 +1154,7 @@ async function abrirNoFatiadorParte(parte) {
     const stlBuf = Buffer.from(await fileData.arrayBuffer());
 
     const localPath = prepararArquivoPraFatiador(
-      stlBuf, ext, parte.ai_slicing_settings, parte.model_source, nomeSeguro, downloadsDir, nomeRef, parte.bed_plate
+      stlBuf, ext, parte.ai_slicing_settings, parte.model_source, nomeSeguro, downloadsDir, nomeRef, parte.bed_plate, parte.material
     );
 
     log('Abrindo a "' + nomeRef + '" no fatiador...');
@@ -1160,7 +1183,7 @@ async function abrirNoFatiadorParte(parte) {
 async function tickAbrirFatiadorPartes() {
   const { data: queued, error } = await supabase
     .from('project_parts')
-    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source, bed_plate')
+    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source, bed_plate, material')
     .eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })

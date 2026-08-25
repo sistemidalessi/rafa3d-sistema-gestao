@@ -245,6 +245,7 @@ const CATEGORIA = {
   textured_plate_temp: 1, textured_plate_temp_initial_layer: 1,
   eng_plate_temp: 1, eng_plate_temp_initial_layer: 1,
   hot_plate_temp: 1, hot_plate_temp_initial_layer: 1,
+  filament_type: 1, filament_settings_id: 1, filament_vendor: 1,
   curr_bed_type: 2,
 };
 
@@ -260,6 +261,26 @@ const PLACAS = {
   textured: { bambu: 'Textured PEI Plate', campo: 'textured_plate_temp', nome: 'placa texturizada' },
   engineering: { bambu: 'Engineering Plate', campo: 'eng_plate_temp', nome: 'placa de engenharia' },
   high_temp: { bambu: 'High Temp Plate', campo: 'hot_plate_temp', nome: 'placa de alta temperatura' },
+};
+
+// Material -> o que gravar no arquivo.
+//
+// "perfil" é o nome do perfil de filamento do Bambu, e ele tem que
+// existir na instalação: nome errado aqui faz o fatiador reclamar ou
+// cair pro padrão. Os nomes abaixo foram conferidos na pasta
+// resources\profiles\BBL\filament da instalação (25/08/2026).
+//
+// PLA fica no perfil da Bambu porque é o que o template já usava e
+// funciona. Os outros usam "Generic", que é o honesto: o filamento da
+// loja não é necessariamente da Bambu.
+//
+// Se um dia o Bambu renomear os perfis, é aqui que conserta — e o
+// sintoma vai ser o fatiador avisando que não achou o filamento.
+const MATERIAIS = {
+  pla:  { tipo: 'PLA',  perfil: 'Bambu PLA Basic @BBL A1', fabricante: 'Bambu Lab' },
+  petg: { tipo: 'PETG', perfil: 'Generic PETG @BBL A1',    fabricante: 'Generic' },
+  tpu:  { tipo: 'TPU',  perfil: 'Generic TPU @BBL A1',     fabricante: 'Generic' },
+  abs:  { tipo: 'ABS',  perfil: 'Generic ABS @BBL A1',     fabricante: 'Generic' },
 };
 
 function traduzirParaOBambu(campo, valor) {
@@ -301,12 +322,33 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
   //
   // Sem placa informada, mantém a que já está no perfil — melhor do que
   // escolher uma e escrever a temperatura num campo que o Bambu não lê.
+  // ATENÇÃO: gravar curr_bed_type NÃO troca a placa no Bambu Studio.
+  // Testado em 25/08/2026, abrindo o aplicativo do zero: ele continua na
+  // placa que estava. A escolha da placa é preferência do APLICATIVO
+  // (fica em BambuStudio.conf como "curr_bed_type": "1", um número), não
+  // do arquivo.
+  //
+  // O campo continua sendo gravado porque descreve pra que placa a peça
+  // foi pensada, e o Bambu avisa sozinho quando a placa selecionada não
+  // combina com o filamento. Mas quem troca a placa é a pessoa, na tela
+  // do fatiador — por isso o sistema avisa qual escolher ao abrir.
   let placa = PLACAS[String(ajustes.bed_plate || '').trim().toLowerCase()];
   if (placa) {
     gravar('curr_bed_type', placa.bambu);
   } else {
     const atual = settings.curr_bed_type;
     placa = Object.values(PLACAS).find((p) => p.bambu === atual) || PLACAS.cool;
+  }
+
+  // O material troca o perfil de filamento inteiro. Sem isso o arquivo
+  // abria dizendo "Bambu PLA Basic" com temperatura de PETG — e ao
+  // corrigir o filamento na mão o fatiador reescrevia as temperaturas,
+  // jogando fora a colinha.
+  const material = MATERIAIS[String(ajustes.material || '').trim().toLowerCase()];
+  if (material) {
+    gravar('filament_type', Array(numFilamentos).fill(material.tipo));
+    gravar('filament_settings_id', Array(numFilamentos).fill(material.perfil));
+    gravar('filament_vendor', Array(numFilamentos).fill(material.fabricante));
   }
 
   const mapa = {
