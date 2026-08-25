@@ -47,8 +47,9 @@ por ele que você acha a peça quando o próximo pedido dela chegar.
 > miniatura da peça dentro dele, e a IA usa essa imagem pra escrever a
 > colinha. O `.stl` não tem miniatura.
 
-Aí sim, no pedido, clique em **📎 Anexar o arquivo 3D**. A tela de
-anexar abre direto, já no produto certo — é só escolher o arquivo.
+Aí sim, no pedido, clique em **📎 Anexar o arquivo 3D**. A janela abre
+**por cima do pedido** — escolhe o arquivo, envia, e você continua no
+mesmo lugar. O botão da peça já vira **🖨️ Abrir no Fatiador**.
 
 **Isso é uma vez só por peça.** Depois de anexado, fica no sistema pra
 sempre, e a pasta vira só a sua bancada de trabalho.

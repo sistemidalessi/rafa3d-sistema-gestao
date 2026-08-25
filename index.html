@@ -1687,7 +1687,7 @@ function acoesDeImpressaoDoItem(it, orderId) {
   // faz. Por isso o botão leva direto pra tela de anexar, e não pra
   // ficha do produto (onde ainda haveria mais um clique).
   if (!p.model_file_path) {
-    return '<button class="btn" onclick="irParaAnexarModelo(\'' + p.id + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>';
+    return '<button class="btn" onclick="openModelo3DForm(\'' + p.id + '\', \'' + volta + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>';
   }
 
   let html = '';
@@ -1707,7 +1707,7 @@ function acoesDeImpressaoDoItem(it, orderId) {
   if (ia === 'queued' || ia === 'processing') {
     html += '<button class="btn ghost" disabled>🤖 Analisando...</button>';
   } else if (p.ai_slicing_tips) {
-    html += '<button class="btn ghost" onclick="irParaProduto(\'' + p.id + '\')">📋 Ver a colinha</button>';
+    html += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">📋 Ver a colinha</button>';
   } else {
     html += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\', \'' + volta + '\')">🤖 Pedir a colinha</button>';
   }
@@ -1716,18 +1716,10 @@ function acoesDeImpressaoDoItem(it, orderId) {
 
 // Leva pra aba Produtos já com a ficha daquele produto aberta, pra não
 // ter que procurar pelo código numa lista de 161.
-window.irParaProduto = async function (productId) {
-  pedidoDetalheId = null;
-  await showTab('produtos');
-  abrirGerenciarProduto(productId);
-};
-
-// Vai direto pra janela de anexar o .3mf/.stl daquele produto.
-window.irParaAnexarModelo = async function (productId) {
-  pedidoDetalheId = null;
-  await showTab('produtos');
-  openModelo3DForm(productId);
-};
+// Nada aqui leva mais pra aba Produtos: anexar arquivo e ver a colinha
+// abrem numa janela por cima do pedido, e quem estava resolvendo um
+// pedido continua nele. Trocar de aba no meio custava a volta inteira
+// pra achar o pedido de novo.
 
 async function renderPedidoDetalhe(id) {
   const el = document.getElementById('tab-pedidos');
@@ -3108,8 +3100,15 @@ function formatarColinha(texto) {
   return html;
 }
 
-function verAnaliseIA(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
+async function verAnaliseIA(productId) {
+  // Igual ao anexar: aberto de dentro de um pedido, o cache de produtos
+  // ainda não existe. Buscar no banco deixa a janela funcionar de
+  // qualquer tela, em vez de obrigar a passar pela aba Produtos.
+  let p = produtosCache.find((x) => x.id === productId);
+  if (!p) {
+    p = await q(SUPA.from('products').select('id, name, ai_slicing_tips').eq('id', productId).maybeSingle());
+    if (!p) { toast('Não achei essa peça.'); return; }
+  }
   openModal(
     '<h3>Colinha de fatiamento — ' + escapeHtml(p.name) + '</h3>' +
     '<div class="card" style="background:#f7f9fc; font-size:13.5px; line-height:1.55;">' +
@@ -3158,8 +3157,18 @@ async function registrarFeedbackColinha(funcionou, alvo) {
   closeModal();
 }
 
-function openModelo3DForm(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
+// "voltarPara" existe pra esta janela poder ser aberta de fora da aba
+// Produtos — de dentro de um pedido, por exemplo. Sem ele, anexar o
+// arquivo jogava a pessoa na lista de produtos e a deixava lá, longe do
+// pedido que ela estava resolvendo.
+async function openModelo3DForm(productId, voltarPara) {
+  // O cache só existe depois que a aba Produtos foi desenhada uma vez.
+  // Vindo do pedido, ele está vazio — então busca a peça no banco.
+  let p = produtosCache.find((x) => x.id === productId);
+  if (!p) {
+    p = await q(SUPA.from('products').select('id, name, catalog_code, model_file_path, model_source').eq('id', productId).maybeSingle());
+    if (!p) { toast('Não achei essa peça.'); return; }
+  }
   openModal(
     '<h3>Arquivo 3D — ' + escapeHtml(p.name) + '</h3>' +
     (p.model_file_path
@@ -3172,13 +3181,15 @@ function openModelo3DForm(productId) {
     '<input id="md3dArquivo" type="file" accept=".stl,.3mf">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Fechar</button>' +
-      '<button class="btn" onclick="uploadModelo3D(\'' + productId + '\')">Enviar</button>' +
+      '<button class="btn" onclick="uploadModelo3D(\'' + productId + '\', \'' + (voltarPara || '') + '\')">Enviar</button>' +
     '</div>'
   );
 }
 
-async function uploadModelo3D(productId) {
-  const p = produtosCache.find((x) => x.id === productId);
+async function uploadModelo3D(productId, voltarPara) {
+  let p = produtosCache.find((x) => x.id === productId);
+  if (!p) p = await q(SUPA.from('products').select('id, catalog_code').eq('id', productId).maybeSingle());
+  if (!p) { toast('Não achei essa peça.'); return; }
   const fileInput = document.getElementById('md3dArquivo');
   const file = fileInput.files[0];
   if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
@@ -3190,7 +3201,10 @@ async function uploadModelo3D(productId) {
   if (dbErr) { toast('Erro: ' + dbErr.message); return; }
   closeModal();
   toast('Arquivo 3D enviado.');
-  await renderProdutos();
+  // Volta pra onde a pessoa estava. Vindo de um pedido, o botão da peça
+  // já vira "Abrir no Fatiador" na mesma tela — sem precisar navegar de
+  // volta pra achar o pedido de novo.
+  await redesenharDepoisDaFila(voltarPara, productId);
 }
 
 async function baixarModelo3D(productId) {
