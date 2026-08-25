@@ -697,6 +697,24 @@ class Component extends DCLogic {
       const sb = window.supabase.createClient(SB_URL, SB_ANON);
       const { data, error } = await sb.from('products').select('*').eq('active', true).order('catalog_code');
       if (error) throw error;
+
+      // As cores vêm da mesma tabela que o Rafa edita no sistema, pra
+      // não existir uma segunda lista pra manter igual. Pede as colunas
+      // pelo nome porque o acesso público é por coluna — cost_per_kg
+      // não é da conta de quem compra, e "select *" seria recusado.
+      //
+      // Vai numa consulta separada de propósito: se as cores falharem,
+      // o catálogo ainda abre com os produtos e as cores de reserva. O
+      // contrário — loja sem produto — seria bem pior.
+      let filamentosDoBanco = null;
+      try {
+        const r = await sb.from('filament_colors')
+          .select('id, name, hex_or_gradient, active').eq('active', true).order('name');
+        if (r.error) throw r.error;
+        if (r.data && r.data.length) filamentosDoBanco = r.data;
+      } catch (e) {
+        console.warn('[catalogo] não consegui ler as cores do banco, usando a lista de reserva:', e);
+      }
       const byCategory = {};
       CATALOG_CATEGORY_KEYS.forEach((k) => { byCategory[k] = []; });
       (data || []).forEach((row) => {
@@ -716,7 +734,7 @@ class Component extends DCLogic {
         };
         if (byCategory[row.category]) byCategory[row.category].push(item);
       });
-      this.setState({ ...byCategory, catalogLoaded: true, catalogError: false });
+      this.setState({ ...byCategory, filamentosDoBanco, catalogLoaded: true, catalogError: false });
     } catch (e) {
       console.error('[catalogo] falha ao carregar produtos do banco:', e);
       this.setState({ catalogLoaded: true, catalogError: true });
@@ -773,16 +791,14 @@ class Component extends DCLogic {
 
     const gloss = (c) => "radial-gradient(circle at 33% 27%, rgba(255,255,255,0.55), rgba(255,255,255,0) 42%), " + c;
 
-    // ATENÇÃO: estes nomes têm que ser IGUAIS aos de filament_colors no
-    // banco, acento por acento. A cor escolhida no checkout viaja como
-    // texto e a finalizar-pedido traduz o nome no id do filamento — nome
-    // que não casar vira nulo, e a cor some do pedido sem erro nenhum na
-    // tela. Renomeou uma cor na aba Filamentos? Renomeie aqui também.
+    // LISTA DE RESERVA. A lista boa vem do banco (filament_colors, a
+    // mesma que o Rafa edita no sistema) — cadastrar ou apagar uma cor
+    // lá já muda a loja sozinho, sem ninguém editar este arquivo.
     //
-    // A lista fica fixa aqui, e não vem do banco, porque cada cor
-    // precisa do seu degradê pra virar a bolinha que a pessoa vê — isso
-    // é aparência, não dado de negócio.
-    const filaments = [
+    // Isto aqui só entra em cena se a consulta falhar, pra loja nunca
+    // aparecer sem cor nenhuma. Não precisa ser mantida em dia: se
+    // estiver velha, é melhor que uma tela vazia, e é só isso.
+    const filamentosReserva = [
       // neutros
       { name:"Branco",                bg: gloss("#f3f3f3") },
       { name:"Branco Marmorizado",    bg: "linear-gradient(135deg,#ffffff,#e4e4e8 38%,#c7c7cf 58%,#fbfbfc)" },
@@ -820,6 +836,18 @@ class Component extends DCLogic {
       { name:"Bege Natural",          bg: gloss("#e8d9ae") },
       { name:"Caucasiano (Cor da Pele)", bg: gloss("#d9a878") },
     ];
+
+    // Vindo do banco, cada cor traz só o nome e o valor de fundo. Cor
+    // simples (#4db8d4) ganha o mesmo brilho das de reserva, pra bolinha
+    // nova não ficar chapada do lado das antigas; degradê já vem pronto
+    // e passa direto.
+    const doBanco = this.state.filamentosDoBanco;
+    const filaments = doBanco
+      ? doBanco.map(function (c) {
+          const v = c.hex_or_gradient || '#cccccc';
+          return { name: c.name, bg: v.indexOf('gradient') === -1 ? gloss(v) : v };
+        })
+      : filamentosReserva;
 
     // A tela de finalizar compra é JavaScript puro, fora deste framework
     // (ver comentário lá embaixo), e precisa das mesmas cores pra montar
