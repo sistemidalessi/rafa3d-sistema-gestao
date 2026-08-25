@@ -1547,11 +1547,79 @@ function voltarPedidos() {
   renderPedidos();
 }
 
+let _pedidoPollTimer = null;
+
+// O que dá pra fazer com a peça de um item, direto da tela do pedido.
+// Item personalizado não entra: o caminho dele é a aba Projetos, que já
+// tem a cadeia inteira (gerar, dividir, colinha, fatiador).
+function acoesDeImpressaoDoItem(it, orderId) {
+  if (it.line_type !== 'catalog') return '';
+  const p = it.products;
+  if (!p) return '';
+  const volta = 'pedido:' + orderId;
+
+  // Sem arquivo 3D não há o que mandar pro fatiador. Em vez de esconder
+  // o botão e deixar a pessoa sem entender, diz o que falta e leva
+  // direto pro lugar de resolver.
+  // Hoje esse é o caso da maioria: o catálogo foi montado com fotos, e
+  // o arquivo de impressão nunca subiu pro sistema. Anexar os 161 de uma
+  // vez não faz sentido — anexar o da peça que acabou de ser vendida
+  // faz. Por isso o botão leva direto pra tela de anexar, e não pra
+  // ficha do produto (onde ainda haveria mais um clique).
+  if (!p.model_file_path) {
+    return '<button class="btn" onclick="irParaAnexarModelo(\'' + p.id + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>';
+  }
+
+  let html = '';
+  const st = p.open_slicer_status;
+  if (st === 'queued' || st === 'processing') {
+    html += '<button class="btn ghost" disabled>🖨️ Abrindo...</button>';
+  } else {
+    html += '<button class="btn" onclick="solicitarAbrirFatiador(\'' + p.id + '\', \'' + volta + '\')">🖨️ Abrir no Fatiador</button>';
+  }
+  if (st === 'error') {
+    html += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.open_slicer_error || 'deu erro') + '</div>';
+  }
+
+  // A colinha é o que diz COMO imprimir. Se já existe, o botão vira
+  // "ver" em vez de gerar de novo — refazer gasta IA à toa.
+  const ia = p.ai_analysis_status;
+  if (ia === 'queued' || ia === 'processing') {
+    html += '<button class="btn ghost" disabled>🤖 Analisando...</button>';
+  } else if (p.ai_slicing_tips) {
+    html += '<button class="btn ghost" onclick="irParaProduto(\'' + p.id + '\')">📋 Ver a colinha</button>';
+  } else {
+    html += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\', \'' + volta + '\')">🤖 Pedir a colinha</button>';
+  }
+  return html;
+}
+
+// Leva pra aba Produtos já com a ficha daquele produto aberta, pra não
+// ter que procurar pelo código numa lista de 161.
+window.irParaProduto = async function (productId) {
+  pedidoDetalheId = null;
+  await showTab('produtos');
+  abrirGerenciarProduto(productId);
+};
+
+// Vai direto pra janela de anexar o .3mf/.stl daquele produto.
+window.irParaAnexarModelo = async function (productId) {
+  pedidoDetalheId = null;
+  await showTab('produtos');
+  openModelo3DForm(productId);
+};
+
 async function renderPedidoDetalhe(id) {
   const el = document.getElementById('tab-pedidos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
   const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', id).maybeSingle());
-  const items = await q(SUPA.from('order_line_items').select('*, products(name), filament_colors(name)').eq('order_id', id).order('created_at'));
+  // Traz junto o que o produto tem de arquivo 3D e o estado das filas.
+  // Sem isso a tela do pedido só sabia o nome da peça, e quem quisesse
+  // imprimir precisava sair daqui, achar o produto no catálogo pelo
+  // código e mandar de lá — que é o caminho que ninguém fazia.
+  const items = await q(SUPA.from('order_line_items')
+    .select('*, products(id, name, catalog_code, model_file_path, open_slicer_status, open_slicer_error, ai_analysis_status, ai_slicing_tips), filament_colors(name)')
+    .eq('order_id', id).order('created_at'));
   const payments = await q(SUPA.from('payments').select('*').eq('order_id', id).order('created_at'));
   const ps = await q(SUPA.from('orders_payment_status').select('*').eq('order_id', id).maybeSingle());
 
@@ -1622,6 +1690,11 @@ async function renderPedidoDetalhe(id) {
       // não ter que ir buscar cor por cor.
       const corPedida = it.filament_colors ? it.filament_colors.name : null;
       if (corPedida) html += '<br><span style="font-size:11px;">🎨 quer na cor <strong>' + escapeHtml(corPedida) + '</strong></span>';
+      // O código vem junto porque é por ele que a peça é achada no
+      // catálogo e na prateleira — o nome sozinho não basta quando há
+      // seis vasos parecidos.
+      const prod = it.products;
+      if (prod && prod.catalog_code) html += '<br><span style="font-size:11px; color:var(--muted);">código ' + escapeHtml(prod.catalog_code) + '</span>';
       if (it.custom_reference_link) html += '<br><a href="' + escapeHtml(it.custom_reference_link) + '" target="_blank" rel="noopener" style="font-size:11px;">🔗 referência do cliente</a>';
       html += '</td>';
       html += '<td>' + it.quantity + '</td>';
@@ -1635,6 +1708,11 @@ async function renderPedidoDetalhe(id) {
       if (isOwner && it.line_status === 'orcamento_pendente') {
         html += '<button class="btn" onclick="openAprovarOrcamento(\'' + it.id + '\', \'' + id + '\')">Definir preço e aprovar</button>';
       }
+      // A ponte que faltava: daqui dá pra mandar a peça pro fatiador,
+      // sem sair pra achar o produto no catálogo. As filas já eram do
+      // produto — o que faltava era oferecer elas onde o trabalho
+      // realmente começa, que é o pedido que chegou.
+      html += acoesDeImpressaoDoItem(it, id);
       html += '<button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + id + '\')">Remover</button>';
       html += '</td>';
       html += '</tr>';
@@ -1672,6 +1750,19 @@ async function renderPedidoDetalhe(id) {
   html += '</div>';
 
   el.innerHTML = html;
+
+  // Enquanto uma peça deste pedido estiver na fila, a tela se redesenha
+  // sozinha — senão o botão fica "Abrindo..." pra sempre e parece que
+  // travou. Mesmo padrão das abas Projetos e Produtos.
+  clearTimeout(_pedidoPollTimer);
+  const emAndamento = items.some((it) => {
+    const p = it.products;
+    return p && (p.open_slicer_status === 'queued' || p.open_slicer_status === 'processing'
+      || p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
+  });
+  if (emAndamento && pedidoDetalheId === id && !el.classList.contains('hidden')) {
+    _pedidoPollTimer = setTimeout(() => { renderPedidoDetalhe(id); }, 4000);
+  }
 }
 
 async function abrirAgradecimento(orderId) {
@@ -2784,8 +2875,21 @@ async function removerProduto(productId) {
   await renderProdutos();
 }
 
-async function solicitarAbrirFatiador(productId) {
-  const pc = await garantirComputador(() => solicitarAbrirFatiador(productId));
+// As duas funções abaixo agora são chamadas de dois lugares: da aba
+// Produtos e da tela de um pedido. O "voltarPara" diz qual tela
+// redesenhar — sem ele, pedir o fatiador de dentro de um pedido jogava
+// a pessoa de volta pra lista de produtos, do nada.
+async function redesenharDepoisDaFila(voltarPara, productId) {
+  if (voltarPara && voltarPara.indexOf('pedido:') === 0) {
+    await renderPedidoDetalhe(voltarPara.slice(7));
+    return;
+  }
+  await renderProdutos();
+  if (_produtoGerenciarAberto === productId) abrirGerenciarProduto(productId);
+}
+
+async function solicitarAbrirFatiador(productId, voltarPara) {
+  const pc = await garantirComputador(() => solicitarAbrirFatiador(productId, voltarPara));
   if (!pc) return;
   const { error } = await SUPA.from('products').update({
     open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(),
@@ -2793,18 +2897,16 @@ async function solicitarAbrirFatiador(productId) {
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');
-  await renderProdutos();
-  if (_produtoGerenciarAberto === productId) abrirGerenciarProduto(productId);
+  await redesenharDepoisDaFila(voltarPara, productId);
 }
 
-async function solicitarAnaliseIA(productId) {
+async function solicitarAnaliseIA(productId, voltarPara) {
   const { error } = await SUPA.from('products').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
-  toast('Análise pedida — o agente local processa em instantes.');
-  await renderProdutos();
-  if (_produtoGerenciarAberto === productId) abrirGerenciarProduto(productId);
+  toast('Colinha pedida — o agente local processa em instantes.');
+  await redesenharDepoisDaFila(voltarPara, productId);
 }
 
 function formatarColinha(texto) {
