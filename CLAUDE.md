@@ -4,30 +4,36 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — de 24/08/2026
+## ⏳ TAREFAS EM ABERTO — fim de 24/08/2026
 
-**Assim que a sessão começar, lembre o Anderson destas duas.** Ele parou no
-meio do chaveiro de cereja (encomenda real, já vendida) e vai retomar de
-outro computador. O detalhe está em
-[docs/continuar-daqui.md](docs/continuar-daqui.md) — leia antes de
-responder qualquer coisa sobre o chaveiro ou geração de modelo 3D.
+**Assim que a sessão começar, lembre o Anderson destas.** Ele estava na
+máquina de casa e vai retomar do escritório. O detalhe está em
+[docs/continuar-daqui.md](docs/continuar-daqui.md) — **leia antes de
+responder qualquer coisa sobre o chaveiro**.
 
 1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
-   de tudo (veja a seção seguinte). **As chaves do Hi3D são por máquina** —
-   se a de casa não tiver `HI3D_ACCESS_KEY`/`HI3D_SECRET_KEY` preenchidas,
-   crie uma chave nova em platform.hi3d.ai (o segredo só aparece uma vez).
-2. **Terminar o chaveiro de cereja com NFC + abridor.** Já tem a forma da
-   cereja aprovada e a base do abridor pronta — falta escalar pra 78mm,
-   rodar a ferramenta da altura de pausa do NFC, e imprimir um teste de
-   verdade. Detalhe completo, incluindo o que **não** funcionou (não tentar
-   de novo sem ideia nova), em docs/continuar-daqui.md e na memória do
-   projeto.
+   de tudo (veja a seção seguinte). **As chaves são por máquina** e o
+   segredo só aparece na hora de criar.
+2. **Decidir o tamanho do chaveiro de cereja: 78mm ou 92mm.** É a única
+   coisa que trava a encomenda (real, já vendida). A aba do abridor **já
+   está na peça** — a 78mm ela vira enfeite (2,5mm de parede, quebra na
+   primeira garrafa); a partir de 92mm o abridor funciona de verdade. As
+   medidas todas estão no continuar-daqui.
+3. **O arquivo bom não está no repositório.** É o `cereja-inteira.3mf`,
+   que mora em `Downloads` da máquina de casa — `downloads/` é ignorado
+   pelo Git. No escritório, baixe de novo do workspace do Hi3D em
+   "Single file".
 
-Também ainda pendente, mas antigo (23/08): **testar o botão de copiar o
-PIX num celular de verdade** (tem que aparecer "✓ Copiado! Agora abra o
-banco" e o botão do WhatsApp ficar verde) e **falar com os 4 clientes**
-que compraram na tela antiga e não souberam como pagar — isso é com o
-Anderson, não com o agente.
+Também pendente, e é com o Anderson e não com o agente: **testar o botão
+de copiar o PIX num celular de verdade**, **pedir pro Rafa recarregar a
+tela (Ctrl+F5)** e **falar com os 4 clientes de 23/08** — esses ficaram
+na regra antiga de 50% de propósito, e as mensagens escritas pra eles
+falam em metade, então estão coerentes.
+
+**Antes de julgar qualquer modelo 3D, rode `node ver-peca.js arquivo.3mf`.**
+Em 24/08 eu passei horas achando que a cereja estava ruim porque olhei ela
+achatada numa janela do Bambu, e cheguei a propor apagar a aba do abridor
+achando que era lixo de geração. Ver a peça desfez tudo em trinta segundos.
 
 **Apague esta seção quando as duas de cima estiverem resolvidas** — nota
 de tarefa que fica pra trás vira ruído e mente sobre o estado do projeto.
