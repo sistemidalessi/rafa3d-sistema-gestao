@@ -288,16 +288,22 @@ export default {
     const whatsappNumero = Deno.env.get("WHATSAPP_NUMBER") || "";
     const dinheiro = (v: number) => v.toFixed(2).replace(".", ",");
     const mensagem = combinar
-      ? `Olá! Fechei o pedido ${orderNumber} no catálogo e escolhi combinar a entrega. Podemos combinar?`
+      ? `Olá! Fechei o pedido ${orderNumber} no catálogo (${dinheiro(total)}) e vou pagar o PIX agora. Como escolhi buscar/combinar a entrega, me diz como faço pra retirar!`
       : `Olá! Fechei o pedido ${orderNumber} no catálogo (${dinheiro(total)}) e já vou pagar o PIX. Assim que pagar, mando o comprovante aqui!`;
     const whatsappUrl = "https://wa.me/" + whatsappNumero + "?text=" + encodeURIComponent(mensagem);
 
     return Response.json({
       pedido_numero: orderNumber,
       total,
-      sinal: combinar ? null : sinal,
+      sinal,
       percentual_sinal: PERCENTUAL_SINAL,
-      pix_copia_cola: combinar ? null : gerarPixCopiaECola(sinal, orderNumber),
+      // O PIX sai também pra quem escolheu combinar a entrega. Antes não
+      // saía porque o frete era desconhecido e o total ficava em aberto;
+      // agora a entrega corre por conta do cliente, então o valor das
+      // peças já é o valor final e não há o que esperar. Fazer o
+      // pagamento depender da conversa de entrega só atrasava dinheiro
+      // que já estava definido.
+      pix_copia_cola: gerarPixCopiaECola(sinal, orderNumber),
       whatsapp_url: whatsappUrl,
       combinar,
     });

@@ -1494,13 +1494,15 @@ class Component extends DCLogic {
     var r = CK.resultado;
     var html = '<div style="text-align:center;">';
 
-    // Quem escolhe combinar a entrega não recebe PIX: sem o frete não
-    // dá pra saber o valor. Só que a versão anterior não dizia ISSO —
-    // dizia "é só combinar a entrega" e mais nada, e a pessoa terminava
-    // a compra sem nunca ver uma palavra sobre pagar. Era daí que vinha
-    // a pergunta "como faço pra pagar?": todos os pedidos que chegaram
-    // no primeiro dia vieram por este caminho.
-    if (r.combinar) {
+    // Quem combina a entrega paga na mesma hora que todo mundo. O
+    // valor das peças já é o final — a entrega corre por conta dele —
+    // então não existe o que esperar. Fazer o pagamento depender da
+    // conversa de entrega só segurava dinheiro que já estava definido,
+    // e obrigava a pessoa a voltar depois.
+    //
+    // O caminho abaixo só aparece se o servidor não tiver mandado PIX,
+    // que é a versão antiga da função. Some assim que o deploy sair.
+    if (r.combinar && !r.pix_copia_cola) {
       html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
       html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
         + '<strong>Falta combinar a entrega.</strong> O pagamento vem logo depois disso — me chame que eu te explico tudo.</div>';
@@ -1543,11 +1545,22 @@ class Component extends DCLogic {
     html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:600; font-size:11px; letter-spacing:1.6px; color:#4a7fd0;">PAGUE AGORA</div>';
     html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:30px; color:#0b1733; line-height:1.2;">' + fmtMoney(sinal) + '</div>';
     html += '<div style="font-size:12px; color:#5b6a85; margin-top:3px;">'
-      + (conta.ehTudo
-          ? 'é o valor todo do pedido, já com a entrega'
-          : 'é a metade de ' + fmtMoney(r.total) + ' &middot; os outros ' + fmtMoney(resto) + ' só quando a peça ficar pronta')
+      + (!conta.ehTudo
+          ? 'é a metade de ' + fmtMoney(r.total) + ' &middot; os outros ' + fmtMoney(resto) + ' só quando a peça ficar pronta'
+          : (r.combinar
+              ? 'é o valor das suas peças — a entrega fica por sua conta'
+              : 'é o valor todo do pedido, já com a entrega'))
       + '</div>';
     html += '</div>';
+
+    // Quem vai buscar precisa combinar como — mas isso acontece em
+    // paralelo, não antes. O aviso fica aqui em cima pra ninguém achar
+    // que o pagamento resolve a entrega junto.
+    if (r.combinar) {
+      html += '<div style="background:#f7f8fb; border:1px solid #e7e9ef; border-radius:10px; padding:10px 12px; margin-top:10px; text-align:left; font-size:12px; color:#5b6a85; line-height:1.6;">'
+        + '<strong style="color:#0b1733;">A entrega é por sua conta.</strong> Você vem buscar, manda um Uber ou combina outro jeito. '
+        + 'Pode pagar agora — a gente acerta como você retira pelo WhatsApp, no passo 3.</div>';
+    }
 
     html += ckPasso(1, 'Copie o código do PIX',
       '<button onclick="ckCopiarPix(this)" style="width:100%; padding:13px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14.5px; cursor:pointer;">Copiar o código PIX</button>'
@@ -1566,17 +1579,22 @@ class Component extends DCLogic {
     // o primeiro toque explica em vez de levar embora. Não é uma
     // tranca: o segundo toque passa, porque tem gente que paga por
     // outro aparelho e o site não tem como saber.
-    html += ckPasso(3, 'Me mande o comprovante',
-      '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6; margin-bottom:7px;">É assim que eu descubro que o seu pagamento chegou.</div>'
+    html += ckPasso(3, r.combinar ? 'Me mande o comprovante e a gente combina a entrega' : 'Me mande o comprovante',
+      '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6; margin-bottom:7px;">'
+      + (r.combinar
+          ? 'É assim que eu descubro que o seu pagamento chegou — e já aproveito pra te dizer como você retira.'
+          : 'É assim que eu descubro que o seu pagamento chegou.') + '</div>'
       + '<a id="ckBotaoComprovante" href="' + ckWhatsappComCores(r) + '" target="_blank" onclick="return ckAntesDoComprovante(this)" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#b9c4d2; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Mandar o comprovante no WhatsApp</a>'
       + '<div id="ckAvisoComprovante" style="display:none; margin-top:7px; background:#fff6e5; border:1px solid #ffd894; border-radius:9px; padding:9px 11px; font-size:12px; color:#8a5b00; line-height:1.5;">Você ainda não copiou o código. Faça o passo <strong>1</strong> e pague os ' + fmtMoney(sinal) + ' primeiro — depois volte aqui e mande o comprovante.<br><span style="color:#a8803a;">Se você já pagou por outro aparelho, é só tocar de novo.</span></div>'
       + '<a href="' + ckLinkDuvida(r) + '" target="_blank" style="display:block; text-align:center; margin-top:9px; font-size:12px; color:#5b6a85; text-decoration:underline;">Não consegui pagar / tenho uma dúvida</a>');
 
     html += '<div style="text-align:left; background:#f7f8fb; border-radius:10px; padding:12px 14px; margin-top:18px; font-size:12.5px; color:#5b6a85; line-height:1.7;">'
       + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:12.5px; color:#0b1733; margin-bottom:4px;">E depois, o que acontece?</div>'
-      + (conta.ehTudo
-          ? 'Confirmo o seu pagamento &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; eu envio.'
-          : 'Confirmo o seu sinal &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você paga os outros ' + fmtMoney(resto) + ' &rarr; eu envio.')
+      + (!conta.ehTudo
+          ? 'Confirmo o seu sinal &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você paga os outros ' + fmtMoney(resto) + ' &rarr; eu envio.'
+          : (r.combinar
+              ? 'Confirmo o seu pagamento &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você retira do jeito que combinamos.'
+              : 'Confirmo o seu pagamento &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; eu envio.'))
       + '</div>';
 
     html += '<div style="font-size:12px; color:#7b879c; margin-top:12px;">Pode fechar sem medo: guardei o seu <strong>pedido ' + r.pedido_numero + '</strong> aqui e o PIX volta a aparecer quando você abrir a loja de novo.</div>';
@@ -1593,7 +1611,10 @@ class Component extends DCLogic {
   var CHAVE_PEDIDO = 'rafa3d_pedido_aguardando';
 
   function guardarPedido(r) {
-    if (!r || r.combinar || !r.pix_copia_cola) return;
+    // Guarda todo pedido que tem PIX pra pagar — inclusive o de quem
+    // combina a entrega, que agora também paga na hora. O que decide é
+    // ter PIX, não a forma de entrega.
+    if (!r || !r.pix_copia_cola) return;
     try {
       localStorage.setItem(CHAVE_PEDIDO, JSON.stringify({
         resultado: r,
