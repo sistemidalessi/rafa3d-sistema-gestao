@@ -26,8 +26,8 @@ no chat. Se a arte for refeita, **mantenha nada importante no rodapé**.
 Mais de 160 peças impressas em 3D — action figures, vasos, chaveiros,
 porta-treco e muito mais, a partir de R$ 9,90.
 
-Escolhe a peça e a cor, o site calcula o frete e você paga 50% de sinal
-por PIX.
+Escolhe a peça e a cor, o site calcula o frete e você paga por PIX na
+hora — o código já vem pronto, é só copiar e colar no banco.
 
 👉 https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/
 
@@ -52,8 +52,9 @@ Ao trocar a arte, refaça também o JPEG leve e confira que o `og:image` no
 
 - **"a partir de R$ 9,90"** — é o menor preço ativo do catálogo hoje
 - **"mais de 160 peças"** — são 161 produtos ativos
-- **"50% de sinal"** — o PIX é gerado pelo sinal, não pelo total; quem faz
-  isso é a Edge Function `finalizar-pedido`, e ela precisa estar publicada
+- **"paga por PIX na hora"** — desde 24/08/2026 o PIX é do valor cheio, e não
+  de metade; quem gera é a Edge Function `finalizar-pedido`, e ela precisa
+  estar publicada
 - **"escolhe a peça e a cor"** — o seletor de cor fica no checkout
 
 Mexeu em algum desses, confira a mensagem antes de divulgar de novo.

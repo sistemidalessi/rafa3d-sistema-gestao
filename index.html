@@ -1657,7 +1657,18 @@ async function renderPedidoDetalhe(id) {
     });
     html += '</table>';
   }
-  html += '<div style="margin-top:8px; color:var(--muted); font-size:12px;">Sinal esperado (' + order.expected_deposit_pct + '%): ' + fmtMoney(order.total_amount * order.expected_deposit_pct / 100) + '</div>';
+  // Cada pedido guarda o percentual que valia no dia em que foi feito.
+  // Desde 24/08/2026 é 100% (paga tudo na hora), mas os pedidos antigos
+  // continuam em 50% e a tela tem que contar a verdade de cada um —
+  // senão o dono cobra o valor errado de um cliente antigo.
+  const pctPedido = Number(order.expected_deposit_pct);
+  const aPagar = order.total_amount * pctPedido / 100;
+  html += '<div style="margin-top:8px; color:var(--muted); font-size:12px;">'
+    + (pctPedido >= 100
+        ? 'Esse pedido é pago de uma vez: <strong>' + fmtMoney(order.total_amount) + '</strong>'
+        : 'Esse pedido foi feito na regra antiga — paga <strong>' + fmtMoney(aPagar) + '</strong> ('
+          + pctPedido + '%) agora e <strong>' + fmtMoney(order.total_amount - aPagar) + '</strong> quando ficar pronto')
+    + '</div>';
   html += '</div>';
 
   el.innerHTML = html;

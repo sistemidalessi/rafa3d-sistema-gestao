@@ -6,7 +6,7 @@
 <title>Rafa Impressão 3D - Catálogo</title>
 <meta name="description" content="Catálogo de peças impressas em 3D da Rafa 3D Dalessi: vasos, chaveiros, brinquedos, suportes e muito mais. Modelos a partir de R$ 9,90.">
 <meta property="og:title" content="Rafa Impressão 3D - Catálogo">
-<meta property="og:description" content="Mais de 160 peças impressas em 3D, a partir de R$ 9,90. Escolha a peça e a cor, o frete sai na hora e o sinal é por PIX.">
+<meta property="og:description" content="Mais de 160 peças impressas em 3D, a partir de R$ 9,90. Escolha a peça e a cor, o frete sai na hora e você paga por PIX.">
 <!-- Esta é a imagem que o WhatsApp mostra quando alguém cola o link: o
      cartão inteiro vira clicável, então é ela que faz o papel de "botão".
      É a mesma arte de divulgação, só que em JPEG leve: acima de uns
@@ -561,8 +561,8 @@
         1. Escolha as peças e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong><br/>
         2. No carrinho, clique em <strong style="color:#fff;">"Finalizar a Compra"</strong> e preencha seus dados — é só digitar o CEP que o endereço vem sozinho<br/>
         3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto<br/>
-        4. No fim aparece o <strong style="color:#fff;">PIX já pronto</strong>, com o valor da <strong style="color:#fff;">metade</strong>: um toque copia o código, você cola no app do seu banco e manda o comprovante no nosso WhatsApp<br/>
-        5. A gente imprime, avisa quando ficar pronta, você paga a <strong style="color:#fff;">outra metade</strong> e a peça vai pro correio<br/>
+        4. No fim aparece o <strong style="color:#fff;">PIX já pronto</strong>, com o <strong style="color:#fff;">valor certinho</strong>: um toque copia o código, você cola no app do seu banco e manda o comprovante no nosso WhatsApp<br/>
+        5. A gente imprime, avisa quando ficar pronta e manda a sua peça pelo correio<br/>
         <span style="color:#9fb4d8;">Fechou a página sem pagar? Sem problema — o PIX volta a aparecer quando você abrir a loja de novo.</span>
       </div>
     </div>
@@ -585,7 +585,7 @@
            existia neste rodapé não levava valor nem número de pedido:
            quem pagava por ele mandava um PIX solto, e depois ninguém
            descobria de qual pedido era. O PIX certo é o que aparece no
-           fim da compra, já com o valor do sinal. Isto aqui ficou só
+           fim da compra, já com o valor certo. Isto aqui ficou só
            como conferência de titular, que é o que dá segurança. -->
       <div style="display:flex; align-items:center; gap:14px; min-width:0;">
         <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; flex:none;">
@@ -650,7 +650,7 @@
               <span>Total</span><span>{{ cartTotal }}</span>
             </div>
             <div style="display:flex; justify-content:space-between; font-size:12.5px; color:#7b879c; margin-bottom:14px;">
-              <span>+ frete, e você paga 50% de sinal agora</span>
+              <span>+ frete, e você paga tudo agora por PIX</span>
             </div>
             <button onClick="{{ abrirCheckout }}" style="display:block; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:14px; color:#fff; background:#0b1733; padding:12px; border-radius:10px;">Finalizar a Compra</button>
           </div>
@@ -900,15 +900,6 @@ class Component extends DCLogic {
     const cartCount = cartItems.reduce((sum, it) => sum + it.qty, 0);
     const cartTotalNum = cartItems.reduce((sum, it) => sum + it.qty * it.priceNum, 0);
     const cartTotal = this.fmtPrice(cartTotalNum);
-    const cartHalfNum = cartTotalNum / 2;
-    const cartHalf = this.fmtPrice(cartHalfNum);
-    const cartCodes = cartItems.map(it => it.code + " - " + it.name + " (x" + it.qty + ")").join(" | ");
-    const cartQtySummary = cartItems.map(it => it.qty + "x " + it.code).join(", ");
-    const cartFormUrl = cartItems.length ? buildOrderUrl("", cartCodes, cartQtySummary, cartTotal) : FORM_BASE;
-    const cartWaText = "Olá! Gostaria de fazer um pedido com os seguintes itens:\n\n" +
-      cartItems.map(it => "• " + it.code + " - " + it.qty + "x " + it.name + " — " + this.fmtPrice(it.qty * it.priceNum)).join("\n") +
-      "\n\n*Total: " + cartTotal + "*\n*Sinal (50%): " + cartHalf + "*\n\nAguardo confirmação para enviar o PIX!";
-    const cartWaUrl = "https://wa.me/" + WA_NUMBER + "?text=" + encodeURIComponent(cartWaText);
 
     return {
       catalogLoaded: this.state.catalogLoaded,
@@ -941,10 +932,7 @@ class Component extends DCLogic {
       cartItems,
       cartCount,
       cartTotal,
-      cartHalf,
       cartOpen: this.state.cartOpen,
-      cartFormUrl,
-      cartWaUrl,
       abrirCheckout: () => window.abrirCheckoutModal(cartItems, () => this.setState({ cart: {}, cartOpen: false })),
       toggleCart: () => this.toggleCart(),
       stopClick: (e) => e.stopPropagation(),
@@ -1243,12 +1231,10 @@ class Component extends DCLogic {
     html += '</div><hr style="border:none; border-top:1px solid #e7e9ef; margin:12px 0;">';
     html += '<div style="display:flex; justify-content:space-between; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:18px;"><span>Total</span><span>' + (CK.combinar ? fmtMoney(totalProdutos()) + ' + frete' : fmtMoney(totalGeral())) + '</span></div>';
 
-    // Dizer aqui quanto sai agora evita a surpresa na tela seguinte:
-    // muita gente esperava pagar o total e travava ao ver outro valor.
+    // Dizer aqui quanto sai agora evita a surpresa na tela seguinte.
     if (!CK.combinar) {
       html += '<div style="background:#f2f7ff; border:1px solid #cfe0ff; border-radius:10px; padding:11px 13px; margin-top:12px; font-size:12.5px; color:#33507d; line-height:1.6;">'
-        + 'No próximo passo você paga só <strong>' + fmtMoney(totalGeral() / 2) + '</strong> por PIX — é a metade, pra eu começar a imprimir. '
-        + 'Os outros <strong>' + fmtMoney(totalGeral() - totalGeral() / 2) + '</strong> ficam pra quando a peça estiver pronta.</div>';
+        + 'No próximo passo você paga <strong>' + fmtMoney(totalGeral()) + '</strong> por PIX, e eu já começo a imprimir a sua peça.</div>';
     }
     html += '<button onclick="ckVoltarPara(\'' + (CK.combinar ? 'dados' : 'frete') + '\')" style="width:100%; margin-top:16px; padding:10px; border:1.5px solid #dde1e8; border-radius:10px; background:#fff; color:#0b1733; font-weight:700; font-size:13px; cursor:pointer;">&larr; Voltar</button>';
     html += '<button onclick="ckConfirmar()" style="width:100%; margin-top:8px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' + (CK.carregando ? 'Enviando...' : 'Confirmar pedido') + '</button>';
@@ -1375,10 +1361,8 @@ class Component extends DCLogic {
   // o Rafa não sabe nem de qual pedido é. Esta mensagem já vai com o
   // número e o valor, então ele responde sem ter que investigar.
   function ckLinkDuvida(r) {
-    var pct = r.percentual_sinal || 50;
-    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
-    var texto = 'Olá! Fechei o pedido ' + r.pedido_numero + ' no catálogo (sinal de '
-      + fmtMoney(sinal).replace('R$ ', 'R$ ') + ') mas tive uma dúvida no pagamento. Pode me ajudar?';
+    var texto = 'Olá! Fechei o pedido ' + r.pedido_numero + ' no catálogo ('
+      + fmtMoney(contaDoPagamento(r).agora) + ') mas tive uma dúvida no pagamento. Pode me ajudar?';
     var base = String(r.whatsapp_url || '').split('?text=')[0];
     if (!base) return r.whatsapp_url || '#';
     return base + '?text=' + encodeURIComponent(texto);
@@ -1419,6 +1403,18 @@ class Component extends DCLogic {
     if (abrindo) ckLiberarComprovante();
   };
 
+  // Quanto o cliente paga agora, segundo o servidor. Desde 24/08/2026 é
+  // o pedido inteiro, mas a tela lê o número em vez de assumir: entre o
+  // site subir e a função ser publicada existe uma janela em que o
+  // servidor ainda responde metade, e nessa janela a tela tem que
+  // continuar dizendo a verdade em vez de prometer errado.
+  function contaDoPagamento(r) {
+    var pct = r.percentual_sinal || 100;
+    var agora = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+    var resto = Math.max(0, r.total - agora);
+    return { agora: agora, resto: resto, ehTudo: resto < 0.01 };
+  }
+
   function ckHtmlPago() {
     var r = CK.resultado;
     var html = '<div style="text-align:center;">';
@@ -1444,31 +1440,35 @@ class Component extends DCLogic {
         + '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Combinar a entrega no WhatsApp</a>');
 
       html += ckPasso(2, 'Aí eu te mando o PIX',
-        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Vai ser a <strong>metade</strong> do total (as peças mais a entrega), pra eu começar a imprimir.</div>');
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Vai ser o <strong>total</strong> — as peças mais a entrega — pra eu começar a imprimir.</div>');
 
-      html += ckPasso(3, 'A outra metade fica pro fim',
-        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Você paga quando a peça estiver pronta, antes de eu mandar.</div>');
+      html += ckPasso(3, 'Eu imprimo e mando',
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Te aviso quando a sua peça ficar pronta e combino a entrega com você.</div>');
 
       html += '<div style="font-size:12px; color:#7b879c; margin-top:16px;">Guarde este número: <strong>pedido ' + r.pedido_numero + '</strong>.</div>';
       html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
       return html + '</div>';
     }
 
-    var pct = r.percentual_sinal || 50;
-    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
-    var resto = Math.max(0, r.total - sinal);
+    var conta = contaDoPagamento(r);
+    var sinal = conta.agora;
+    var resto = conta.resto;
 
     // Nada de "🎉 pedido criado" aqui: o pedido ainda não está de pé, e
     // a versão anterior comemorava justamente na hora em que faltava o
     // passo mais importante. Muita gente fechava achando que acabou.
     html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
     html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
-      + '<strong>Ainda falta o sinal.</strong> Eu começo a imprimir a sua peça assim que ele cair.</div>';
+      + '<strong>Ainda falta pagar.</strong> Eu começo a imprimir a sua peça assim que o pagamento cair.</div>';
 
     html += '<div style="background:#f2f7ff; border:1.5px solid #cfe0ff; border-radius:12px; padding:14px; margin-top:14px;">';
     html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:600; font-size:11px; letter-spacing:1.6px; color:#4a7fd0;">PAGUE AGORA</div>';
     html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:30px; color:#0b1733; line-height:1.2;">' + fmtMoney(sinal) + '</div>';
-    html += '<div style="font-size:12px; color:#5b6a85; margin-top:3px;">é a metade de ' + fmtMoney(r.total) + ' &middot; os outros ' + fmtMoney(resto) + ' só quando a peça ficar pronta</div>';
+    html += '<div style="font-size:12px; color:#5b6a85; margin-top:3px;">'
+      + (conta.ehTudo
+          ? 'é o valor todo do pedido, já com a entrega'
+          : 'é a metade de ' + fmtMoney(r.total) + ' &middot; os outros ' + fmtMoney(resto) + ' só quando a peça ficar pronta')
+      + '</div>';
     html += '</div>';
 
     html += ckPasso(1, 'Copie o código do PIX',
@@ -1496,7 +1496,10 @@ class Component extends DCLogic {
 
     html += '<div style="text-align:left; background:#f7f8fb; border-radius:10px; padding:12px 14px; margin-top:18px; font-size:12.5px; color:#5b6a85; line-height:1.7;">'
       + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:12.5px; color:#0b1733; margin-bottom:4px;">E depois, o que acontece?</div>'
-      + 'Confirmo o seu sinal &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você paga os outros ' + fmtMoney(resto) + ' &rarr; eu envio.</div>';
+      + (conta.ehTudo
+          ? 'Confirmo o seu pagamento &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; eu envio.'
+          : 'Confirmo o seu sinal &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; você paga os outros ' + fmtMoney(resto) + ' &rarr; eu envio.')
+      + '</div>';
 
     html += '<div style="font-size:12px; color:#7b879c; margin-top:12px;">Pode fechar sem medo: guardei o seu <strong>pedido ' + r.pedido_numero + '</strong> aqui e o PIX volta a aparecer quando você abrir a loja de novo.</div>';
     html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
@@ -1566,13 +1569,12 @@ class Component extends DCLogic {
     var g = lerPedidoGuardado();
     if (!g || document.getElementById('avisoPedidoAberto')) return;
     var r = g.resultado;
-    var pct = r.percentual_sinal || 50;
-    var sinal = (r.sinal != null) ? r.sinal : (r.total * pct / 100);
+    var sinal = contaDoPagamento(r).agora;
 
     var barra = document.createElement('div');
     barra.id = 'avisoPedidoAberto';
     barra.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:9998; background:#0b1733; color:#fff; padding:11px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; box-shadow:0 -3px 14px rgba(0,0,0,0.25); font-family:\'Space Grotesk\',sans-serif;';
-    barra.innerHTML = '<span style="font-size:13px; line-height:1.4;">O seu <strong>pedido ' + r.pedido_numero + '</strong> está esperando o sinal de <strong>' + fmtMoney(sinal) + '</strong>.</span>'
+    barra.innerHTML = '<span style="font-size:13px; line-height:1.4;">O seu <strong>pedido ' + r.pedido_numero + '</strong> está esperando o pagamento de <strong>' + fmtMoney(sinal) + '</strong>.</span>'
       + '<button onclick="ckReabrirPedido()" style="border:none; border-radius:9px; background:#0061f7; color:#fff; font-family:inherit; font-weight:700; font-size:13px; padding:9px 15px; cursor:pointer;">Ver o PIX de novo</button>'
       + '<button onclick="ckEsquecerPedido()" style="border:none; background:none; color:#8ea0c0; font-size:12px; cursor:pointer; text-decoration:underline;">já paguei</button>';
     document.body.appendChild(barra);
