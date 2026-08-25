@@ -39,9 +39,15 @@
 <div style="width:100%; max-width:1080px; margin:0 auto; background:#eceef2; background-image:radial-gradient(rgba(11,23,51,0.045) 1.2px, transparent 1.2px); background-size:24px 24px; font-family:'Manrope',sans-serif; color:#0e1626; position:relative;">
 
   <!-- ===================== HEADER ===================== -->
-  <div style="position:relative; background:#000817; overflow:hidden; padding:30px clamp(16px,4vw,40px) 28px; min-height:508px; display:flex; align-items:stretch;">
-    <!-- foto do Rafa em plano de fundo -->
-    <div style="position:absolute; inset:0; background-image:url('assets/rafa_header.png'); background-size:cover; background-position:center 12%; pointer-events:none;"></div>
+  <div style="position:relative; background:#000817; overflow:hidden; padding:30px clamp(16px,4vw,40px) 28px; min-height:clamp(340px,55vw,508px); display:flex; align-items:stretch;">
+    <!-- foto do Rafa em plano de fundo. O rosto dele fica do lado
+         direito da foto original (a impressora ocupa a esquerda) — em
+         tela estreita, "center" cortava bem no meio da foto, cortando
+         o rosto dele ao meio. 82% joga a âncora pra onde o rosto está,
+         então tanto no celular (que só mostra ele) quanto no
+         computador (que ainda mostra parte da impressora) o rosto
+         inteiro continua visível. -->
+    <div style="position:absolute; inset:0; background-image:url('assets/rafa_header.png'); background-size:cover; background-position:82% 15%; pointer-events:none;"></div>
     <!-- degradê navy: forte à esquerda (texto legível) → revela o Rafa à direita -->
     <div style="position:absolute; inset:0; background:linear-gradient(95deg, #000817 0%, rgba(0,8,23,0.86) 22%, rgba(0,8,23,0.5) 42%, rgba(0,8,23,0.2) 60%, rgba(0,8,23,0) 80%); pointer-events:none;"></div>
     <div style="position:absolute; inset:0; background:linear-gradient(0deg, rgba(0,8,23,0.5) 0%, rgba(0,8,23,0) 42%); pointer-events:none;"></div>
@@ -150,24 +156,24 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ p.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ p.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ p.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showHeights }}" hint-placeholder-val="{{ true }}">
               <sc-if value="{{ p.hasH }}" hint-placeholder-val="{{ true }}">
-                <div style="font-size:12px; color:#7b879c; font-weight:500;">Altura: {{ p.h }}</div>
+                <div style="font-size:0.75em; color:#7b879c; font-weight:500;">Altura: {{ p.h }}</div>
               </sc-if>
             </sc-if>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ p.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ p.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ p.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ p.per }}</span>
               </div>
               <sc-if value="{{ p.promo }}" hint-placeholder-val="{{ false }}">
-                <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:700; color:#13348f;">{{ p.promo }}</div>
+                <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:0.75em; font-weight:700; color:#13348f;">{{ p.promo }}</div>
               </sc-if>
             </sc-if>
-            <button onClick="{{ p.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ p.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -198,20 +204,20 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ c.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ c.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ c.name }}</div>
             <div style="flex:1;"></div>
             <div style="display:inline-flex; align-self:flex-start; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:10.5px; letter-spacing:1px; text-transform:uppercase; color:#0061f7; background:#eaf1ff; padding:3px 9px; border-radius:999px;">{{ c.tipo }}</div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ c.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ c.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ c.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ c.per }}</span>
               </div>
               <sc-if value="{{ c.nota }}" hint-placeholder-val="{{ false }}">
-                <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:12px; font-weight:700; color:#13348f;">{{ c.nota }}</div>
+                <div style="margin-top:5px; font-family:'Space Grotesk',sans-serif; font-size:0.75em; font-weight:700; color:#13348f;">{{ c.nota }}</div>
               </sc-if>
             </sc-if>
-            <button onClick="{{ c.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ c.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -242,16 +248,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ h.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ h.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ h.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ h.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ h.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ h.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ h.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ h.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ h.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -282,16 +288,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ u.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ u.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ u.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ u.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ u.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ u.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ u.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ u.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ u.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -322,16 +328,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ w.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ w.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ w.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ w.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ w.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ w.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ w.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ w.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ w.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -362,16 +368,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ k.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ k.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ k.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ k.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ k.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ k.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ k.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ k.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ k.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -402,16 +408,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ ps.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ ps.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ ps.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ ps.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ ps.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ ps.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ ps.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ ps.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ ps.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -442,16 +448,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ d.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ d.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ d.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ d.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ d.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ d.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ d.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ d.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ d.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -481,16 +487,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ b.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ b.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ b.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ b.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ b.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ b.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ b.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ b.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ b.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -520,16 +526,16 @@
               <div style="position:absolute; top:0; left:0; width:50px; height:50px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:17px; display:flex; align-items:center; justify-content:center; padding:0 8px 8px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ m.n }}</div>
             </sc-if>
           </div>
-          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1;">
-            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:14.5px; line-height:1.12; color:#0b1733; min-height:33px;">{{ m.name }}</div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ m.name }}</div>
             <div style="flex:1;"></div>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
               <div style="display:flex; align-items:center; gap:7px;">
-                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:16px; padding:7px 14px; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ m.price }}</span>
-                <span style="font-size:11px; color:#13348f; font-weight:600; font-style:italic;">{{ m.per }}</span>
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ m.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ m.per }}</span>
               </div>
             </sc-if>
-            <button onClick="{{ m.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:13px; color:#fff; background:#0b1733; padding:11px 10px; border-radius:8px;">+ Adicionar Produto</button>
+            <button onClick="{{ m.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
           </div>
         </div>
       </sc-for>
@@ -900,6 +906,11 @@ class Component extends DCLogic {
     // O tamanho de tela real manda mais que aquele padrão do editor.
     const vw = this.state.viewportW || 1200;
     const cols = vw < 340 ? 2 : vw < 700 ? 3 : vw < 1000 ? 4 : 5;
+    // Base de tamanho de letra do card — encolhe junto com a coluna, em
+    // "em" (todo o texto do card é relativo a isso), pra não ficar cada
+    // palavra ("Vaso"/"Serenora"/"Altura"/"18 cm") numa linha, brigando
+    // por um espaço que ficou pequeno demais pro tamanho de letra fixo.
+    const cardFontBase = cols >= 5 ? 16 : cols === 4 ? 15 : cols === 3 ? 13 : 12;
 
     const cartItems = Object.keys(this.state.cart).map(key => ({
       key, ...this.state.cart[key],
