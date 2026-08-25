@@ -560,7 +560,7 @@
       <div style="font-family:'Space Grotesk',sans-serif; font-size:13.5px; color:#cdd9ee; line-height:1.7;">
         1. Escolha as peças e clique em <strong style="color:#fff;">"+ Adicionar Produto"</strong><br/>
         2. No carrinho, clique em <strong style="color:#fff;">"Finalizar a Compra"</strong> e preencha seus dados — é só digitar o CEP que o endereço vem sozinho<br/>
-        3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto<br/>
+        3. Escolha o frete, ou marque <strong style="color:#fff;">"prefiro combinar a entrega"</strong> se você mora perto — nesse caso a entrega fica <strong style="color:#fff;">por sua conta</strong> (você busca, manda um Uber, o que for melhor)<br/>
         4. No fim aparece o <strong style="color:#fff;">PIX já pronto</strong>, com o <strong style="color:#fff;">valor certinho</strong>: um toque copia o código, você cola no app do seu banco e manda o comprovante no nosso WhatsApp<br/>
         5. A gente imprime, avisa quando ficar pronta e manda a sua peça pelo correio<br/>
         <span style="color:#9fb4d8;">Fechou a página sem pagar? Sem problema — o PIX volta a aparecer quando você abrir a loja de novo.</span>
@@ -1057,7 +1057,14 @@ class Component extends DCLogic {
       '<div style="margin-top:16px; padding-top:14px; border-top:1px solid #f0f1f4;">' +
       '<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#0b1733; cursor:pointer;">' +
       '<input type="checkbox" id="ckCombinar" onchange="ckToggleCombinar()"' + (CK.combinar ? ' checked' : '') + '> Prefiro combinar a entrega (retirar, Uber, moro perto...)' +
-      '</label></div>' +
+      '</label>' +
+      // Marcar isto não é "entrega grátis", e é fácil entender assim.
+      // Fica logo embaixo da marcação, no momento em que a pessoa
+      // escolhe — e não só na tela do fim, quando já decidiu.
+      '<div style="font-size:11.5px; color:#7b879c; margin:6px 0 0 24px; line-height:1.5;">' +
+        'Nesse caso a entrega fica <strong>por sua conta</strong>: você vem buscar, manda um Uber ou combina outro jeito com a gente. ' +
+        'O valor acima é só das peças.' +
+      '</div></div>' +
       '<div id="ckEnderecoFields" style="display:' + (CK.combinar ? 'none' : 'block') + ';">' +
       ckLabel('CEP') + '<input id="ckCep" style="' + ckInputStyle() + '" placeholder="00000-000" maxlength="9" value="' + (e.cep || '') + '" oninput="ckCepDigitado(this.value)">' +
       '<div id="ckCepStatus" style="font-size:11.5px; color:#7b879c; margin:-2px 0 4px;">' + (CK.buscandoCep ? 'Buscando endereço...' : (achado === false ? 'Não achei esse CEP — preenche o endereço na mão.' : '')) + '</div>' +
@@ -1289,7 +1296,7 @@ class Component extends DCLogic {
     // No pedido com entrega a combinar a mensagem do servidor não leva
     // valor nenhum — e quem recebe fica sem saber quanto cobrar sem ir
     // procurar o pedido no sistema.
-    if (r.combinar) extra += '\n\nMinhas peças deram ' + fmtMoney(r.total) + ' (falta combinar a entrega).';
+    if (r.combinar) extra += '\n\nMinhas peças deram ' + fmtMoney(r.total) + '. Sei que a entrega fica por minha conta — vamos combinar como faço pra buscar.';
     if (escolhidas.length) extra += '\n\nCores que escolhi:\n' + escolhidas.join('\n');
     if (!extra) return r.whatsapp_url;
 
@@ -1432,7 +1439,10 @@ class Component extends DCLogic {
 
       html += '<div style="background:#f2f7ff; border:1.5px solid #cfe0ff; border-radius:12px; padding:13px; margin-top:14px; text-align:left; font-size:13px; color:#33507d; line-height:1.8;">';
       html += '<div style="display:flex; justify-content:space-between;"><span>Suas peças</span><strong>' + fmtMoney(r.total) + '</strong></div>';
-      html += '<div style="display:flex; justify-content:space-between;"><span>Entrega</span><strong>a combinar</strong></div>';
+      html += '<div style="display:flex; justify-content:space-between;"><span>Entrega</span><strong>por sua conta</strong></div>';
+      html += '<div style="font-size:11.5px; color:#5b7099; line-height:1.5; margin-top:6px; border-top:1px solid #cfe0ff; padding-top:6px;">'
+        + 'Você vem buscar, manda um Uber ou combina outro jeito com a gente — o custo disso é seu. '
+        + 'O PIX que eu te mandar vai ser só das peças.</div>';
       html += '</div>';
 
       html += ckPasso(1, 'Me chame no WhatsApp',
@@ -1440,7 +1450,7 @@ class Component extends DCLogic {
         + '<a href="' + ckWhatsappComCores(r) + '" target="_blank" style="display:block; text-align:center; padding:12px; border-radius:10px; background:#0f7850; color:#fff; text-decoration:none; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">Combinar a entrega no WhatsApp</a>');
 
       html += ckPasso(2, 'Aí eu te mando o PIX',
-        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Vai ser o <strong>total</strong> — as peças mais a entrega — pra eu começar a imprimir.</div>');
+        '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Vai ser <strong>' + fmtMoney(r.total) + '</strong>, só das peças, pra eu começar a imprimir. A entrega você resolve do seu jeito.</div>');
 
       html += ckPasso(3, 'Eu imprimo e mando',
         '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Te aviso quando a sua peça ficar pronta e combino a entrega com você.</div>');
