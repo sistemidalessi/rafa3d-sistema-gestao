@@ -132,9 +132,19 @@
   tr:hover td { background: #f7f9fc; }
   .row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
   .prod-name { font-weight: 700; }
+  /* As cinco cores valem o mesmo em todo o sistema:
+     verde = deu certo · azul = está acontecendo · amarelo = precisa de
+     você · vermelho = deu errado · cinza = parado, esperando.
+
+     "andando" e "parado" existem porque tudo que estava em andamento
+     usava .off, que é vermelho — "gerando modelo 3D…" aparecia com a
+     mesma cara de "erro". */
   .badge { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
   .badge.on { background: #e5f6ea; color: #1f8a3b; }
   .badge.off { background: #fdeaea; color: #c0392b; }
+  .badge.andando { background: #e8f1ff; color: #1f4f9c; }
+  .badge.atencao { background: #fff6e5; color: #8a5b00; }
+  .badge.parado { background: #eef0f4; color: #5b6a85; }
   .thumb { width: 88px; height: 88px; object-fit: cover; object-position: center; background: #f3f4f7; border-radius: 50%; border: 1px solid var(--border); }
 
   /* ---- modal ---- */
@@ -846,6 +856,81 @@ const ORDER_STATUS_LABELS = {
   cancelado: 'Cancelado',
 };
 
+/* ====== CORES DOS STATUS ======
+   Numa lista, "Imprimindo" e "Recebido" tinham exatamente a mesma cara —
+   pra achar o que está na impressora agora era preciso ler linha por
+   linha. Cor resolve isso antes da leitura, e é o que mais ajuda quem
+   tem 10 anos.
+
+   São cinco significados, e a mesma cor quer dizer a mesma coisa em
+   qualquer aba do sistema:
+
+     cinza    = chegou, ainda não começou
+     amarelo  = precisa de você agora
+     azul     = está acontecendo
+     verde    = terminou, deu certo
+     vermelho = deu errado ou foi cancelado */
+const TOM = {
+  parado:   { bg: '#eef0f4', fg: '#5b6a85', borda: '#dfe3ea' },
+  atencao:  { bg: '#fff6e5', fg: '#8a5b00', borda: '#ffd894' },
+  andando:  { bg: '#e8f1ff', fg: '#1f4f9c', borda: '#c3daff' },
+  pronto:   { bg: '#e6f6ee', fg: '#0f6b45', borda: '#b6e3cd' },
+  problema: { bg: '#fdeaea', fg: '#a62828', borda: '#f5c6c6' },
+};
+
+const TOM_DO_STATUS = {
+  // peça dentro do pedido
+  recebido: 'parado',
+  orcamento_pendente: 'atencao',
+  orcamento_aprovado: 'parado',
+  fila_impressao: 'atencao',
+  imprimindo: 'andando',
+  pos_processamento: 'andando',
+  embalado: 'andando',
+  enviado: 'pronto',
+  entregue: 'pronto',
+  falhou_reimprimir: 'problema',
+  cancelado: 'problema',
+  // pedido
+  orcamento: 'atencao',
+  aguardando_aprovacao: 'atencao',
+  aprovado: 'parado',
+  em_producao: 'andando',
+  concluido: 'pronto',
+  // pagamento
+  aguardando_sinal: 'atencao',
+  sinal_pago: 'andando',
+  quitado: 'pronto',
+};
+
+function tomDoStatus(status) {
+  return TOM[TOM_DO_STATUS[status]] || TOM.parado;
+}
+
+// Etiqueta colorida, pra status que só se lê (não dá pra mudar ali).
+function selo(status, texto) {
+  const t = tomDoStatus(status);
+  return '<span style="display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;'
+    + ' background:' + t.bg + '; color:' + t.fg + '; border:1px solid ' + t.borda + ';">'
+    + escapeHtml(texto || status || '—') + '</span>';
+}
+
+// A lista de escolher status também ganha cor: é onde ela mais faz
+// falta, porque é o que aparece repetido linha após linha.
+function estiloDoSelect(status) {
+  const t = tomDoStatus(status);
+  return 'background:' + t.bg + '; color:' + t.fg + '; border:1.5px solid ' + t.borda + '; font-weight:600;';
+}
+
+// Repinta o próprio select assim que muda, sem esperar a tela
+// redesenhar — a cor tem que responder na hora do clique.
+window.repintarSelect = function (el) {
+  const t = tomDoStatus(el.value);
+  el.style.background = t.bg;
+  el.style.color = t.fg;
+  el.style.borderColor = t.borda;
+};
+
 /* ============================================================
    PROJETOS — pedido personalizado com foto do cliente + IA
    (reaproveita order_line_items com line_type='custom'; não é
@@ -859,7 +944,7 @@ function projetoStatusBadge(li) {
     return '<span class="badge on">Aprovado — virou pedido</span>';
   }
   if (li.line_status === 'cancelado') return '<span class="badge off">Cancelado</span>';
-  if (li.meshy_status === 'queued' || li.meshy_status === 'processing') return '<span class="badge off">Gerando modelo 3D…</span>';
+  if (li.meshy_status === 'queued' || li.meshy_status === 'processing') return '<span class="badge andando">Gerando modelo 3D…</span>';
   if (li.model_file_path) return '<span class="badge on">Modelo pronto — falta aprovar preço</span>';
   return '<span style="color:var(--muted); font-size:11px;">Recebido — aguardando modelo 3D</span>';
 }
@@ -1025,7 +1110,7 @@ async function abrirGerenciarProjeto(lineItemId) {
   html += '<span>1. Modelo 3D — ' + (li.model_file_path
     ? '<span class="badge on">' + (ORIGEM_MODELO_LABEL[li.model_source] || 'anexado') + '</span>'
     : modeloEmAndamento
-      ? '<span class="badge off">gerando…</span>'
+      ? '<span class="badge andando">gerando…</span>'
       : modeloErro
         ? '<span class="badge off" title="' + escapeHtml(li.meshy_error || li.hi3d_error || '') + '">erro</span>'
         : !li.custom_reference_image_path
@@ -1043,7 +1128,7 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '<div style="padding:10px 0; border-top:1px solid var(--border);">';
     html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
     const emAndamentoIAProj = li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing';
-    html += '<span>2. Colinha de Fatiamento (IA) — ' + (li.ai_analysis_status === 'done' ? '<span class="badge on">pronta</span>' : li.ai_analysis_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.ai_analysis_error || '') + '">erro</span>' : emAndamentoIAProj ? '<span class="badge off">analisando…</span>' : '<span style="color:var(--muted); font-size:11px;">não pedida</span>') + '</span>';
+    html += '<span>2. Colinha de Fatiamento (IA) — ' + (li.ai_analysis_status === 'done' ? '<span class="badge on">pronta</span>' : li.ai_analysis_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.ai_analysis_error || '') + '">erro</span>' : emAndamentoIAProj ? '<span class="badge andando">analisando…</span>' : '<span style="color:var(--muted); font-size:11px;">não pedida</span>') + '</span>';
     if (li.ai_analysis_status === 'done') {
       html += '<button class="btn ghost" onclick="solicitarAnaliseIAProjeto(\'' + li.id + '\')">🔁 Analisar de novo</button>';
     } else if (!emAndamentoIAProj) {
@@ -1062,7 +1147,7 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '</div>';
 
     html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-    html += '<span>3. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge off">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
+    html += '<span>3. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge andando">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
     html += '<button class="btn ghost" onclick="solicitarAbrirFatiadorProjeto(\'' + li.id + '\')" ' + (li.open_slicer_status === 'queued' ? 'disabled' : '') + '>🖥️ Abrir no Fatiador</button>';
     html += '</div>';
   }
@@ -1089,8 +1174,8 @@ async function abrirGerenciarProjeto(lineItemId) {
 }
 
 const PARTE_STATUS_BADGE = {
-  queued: '<span class="badge off">na fila…</span>',
-  processing: '<span class="badge off">gerando…</span>',
+  queued: '<span class="badge andando">na fila…</span>',
+  processing: '<span class="badge andando">gerando…</span>',
   done: '<span class="badge on">pronto</span>',
   error: '<span class="badge off">erro</span>',
 };
@@ -1485,9 +1570,9 @@ async function renderPedidos() {
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
       html += '<td>' + escapeHtml(o.customers ? o.customers.name : (o.customer_name || '—')) + '</td>';
       html += '<td>' + escapeHtml(ORDER_TYPE_LABELS[o.order_type] || o.order_type) + '</td>';
-      html += '<td>' + escapeHtml(ORDER_STATUS_LABELS[o.status] || o.status) + '</td>';
+      html += '<td>' + selo(o.status, ORDER_STATUS_LABELS[o.status] || o.status) + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
-      html += '<td><span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></td>';
+      html += '<td>' + (ps ? selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) : '—') + '</td>';
       html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\')">Abrir</button>' +
         '<button class="btn ghost" onclick="excluirPedido(\'' + o.id + '\')">🗑️</button></td>';
       html += '</tr>';
@@ -1562,12 +1647,12 @@ let _pedidoPollTimer = null;
 const SEGUNDOS_PRA_CONSIDERAR_PARADO = 90;
 
 async function avisoAgenteParado() {
-  let agentes = [];
-  try {
-    agentes = await q(SUPA.from('slicer_agents').select('name, last_seen_at')) || [];
-  } catch (e) {
-    return ''; // sem permissão ou sem tabela: melhor não avisar nada
-  }
+  // Consulta crua de propósito, sem passar pelo q(): ele mostra o erro
+  // numa tarja pra quem está usando, e uma falha ao CONFERIR o agente
+  // não é assunto do Rafa — se não deu pra saber, é melhor não dizer
+  // nada do que assustar com um erro que ele não pode resolver.
+  const { data: agentes, error } = await SUPA.from('slicer_agents').select('name, last_seen_at');
+  if (error || !agentes) return '';
   const agora = Date.now();
   const vivo = agentes.some((a) => (agora - new Date(a.last_seen_at)) / 1000 < SEGUNDOS_PRA_CONSIDERAR_PARADO);
   if (vivo) return '';
@@ -1667,7 +1752,7 @@ async function renderPedidoDetalhe(id) {
   html += '<div><strong>' + escapeHtml(order.order_number || order.id.slice(0, 8)) + '</strong><br>';
   html += '<span style="color:var(--muted);">' + escapeHtml(nomeCliente) + (contatoCliente ? ' · ' + escapeHtml(contatoCliente) : '') + '</span></div>';
   html += '<div style="text-align:right;"><div>' + fmtMoney(order.total_amount) + '</div>';
-  html += '<span class="badge ' + (ps && ps.payment_status === 'quitado' ? 'on' : 'off') + '">' + (ps ? PAYMENT_STATUS_LABELS[ps.payment_status] : '—') + '</span></div>';
+  html += (ps ? selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) : '—') + '</div>';
   html += '</div>';
   html += '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">';
   if (contatoCliente) {
@@ -1734,7 +1819,7 @@ async function renderPedidoDetalhe(id) {
       html += '</td>';
       html += '<td>' + it.quantity + '</td>';
       html += '<td>' + fmtMoney(it.unit_price * it.quantity) + '</td>';
-      html += '<td><select onchange="mudarStatusItem(\'' + it.id + '\', this.value, \'' + id + '\')">';
+      html += '<td><select style="' + estiloDoSelect(it.line_status) + '" onchange="repintarSelect(this); mudarStatusItem(\'' + it.id + '\', this.value, \'' + id + '\')">';
       Object.keys(LINE_STATUS_LABELS).forEach((k) => {
         html += '<option value="' + k + '"' + (k === it.line_status ? ' selected' : '') + '>' + LINE_STATUS_LABELS[k] + '</option>';
       });
@@ -2039,7 +2124,7 @@ function renderGrupoFila(titulo, printerId, itens, impressoras) {
       html += '<option value="">— nenhuma —</option>';
       impressoras.forEach((p) => { html += '<option value="' + p.id + '"' + (p.id === printerId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>'; });
       html += '</select></td>';
-      html += '<td><select onchange="mudarStatusFilaItem(\'' + it.id + '\', this.value)">';
+      html += '<td><select style="' + estiloDoSelect(it.line_status) + '" onchange="repintarSelect(this); mudarStatusFilaItem(\'' + it.id + '\', this.value)">';
       Object.keys(LINE_STATUS_LABELS).forEach((k) => {
         html += '<option value="' + k + '"' + (k === it.line_status ? ' selected' : '') + '>' + LINE_STATUS_LABELS[k] + '</option>';
       });
@@ -2754,7 +2839,7 @@ let _fatiamentoPollTimer = null;
 
 function renderFatiamentoCell(p) {
   if (!p.model_file_path) return '<span style="color:var(--muted); font-size:11px;">sem arquivo 3D</span>';
-  if (p.open_slicer_status === 'queued') return '<span class="badge off">Abrindo…</span>';
+  if (p.open_slicer_status === 'queued') return '<span class="badge andando">Abrindo…</span>';
   if (p.open_slicer_status === 'error') {
     return '<span class="badge off" title="' + escapeHtml(p.open_slicer_error || '') + '" style="cursor:help;">Erro</span>' +
       '<div style="font-size:11px; color:var(--muted); margin-top:3px; max-width:220px;">' + escapeHtml(p.open_slicer_error || '') + '</div>';
@@ -2777,7 +2862,7 @@ function renderFatiamentoBtns(p) {
     out += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\')">' +
       (p.ai_analysis_status === 'error' ? '🔁 Tentar IA de novo' : '🤖 Analisar com IA') + '</button>';
   } else {
-    out += '<span class="badge off">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
+    out += '<span class="badge andando">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
   }
   return out;
 }
@@ -4114,7 +4199,7 @@ async function renderFinanceiro() {
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td>' + fmtMoney(ps.total_paid) + '</td>';
       html += '<td>' + fmtMoney(falta) + '</td>';
-      html += '<td><span class="badge off">' + PAYMENT_STATUS_LABELS[ps.payment_status] + '</span></td>';
+      html += '<td>' + selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) + '</td>';
       html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\'); showTab(\'pedidos\');">Abrir</button></td>';
       html += '</tr>';
     });
