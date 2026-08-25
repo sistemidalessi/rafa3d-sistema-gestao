@@ -853,7 +853,10 @@ class Component extends DCLogic {
     // (ver comentário lá embaixo), e precisa das mesmas cores pra montar
     // o seletor. Publicar aqui evita manter duas listas que vão
     // divergir na primeira cor nova que entrar.
-    window.RAFA_CORES = filaments.map(function (f) { return f.name; });
+    // Leva o nome E a cor de fundo: o checkout desenha a bolinha de cada
+    // cor do lado do nome, e escolher "Vermelho Marsala" olhando pra
+    // bolinha é bem mais fácil que adivinhar pelo nome.
+    window.RAFA_CORES = filaments.map(function (f) { return { name: f.name, bg: f.bg }; });
 
     const cars = this.state.cars || [];
     const holders = this.state.holders || [];
@@ -1020,29 +1023,77 @@ class Component extends DCLogic {
   // mensagem que o cliente manda no WhatsApp junto com o comprovante.
   // Ainda não fica gravada no pedido dentro do sistema — pra isso a
   // Edge Function finalizar-pedido teria que aceitar e gravar a cor.
+  // Quem escolhe "outra cor" não está adiando: está dizendo que nenhuma
+  // das 35 serve. É diferente do antigo "escolher depois", que a maioria
+  // deixava passar sem pensar e virava conversa no WhatsApp depois.
+  var OUTRA_COR = 'Quero outra cor (vou sugerir no WhatsApp)';
+
   function ckHtmlCores() {
     var cores = window.RAFA_CORES || [];
     if (!cores.length) return '';
     var html = '<div style="background:#f7f8fb; border:1px solid #e7e9ef; border-radius:10px; padding:12px 14px; margin-bottom:14px;">';
-    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:13.5px; color:#0b1733; margin-bottom:2px;">Em qual cor você quer cada peça?</div>';
-    html += '<div style="font-size:11.5px; color:#7b879c; margin-bottom:10px;">Se não escolher, a gente combina depois pelo WhatsApp.</div>';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:15px; color:#0b1733;">Escolha a cor</div>';
+    html += '<div style="font-size:11.5px; color:#7b879c; margin-bottom:12px;">Toque na bolinha da cor que você quer. É obrigatório — sem isso eu não sei de que cor imprimir.</div>';
+
     CK.cartItems.forEach(function (it, i) {
       var escolhida = CK.cores[it.code] || '';
-      html += '<div style="margin-bottom:8px;">';
-      html += '<div style="font-size:12.5px; color:#0b1733; margin-bottom:3px;">' + it.qty + 'x ' + it.name + '</div>';
-      html += '<select id="ckCor' + i + '" onchange="ckCorEscolhida(' + i + ', this.value)" style="' + ckInputStyle() + '">';
-      html += '<option value="">— escolher depois —</option>';
+      html += '<div id="ckCorBloco' + i + '" style="margin-bottom:14px;">';
+      html += '<div style="font-size:12.5px; font-weight:600; color:#0b1733; margin-bottom:2px;">' + it.qty + 'x ' + it.name + '</div>';
+      html += '<div id="ckCorNome' + i + '" style="font-size:12px; color:' + (escolhida ? '#0f7850' : '#c0392b') + '; margin-bottom:7px;">'
+        + (escolhida ? '✓ ' + escolhida : 'Falta escolher a cor') + '</div>';
+
+      // Grade de bolinhas em vez de lista suspensa: no celular, tocar
+      // numa cor que você está vendo é mais fácil do que rolar 35 nomes.
+      html += '<div style="display:flex; flex-wrap:wrap; gap:7px;">';
       cores.forEach(function (c) {
-        html += '<option value="' + c + '"' + (c === escolhida ? ' selected' : '') + '>' + c + '</option>';
+        var sel = c.name === escolhida;
+        html += '<button type="button" title="' + c.name.replace(/"/g, '') + '" onclick="ckCorEscolhida(' + i + ', this.dataset.cor)" data-cor="' + c.name.replace(/"/g, '') + '"'
+          + ' style="width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; background:' + (c.bg || '#ccc').replace(/"/g, '')
+          + '; border:' + (sel ? '3px solid #0061f7' : '1px solid rgba(0,0,0,0.15)')
+          + '; box-shadow:' + (sel ? '0 0 0 2px #fff inset' : '0 1px 2px rgba(0,0,0,0.12)') + ';"></button>';
       });
-      html += '</select></div>';
+      html += '</div>';
+
+      html += '<label style="display:flex; align-items:center; gap:7px; margin-top:9px; font-size:12px; color:#5b6a85; cursor:pointer;">'
+        + '<input type="radio" name="ckOutra' + i + '"' + (escolhida === OUTRA_COR ? ' checked' : '')
+        + ' onchange="ckCorEscolhida(' + i + ', \'' + OUTRA_COR + '\')" style="width:auto; margin:0;">'
+        + 'Não achei a cor que eu queria — quero sugerir outra</label>';
+      html += '</div>';
     });
     return html + '</div>';
   }
 
+  // Falta alguma peça sem cor? Devolve o nome da primeira, pra mensagem
+  // dizer QUAL peça está pendente em vez de um "escolha as cores" solto.
+  function ckPecaSemCor() {
+    for (var i = 0; i < CK.cartItems.length; i++) {
+      if (!CK.cores[CK.cartItems[i].code]) return CK.cartItems[i].name;
+    }
+    return null;
+  }
+
   window.ckCorEscolhida = function (i, valor) {
     var item = CK.cartItems[i];
-    if (item) CK.cores[item.code] = valor;
+    if (!item) return;
+    CK.cores[item.code] = valor;
+
+    // Repinta só este bloco, na mão. Redesenhar a tela inteira apagaria
+    // o nome, o WhatsApp e o CPF que a pessoa já tivesse digitado.
+    var bloco = document.getElementById('ckCorBloco' + i);
+    if (!bloco) return;
+    var aviso = document.getElementById('ckCorNome' + i);
+    if (aviso) {
+      aviso.textContent = '✓ ' + valor;
+      aviso.style.color = '#0f7850';
+    }
+    bloco.querySelectorAll('button[data-cor]').forEach(function (b) {
+      var sel = b.dataset.cor === valor;
+      b.style.border = sel ? '3px solid #0061f7' : '1px solid rgba(0,0,0,0.15)';
+      b.style.boxShadow = sel ? '0 0 0 2px #fff inset' : '0 1px 2px rgba(0,0,0,0.12)';
+    });
+    // Escolher uma bolinha desmarca o "quero outra cor", e vice-versa.
+    var radio = bloco.querySelector('input[type="radio"]');
+    if (radio) radio.checked = (valor === OUTRA_COR);
   };
 
   function ckHtmlDados() {
@@ -1079,13 +1130,21 @@ class Component extends DCLogic {
       '<div style="flex:1;">' + ckLabel('UF') + '<input id="ckEstado" maxlength="2"' + (achado ? ' readonly' : '') + ' style="' + ckInputStyleAuto() + '" value="' + (e.estado || '') + '"></div>' +
       '</div>' +
       '</div>' +
-      '<button onclick="ckAvancarDados()" style="width:100%; margin-top:18px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' +
+      '<button id="ckBotaoAvancar" onclick="ckAvancarDados()" style="width:100%; margin-top:18px; padding:12px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; cursor:pointer;">' +
       (CK.carregando ? 'Calculando...' : (CK.combinar ? 'Continuar' : 'Calcular frete')) + '</button>';
   }
 
   window.ckToggleCombinar = function () {
     CK.combinar = document.getElementById('ckCombinar').checked;
     document.getElementById('ckEnderecoFields').style.display = CK.combinar ? 'none' : 'block';
+    // O rótulo do botão precisa mudar junto. Quem marcou "combinar a
+    // entrega" não vai calcular frete nenhum, e o botão continuar
+    // dizendo "Calcular frete" fazia a pessoa achar que marcou errado.
+    //
+    // Não dá pra simplesmente redesenhar a tela aqui: ela redesenharia
+    // por cima do que a pessoa já digitou.
+    var botao = document.getElementById('ckBotaoAvancar');
+    if (botao) botao.textContent = CK.combinar ? 'Continuar' : 'Calcular frete';
   };
 
   var ckCepTimer = null;
@@ -1170,6 +1229,15 @@ class Component extends DCLogic {
   window.ckAvancarDados = function () {
     ckSalvarDadosDoForm();
     var e = CK.endereco;
+    // A cor vem antes de tudo: é o campo mais fácil de esquecer e o que
+    // mais dá trabalho depois, porque vira conversa no WhatsApp com a
+    // peça já na fila.
+    var semCor = ckPecaSemCor();
+    if (semCor) {
+      CK.erro = 'Falta escolher a cor de "' + semCor + '". Toque numa bolinha lá em cima.';
+      ckRender();
+      return;
+    }
     if (!e.nome) { CK.erro = 'Preenche seu nome.'; ckRender(); return; }
     if (!e.contato) { CK.erro = 'Preenche seu WhatsApp.'; ckRender(); return; }
     if (!ckCpfValido(e.documento)) { CK.erro = 'Preenche um CPF válido.'; ckRender(); return; }
