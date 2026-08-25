@@ -16,6 +16,42 @@ import { withSupabase } from "@supabase/server";
 const ME_API = "https://melhorenvio.com.br/api/v2/me";
 const PACOTE_PADRAO = { altura_cm: 10, largura_cm: 15, comprimento_cm: 20, peso_kg: 0.3 };
 
+// Pega o link de impressão e o código de rastreio de uma etiqueta que
+// JÁ foi comprada e gerada.
+//
+// Duas coisas que a primeira versão errava:
+//
+//   mode=public, não private. O link privado exige estar logado no
+//   Melhor Envio pra abrir — inútil pra quem só quer imprimir.
+//
+//   O rastreio vem DEPOIS de gerar, não na criação do carrinho. Lendo
+//   do carrinho ele vinha sempre nulo, porque naquele momento o envio
+//   ainda nem tinha sido comprado.
+async function buscarEtiquetaPronta(cartItemId: string, token: string) {
+  let url: string | null = null;
+  let tracking: string | null = null;
+
+  try {
+    const impressao = await chamarMelhorEnvio(
+      "/shipment/print?mode=public&orders%5B%5D=" + encodeURIComponent(cartItemId), token, "GET",
+    );
+    url = impressao?.url || null;
+  } catch (e) {
+    console.error("Não consegui o link de impressão:", (e as Error).message);
+  }
+
+  try {
+    const info = await chamarMelhorEnvio("/shipment/tracking", token, "POST", { orders: [cartItemId] });
+    // A resposta vem com o id do envio como chave.
+    const envio = info?.[cartItemId] || (info && typeof info === "object" ? Object.values(info)[0] : null);
+    tracking = (envio as any)?.tracking || (envio as any)?.self_tracking || null;
+  } catch (e) {
+    console.error("Não consegui o código de rastreio:", (e as Error).message);
+  }
+
+  return { url, tracking };
+}
+
 async function chamarMelhorEnvio(caminho: string, token: string, metodo: string, corpo?: unknown) {
   const resp = await fetch(ME_API + caminho, {
     method: metodo,
@@ -63,7 +99,16 @@ export default {
     const { data: pedido, error: erroPedido } = await ctx.supabaseAdmin.from("orders").select("*").eq("id", orderId).single();
     if (erroPedido || !pedido) return Response.json({ error: "Pedido não encontrado." }, { status: 404 });
     if (pedido.shipping_combinar) return Response.json({ error: "Esse pedido é de entrega combinada, não tem etiqueta pelo Melhor Envio." }, { status: 400 });
-    if (pedido.shipping_label_status === "gerada") return Response.json({ error: "Esse pedido já tem etiqueta gerada." }, { status: 409 });
+    // Etiqueta já gerada mas SEM o link de impressão é o caso do pedido
+    // que foi comprado antes de 25/08/2026, quando o link vinha em modo
+    // privado (que exige login no Melhor Envio) e acabava salvo como
+    // nulo. Recuperar aqui é obrigatório: a etiqueta já foi PAGA, e
+    // mandar comprar de novo seria cobrar duas vezes pelo mesmo envio.
+    const precisaRecuperar = pedido.shipping_label_status === "gerada" &&
+      !pedido.shipping_label_url && pedido.shipping_melhorenvio_id;
+    if (pedido.shipping_label_status === "gerada" && !precisaRecuperar) {
+      return Response.json({ error: "Esse pedido já tem etiqueta gerada." }, { status: 409 });
+    }
     if (!pedido.shipping_service_id) return Response.json({ error: "Esse pedido não tem o serviço de frete registrado (pedido antigo, de antes dessa função existir)." }, { status: 400 });
 
     const { data: itens, error: erroItens } = await ctx.supabaseAdmin
@@ -76,6 +121,23 @@ export default {
     const origem = JSON.parse(origemRaw);
 
     const qtdTotal = itens.reduce((s: number, it: any) => s + it.quantity, 0);
+
+    // Recuperação: a etiqueta já existe e já foi paga, só falta o link.
+    // Não passa por carrinho, checkout nem generate — nada é comprado.
+    if (precisaRecuperar) {
+      const { url, tracking } = await buscarEtiquetaPronta(pedido.shipping_melhorenvio_id, token);
+      if (!url) {
+        return Response.json({
+          error: "A etiqueta existe no Melhor Envio, mas não consegui o link de impressão agora. Tente de novo em instantes.",
+        }, { status: 502 });
+      }
+      await ctx.supabaseAdmin.from("orders").update({
+        shipping_label_url: url,
+        shipping_tracking_code: tracking ?? pedido.shipping_tracking_code,
+        updated_at: new Date().toISOString(),
+      }).eq("id", orderId);
+      return Response.json({ ok: true, recuperada: true, tracking, label_url: url });
+    }
 
     try {
       const carrinho = await chamarMelhorEnvio("/cart", token, "POST", {
@@ -118,20 +180,19 @@ export default {
       const cartItemId = carrinho.id;
       await chamarMelhorEnvio("/shipment/checkout", token, "POST", { orders: [cartItemId] });
       await chamarMelhorEnvio("/shipment/generate", token, "POST", { orders: [cartItemId] });
-      const impressao = await chamarMelhorEnvio(
-        "/shipment/print?mode=private&orders%5B%5D=" + encodeURIComponent(cartItemId), token, "GET",
-      );
+
+      const { url, tracking } = await buscarEtiquetaPronta(cartItemId, token);
 
       await ctx.supabaseAdmin.from("orders").update({
         shipping_label_status: "gerada",
         shipping_label_error: null,
-        shipping_tracking_code: carrinho.tracking || null,
-        shipping_label_url: impressao.url || null,
+        shipping_tracking_code: tracking,
+        shipping_label_url: url,
         shipping_melhorenvio_id: cartItemId,
         updated_at: new Date().toISOString(),
       }).eq("id", orderId);
 
-      return Response.json({ ok: true, tracking: carrinho.tracking || null, label_url: impressao.url || null });
+      return Response.json({ ok: true, tracking, label_url: url });
     } catch (e: any) {
       console.error("Erro gerando etiqueta:", e.message, e.detalhe);
       await ctx.supabaseAdmin.from("orders").update({

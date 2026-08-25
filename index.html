@@ -1771,7 +1771,16 @@ async function renderPedidoDetalhe(id) {
         html += '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border);">';
         html += '<span class="badge on">Etiqueta gerada</span> ';
         if (order.shipping_tracking_code) html += '<span style="font-size:12px; color:var(--muted);">Rastreio: ' + escapeHtml(order.shipping_tracking_code) + '</span>';
-        if (order.shipping_label_url) html += '<div style="margin-top:6px;"><a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn ghost">🖨️ Abrir etiqueta pra imprimir</a></div>';
+        if (order.shipping_label_url) {
+          html += '<div style="margin-top:6px;"><a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn">🖨️ Abrir etiqueta pra imprimir</a></div>';
+        } else {
+          // Sem link, a tela dizia "Etiqueta gerada" e mais nada — um
+          // beco, com a etiqueta paga e sem jeito de imprimir. O botão
+          // busca o link no Melhor Envio; não compra nada de novo.
+          html += '<div style="margin-top:8px; background:#fff6e5; border:1px solid #ffd894; border-radius:9px; padding:9px 11px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
+            + 'A etiqueta foi comprada, mas o link pra imprimir não veio junto. Não precisa comprar de novo — é só buscar.</div>'
+            + '<button class="btn" style="margin-top:8px;" onclick="gerarEtiqueta(\'' + id + '\')" id="btnGerarEtiqueta">🔎 Buscar o link da etiqueta</button>';
+        }
         html += '</div>';
       } else {
         if (order.shipping_label_status === 'erro') {
