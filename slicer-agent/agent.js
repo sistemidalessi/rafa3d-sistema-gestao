@@ -429,6 +429,54 @@ async function tickAI() {
 // "Abrir no Fatiador": baixa o arquivo e já abre no Bambu Studio, sem clicar
 // em nada dentro do programa — só isso, sem automação de tela nenhuma, por
 // isso não tem o risco de segurança que a automação de clique tinha.
+// Deixa o arquivo pronto pra abrir no fatiador com a colinha já
+// aplicada, e devolve o caminho local.
+//
+// Existia em duas cópias quase iguais (projeto e partes de projeto), e
+// o caminho dos PRODUTOS não tinha nenhuma — abria o arquivo cru, e a
+// colinha que a IA escrevia ficava só bonita na tela. Virou função
+// única justamente pra não haver uma quarta cópia onde esquecer de
+// novo.
+//
+// Dois casos, e os dois caem pro arquivo original se algo der errado:
+// nunca vale travar o pedido por causa da configuração.
+//
+//   .3mf que veio pronto (Hi3D ou anexado à mão) — tem a malha e as
+//   cores certas, mas a configuração de quem gerou. Reconfigura por
+//   cima, preservando a peça.
+//
+//   .stl cru — não tem configuração nenhuma, então monta um .3mf do
+//   zero com impressora, filamento e a colinha.
+function prepararArquivoPraFatiador(buf, ext, ajustes, modelSource, nomeSeguro, downloadsDir, nomeRef) {
+  const e = String(ext || '').toLowerCase();
+  const veioPronto = modelSource === 'hi3d_dividido' || modelSource === 'manual_upload';
+
+  if (veioPronto && e === '.3mf') {
+    try {
+      const caminho = path.join(downloadsDir, nomeSeguro + '.3mf');
+      fs.writeFileSync(caminho, reconfigurarHi3d3mf(buf, ajustes));
+      log('"' + nomeRef + '" (' + modelSource + ') com a impressora e a colinha já aplicadas.');
+      return caminho;
+    } catch (err) {
+      log('AVISO: não consegui aplicar a colinha no .3mf de "' + nomeRef + '" (' + err.message + ') — abrindo como veio, sem mexer.');
+    }
+  } else if (e === '.stl' && ajustes) {
+    try {
+      const resultado = gerarModelo3mfConfigurado(buf, ajustes, nomeSeguro + '.stl', modelSource);
+      const caminho = path.join(downloadsDir, nomeSeguro + '.3mf');
+      fs.writeFileSync(caminho, resultado.buffer);
+      logTamanhoConvertido(nomeRef, resultado);
+      return caminho;
+    } catch (err) {
+      log('AVISO: não consegui pré-configurar o .3mf de "' + nomeRef + '" (' + err.message + ') — abrindo o .stl puro mesmo.');
+    }
+  }
+
+  const caminho = path.join(downloadsDir, nomeSeguro + e);
+  fs.writeFileSync(caminho, buf);
+  return caminho;
+}
+
 async function abrirNoFatiador(product) {
   try {
     if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
@@ -441,8 +489,10 @@ async function abrirNoFatiador(product) {
     fs.mkdirSync(downloadsDir, { recursive: true });
     const ext = path.extname(product.model_file_path) || '.3mf';
     const nomeSeguro = (product.catalog_code + '-' + product.name).replace(/[^a-z0-9À-ÿ]+/gi, '_');
-    const localPath = path.join(downloadsDir, nomeSeguro + ext);
-    fs.writeFileSync(localPath, Buffer.from(await fileData.arrayBuffer()));
+    const localPath = prepararArquivoPraFatiador(
+      Buffer.from(await fileData.arrayBuffer()), ext,
+      product.ai_slicing_settings, product.model_source, nomeSeguro, downloadsDir, product.name
+    );
 
     log('Abrindo "' + product.name + '" no fatiador...');
     // Abre via um script PowerShell em vez de spawn direto: o agente roda em
@@ -473,7 +523,10 @@ async function abrirNoFatiador(product) {
 async function tickAbrirFatiador() {
   const { data: queued, error } = await supabase
     .from('products')
-    .select('id, name, catalog_code, model_file_path')
+    // ai_slicing_settings e model_source entram aqui porque é com eles
+    // que a colinha é aplicada. Sem trazer as colunas, chegam vazias e o
+    // arquivo abre cru — sem erro nenhum, que é o pior jeito de falhar.
+    .select('id, name, catalog_code, model_file_path, model_source, ai_slicing_settings')
     .eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -851,33 +904,9 @@ async function abrirNoFatiadorProjeto(li) {
     // de quem gerou, não a nossa. Sem isso, "Analisar com IA" podia gerar
     // uma colinha ótima que nunca chegava a ser aplicada de verdade —
     // foi exatamente o que aconteceu com o chaveiro de cereja em 25/08.
-    let localPath;
-    if ((li.model_source === 'hi3d_dividido' || li.model_source === 'manual_upload') && ext.toLowerCase() === '.3mf') {
-      try {
-        const buffer = reconfigurarHi3d3mf(stlBuf, li.ai_slicing_settings);
-        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
-        fs.writeFileSync(localPath, buffer);
-        log('"' + nomeRef + '" (' + li.model_source + ') com a impressora e a colinha já aplicadas.');
-      } catch (e) {
-        log('AVISO: não consegui aplicar a colinha no .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo como veio, sem mexer.');
-        localPath = path.join(downloadsDir, nomeSeguro + ext);
-        fs.writeFileSync(localPath, stlBuf);
-      }
-    } else if (ext.toLowerCase() === '.stl' && li.ai_slicing_settings) {
-      try {
-        const resultado = gerarModelo3mfConfigurado(stlBuf, li.ai_slicing_settings, nomeSeguro + '.stl', li.model_source);
-        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
-        fs.writeFileSync(localPath, resultado.buffer);
-        logTamanhoConvertido(nomeRef, resultado);
-      } catch (e) {
-        log('AVISO: não consegui pré-configurar o .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
-        localPath = path.join(downloadsDir, nomeSeguro + ext);
-        fs.writeFileSync(localPath, stlBuf);
-      }
-    } else {
-      localPath = path.join(downloadsDir, nomeSeguro + ext);
-      fs.writeFileSync(localPath, stlBuf);
-    }
+    const localPath = prepararArquivoPraFatiador(
+      stlBuf, ext, li.ai_slicing_settings, li.model_source, nomeSeguro, downloadsDir, nomeRef
+    );
 
     log('Abrindo projeto de "' + nomeRef + '" no fatiador...');
     const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
@@ -1063,33 +1092,9 @@ async function abrirNoFatiadorParte(parte) {
     const nomeSeguro = ('parte-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
     const stlBuf = Buffer.from(await fileData.arrayBuffer());
 
-    let localPath;
-    if (parte.model_source === 'manual_upload' && ext.toLowerCase() === '.3mf') {
-      try {
-        const buffer = reconfigurarHi3d3mf(stlBuf, parte.ai_slicing_settings);
-        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
-        fs.writeFileSync(localPath, buffer);
-        log('"' + nomeRef + '" (anexada à mão) com a impressora e a colinha já aplicadas.');
-      } catch (e) {
-        log('AVISO: não consegui aplicar a colinha no .3mf de "' + nomeRef + '" (' + e.message + ') — abrindo como veio, sem mexer.');
-        localPath = path.join(downloadsDir, nomeSeguro + ext);
-        fs.writeFileSync(localPath, stlBuf);
-      }
-    } else if (ext.toLowerCase() === '.stl' && parte.ai_slicing_settings) {
-      try {
-        const resultado = gerarModelo3mfConfigurado(stlBuf, parte.ai_slicing_settings, nomeSeguro + '.stl', parte.model_source);
-        localPath = path.join(downloadsDir, nomeSeguro + '.3mf');
-        fs.writeFileSync(localPath, resultado.buffer);
-        logTamanhoConvertido(nomeRef, resultado);
-      } catch (e) {
-        log('AVISO: não consegui pré-configurar o .3mf da "' + nomeRef + '" (' + e.message + ') — abrindo o .stl puro mesmo.');
-        localPath = path.join(downloadsDir, nomeSeguro + ext);
-        fs.writeFileSync(localPath, stlBuf);
-      }
-    } else {
-      localPath = path.join(downloadsDir, nomeSeguro + ext);
-      fs.writeFileSync(localPath, stlBuf);
-    }
+    const localPath = prepararArquivoPraFatiador(
+      stlBuf, ext, parte.ai_slicing_settings, parte.model_source, nomeSeguro, downloadsDir, nomeRef
+    );
 
     log('Abrindo a "' + nomeRef + '" no fatiador...');
     const psScript = path.join(__dirname, 'abrir-fatiador.ps1');

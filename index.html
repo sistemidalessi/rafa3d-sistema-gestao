@@ -1549,6 +1549,35 @@ function voltarPedidos() {
 
 let _pedidoPollTimer = null;
 
+// Fila parada quase nunca é problema da fila: é o agente local
+// desligado. O sintoma é o pior possível — botão girando pra sempre,
+// sem erro nenhum na tela — e já custou mais de uma hora de confusão.
+// Esta faixa transforma isso numa frase.
+const SEGUNDOS_PRA_CONSIDERAR_PARADO = 90;
+
+async function avisoAgenteParado() {
+  let agentes = [];
+  try {
+    agentes = await q(SUPA.from('slicer_agents').select('name, last_seen_at')) || [];
+  } catch (e) {
+    return ''; // sem permissão ou sem tabela: melhor não avisar nada
+  }
+  const agora = Date.now();
+  const vivo = agentes.some((a) => (agora - new Date(a.last_seen_at)) / 1000 < SEGUNDOS_PRA_CONSIDERAR_PARADO);
+  if (vivo) return '';
+
+  const ultimo = agentes
+    .map((a) => new Date(a.last_seen_at))
+    .sort((a, b) => b - a)[0];
+  const quando = ultimo ? ' (visto pela última vez ' + fmtDate(ultimo) + ')' : '';
+  return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'
+    + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; color:#8a5b00;">⏸️ O ajudante do computador está parado' + quando + '</div>'
+    + '<div style="font-size:13px; color:#8a5b00; line-height:1.6; margin-top:6px;">'
+    + 'Enquanto ele estiver desligado, os botões de <strong>colinha</strong> e de <strong>fatiador</strong> ficam esperando pra sempre e nada acontece.'
+    + '<br>Pra ligar: dois cliques em <strong>slicer-agent\\start-hidden.vbs</strong>, na pasta do sistema.</div>'
+    + '</div>';
+}
+
 // O que dá pra fazer com a peça de um item, direto da tela do pedido.
 // Item personalizado não entra: o caminho dele é a aba Projetos, que já
 // tem a cadeia inteira (gerar, dividir, colinha, fatiador).
@@ -1749,17 +1778,23 @@ async function renderPedidoDetalhe(id) {
     + '</div>';
   html += '</div>';
 
-  el.innerHTML = html;
-
-  // Enquanto uma peça deste pedido estiver na fila, a tela se redesenha
-  // sozinha — senão o botão fica "Abrindo..." pra sempre e parece que
-  // travou. Mesmo padrão das abas Projetos e Produtos.
   clearTimeout(_pedidoPollTimer);
   const emAndamento = items.some((it) => {
     const p = it.products;
     return p && (p.open_slicer_status === 'queued' || p.open_slicer_status === 'processing'
       || p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   });
+
+  // Só vai atrás do agente quando tem fila esperando — não faz sentido
+  // consultar isso a cada abertura de pedido.
+  if (emAndamento) html = (await avisoAgenteParado()) + html;
+
+  // Guarda a rolagem antes de trocar o conteúdo. Sem isto a tela pulava
+  // pro topo a cada 4 segundos, e era isso que parecia "piscando".
+  const scrollY = window.scrollY;
+  el.innerHTML = html;
+  window.scrollTo(0, scrollY);
+
   if (emAndamento && pedidoDetalheId === id && !el.classList.contains('hidden')) {
     _pedidoPollTimer = setTimeout(() => { renderPedidoDetalhe(id); }, 4000);
   }

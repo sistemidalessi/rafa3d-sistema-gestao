@@ -93,7 +93,13 @@ if ($criou) { Ok "Pasta dos arquivos 3D criada em: $pastaPecas" }
 else { Ok "Pasta dos arquivos 3D existe ($pastaPecas)" }
 
 # --- agente rodando agora? --------------------------------------------
-$rodando = Get-Process node -ErrorAction SilentlyContinue | Where-Object { $_.Path -like "*nodejs*" }
+# Olha a LINHA DE COMANDO, nao so "existe algum node". Qualquer coisa
+# em Node ligava o [ok] antes -- um servidor de teste, um script solto -
+# e o verificador dizia que estava tudo certo com o agente parado. Esse
+# e o pior falso positivo possivel aqui: a pessoa confia, clica num
+# botao de fatiador e ele fica girando pra sempre sem erro nenhum.
+$rodando = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -like "*agent.js*" }
 if ($rodando) { Ok "Agente rodando agora" }
 else { Write-Host "  [aviso] Agente parado - de dois cliques em slicer-agent\start-hidden.vbs" -ForegroundColor DarkGray }
 
