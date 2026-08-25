@@ -404,6 +404,13 @@ async function chamarClaude(imagemBuf, mediaType, historico, bedPlate) {
 
 async function analisarUm(product) {
   try {
+    // Sem arquivo não há miniatura, e sem miniatura a IA não tem o que
+    // olhar. Antes isso estourava lá dentro como "Cannot read properties
+    // of null (reading 'replace')" — erro de programador, que aparecia
+    // na tela de quem tem 10 anos e não dizia o que fazer.
+    if (!product.model_file_path) {
+      throw new Error('essa peça ainda não tem arquivo 3D anexado — anexe o .3mf ou .stl antes de pedir a colinha.');
+    }
     log('Baixando modelo de "' + product.name + '" pra analisar...');
     const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(product.model_file_path);
     if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
