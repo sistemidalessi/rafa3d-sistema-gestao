@@ -1193,8 +1193,11 @@ async function solicitarGerarModeloParte(parteId) {
 }
 
 async function solicitarAnaliseIAParte(parteId) {
+  const placa = garantirPlaca(() => solicitarAnaliseIAParte(parteId));
+  if (!placa) return;
   const { error } = await SUPA.from('project_parts').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+    bed_plate: placa,
   }).eq('id', parteId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Análise pedida — o agente local processa em instantes.');
@@ -1266,8 +1269,11 @@ async function confirmarDividirHi3D(lineItemId, nivel) {
 }
 
 async function solicitarAnaliseIAProjeto(lineItemId) {
+  const placa = garantirPlaca(() => solicitarAnaliseIAProjeto(lineItemId));
+  if (!placa) return;
   const { error } = await SUPA.from('order_line_items').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+    bed_plate: placa,
   }).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Análise pedida — o agente local processa em instantes.');
@@ -2935,9 +2941,65 @@ async function solicitarAbrirFatiador(productId, voltarPara) {
   await redesenharDepoisDaFila(voltarPara, productId);
 }
 
+/* ====== PLACA DA IMPRESSORA ======
+   Cada placa tem a sua temperatura de mesa, e a colinha só acerta esse
+   número se souber em qual delas a peça vai. Antes disso a IA chutava,
+   e o valor ainda ia parar no campo errado do arquivo. */
+
+const CHAVE_PLACA = 'rafa3d_placa';
+
+const PLACAS_DA_LOJA = [
+  { id: 'cool', nome: 'Placa fria', dica: 'a lisa e clara — PLA a uns 35°C', cor: '#dbe6f5' },
+  { id: 'textured', nome: 'Placa texturizada', dica: 'a áspera dourada — PLA a uns 60°C, deixa textura na base', cor: '#c9a227' },
+];
+
+function placaEscolhida() {
+  try { return localStorage.getItem(CHAVE_PLACA) || ''; } catch (e) { return ''; }
+}
+
+// Pergunta uma vez e lembra. Trocar a placa é coisa rara — perguntar
+// toda vez viraria um clique a mais pra sempre, e clique a mais é o que
+// faz as pessoas pararem de usar.
+function perguntarPlaca(aoEscolher) {
+  const atual = placaEscolhida();
+  let html = '<h3>Em qual placa essa peça vai?</h3>'
+    + '<p style="color:var(--muted); font-size:13px;">É o que decide a temperatura da mesa. Se errar, a peça solta no meio ou gruda demais e estraga a placa.</p>';
+  PLACAS_DA_LOJA.forEach((p) => {
+    html += '<button class="btn ghost" style="width:100%; text-align:left; margin-bottom:8px; padding:12px; display:flex; align-items:center; gap:12px;" onclick="escolherPlaca(\'' + p.id + '\')">'
+      + '<span style="flex:none; width:30px; height:30px; border-radius:7px; background:' + p.cor + '; border:1px solid rgba(0,0,0,0.15);"></span>'
+      + '<span><strong>' + p.nome + (p.id === atual ? ' (a de sempre)' : '') + '</strong>'
+      + '<br><span style="color:var(--muted); font-size:12px;">' + p.dica + '</span></span></button>';
+  });
+  html += '<div style="color:var(--muted); font-size:11.5px; margin-top:4px;">Fica guardado — só pergunto de novo se você trocar a placa da impressora.</div>'
+    + '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  _acaoDepoisDaPlaca = aoEscolher || null;
+  openModal(html);
+}
+
+let _acaoDepoisDaPlaca = null;
+window.escolherPlaca = function (id) {
+  try { localStorage.setItem(CHAVE_PLACA, id); } catch (e) {}
+  closeModal();
+  const acao = _acaoDepoisDaPlaca;
+  _acaoDepoisDaPlaca = null;
+  if (acao) acao(id);
+};
+
+// Igual ao garantirComputador: se já sabe, segue; se não, pergunta e
+// repete a ação depois.
+function garantirPlaca(acaoDepois) {
+  const ja = placaEscolhida();
+  if (ja) return ja;
+  perguntarPlaca(() => acaoDepois());
+  return null;
+}
+
 async function solicitarAnaliseIA(productId, voltarPara) {
+  const placa = garantirPlaca(() => solicitarAnaliseIA(productId, voltarPara));
+  if (!placa) return;
   const { error } = await SUPA.from('products').update({
     ai_analysis_status: 'queued', ai_analysis_requested_at: new Date().toISOString(), ai_analysis_error: null,
+    bed_plate: placa,
   }).eq('id', productId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Colinha pedida — o agente local processa em instantes.');

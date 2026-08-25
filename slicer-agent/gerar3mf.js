@@ -238,7 +238,28 @@ const CATEGORIA = {
   enable_support: 0, support_type: 0, support_threshold_angle: 0, brim_type: 0, brim_width: 0,
   ironing_type: 0,
   nozzle_temperature: 1, nozzle_temperature_initial_layer: 1,
+  // Cada placa tem o seu campo de temperatura, e o Bambu só lê o da
+  // placa que está selecionada em curr_bed_type. Todos entram na lista
+  // porque a peça pode ir em qualquer uma.
+  cool_plate_temp: 1, cool_plate_temp_initial_layer: 1,
+  textured_plate_temp: 1, textured_plate_temp_initial_layer: 1,
+  eng_plate_temp: 1, eng_plate_temp_initial_layer: 1,
   hot_plate_temp: 1, hot_plate_temp_initial_layer: 1,
+  curr_bed_type: 2,
+};
+
+// As placas da loja. O "campo" é onde a temperatura tem que ser
+// gravada; o "bambu" é o nome que vai em curr_bed_type.
+//
+// Gravar no campo errado não dá erro nenhum: o Bambu simplesmente lê o
+// da placa selecionada e ignora o resto. Foi o que aconteceu até
+// 25/08/2026 — a colinha mandava 55°C, o sistema gravava em
+// hot_plate_temp, e o perfil estava em Cool Plate lendo 35°C.
+const PLACAS = {
+  cool: { bambu: 'Cool Plate', campo: 'cool_plate_temp', nome: 'placa fria' },
+  textured: { bambu: 'Textured PEI Plate', campo: 'textured_plate_temp', nome: 'placa texturizada' },
+  engineering: { bambu: 'Engineering Plate', campo: 'eng_plate_temp', nome: 'placa de engenharia' },
+  high_temp: { bambu: 'High Temp Plate', campo: 'hot_plate_temp', nome: 'placa de alta temperatura' },
 };
 
 function traduzirParaOBambu(campo, valor) {
@@ -273,6 +294,21 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
     if (traduzido !== null) gravar(campo, traduzido);
   };
 
+  // A placa é resolvida ANTES do laço, e não como mais um campo dentro
+  // dele: é ela que decide em qual campo a temperatura vai ser gravada,
+  // e depender da ordem das chaves do JSON seria pedir pra quebrar no
+  // dia em que a IA devolvesse bed_temp_c antes de bed_plate.
+  //
+  // Sem placa informada, mantém a que já está no perfil — melhor do que
+  // escolher uma e escrever a temperatura num campo que o Bambu não lê.
+  let placa = PLACAS[String(ajustes.bed_plate || '').trim().toLowerCase()];
+  if (placa) {
+    gravar('curr_bed_type', placa.bambu);
+  } else {
+    const atual = settings.curr_bed_type;
+    placa = Object.values(PLACAS).find((p) => p.bambu === atual) || PLACAS.cool;
+  }
+
   const mapa = {
     layer_height_mm: (v) => gravar('layer_height', String(v)),
     wall_loops: (v) => gravar('wall_loops', String(v)),
@@ -288,9 +324,10 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
       gravar('nozzle_temperature', Array(numFilamentos).fill(String(v)));
       gravar('nozzle_temperature_initial_layer', Array(numFilamentos).fill(String(v)));
     },
+    // bed_plate não entra aqui: já foi resolvida antes do laço.
     bed_temp_c: (v) => {
-      gravar('hot_plate_temp', Array(numFilamentos).fill(String(v)));
-      gravar('hot_plate_temp_initial_layer', Array(numFilamentos).fill(String(v)));
+      gravar(placa.campo, Array(numFilamentos).fill(String(v)));
+      gravar(placa.campo + '_initial_layer', Array(numFilamentos).fill(String(v)));
     },
   };
 

@@ -179,6 +179,13 @@ sai dali.
   ([`catalogo/support.js`](catalogo/support.js)). Foi de propósito: aquele
   framework re-renderiza a página inteira a cada scroll, e um formulário dentro
   dele perderia o que a pessoa digitou.
+- **Cada placa da Bambu tem o SEU campo de temperatura**, e o fatiador só
+  lê o da placa selecionada em `curr_bed_type`. Escrever em
+  `hot_plate_temp` com o perfil em `Cool Plate` não dá erro nenhum — o
+  valor é simplesmente ignorado, e foi o que aconteceu até 25/08/2026.
+  A tabela `PLACAS` em [`gerar3mf.js`](slicer-agent/gerar3mf.js) faz a
+  ligação, e a placa é resolvida **antes** do laço de campos justamente
+  porque ela decide onde a temperatura vai ser gravada.
 - **`model_source` decide se o arquivo recebe a colinha.** Quem reconfigura o
   `.3mf` olha essa coluna, e por um tempo `manual_upload` ficou de fora: a IA
   analisava, gerava uma ficha ótima, e ela nunca era aplicada no arquivo que de
