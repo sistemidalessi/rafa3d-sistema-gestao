@@ -899,7 +899,7 @@ class Component extends DCLogic {
     // acessava, e no celular virava produto minúsculo e ilegível.
     // O tamanho de tela real manda mais que aquele padrão do editor.
     const vw = this.state.viewportW || 1200;
-    const cols = vw < 480 ? 2 : vw < 768 ? 3 : vw < 1000 ? 4 : 5;
+    const cols = vw < 340 ? 2 : vw < 700 ? 3 : vw < 1000 ? 4 : 5;
 
     const cartItems = Object.keys(this.state.cart).map(key => ({
       key, ...this.state.cart[key],
