@@ -583,10 +583,10 @@ async function renderDashboard() {
   html += cardComputador();
 
   html += '<div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:4px;">';
-  html += statCard('🧾', orcamentosPendentes.length, 'Orçamentos pendentes');
-  html += statCard('🖨️', countFila + countImprimindo, 'Na fila / imprimindo');
-  html += statCard('🎨', countPos, 'Em pós-processamento');
-  html += statCard('💰', fmtMoney(aReceber), 'A receber');
+  html += statCard('🧾', orcamentosPendentes.length, 'Orçamentos pendentes', 'pedidos');
+  html += statCard('🖨️', countFila + countImprimindo, 'Na fila / imprimindo', 'fila');
+  html += statCard('🎨', countPos, 'Em pós-processamento', 'fila');
+  html += statCard('💰', fmtMoney(aReceber), 'A receber', 'financeiro');
   html += '</div>';
 
   if (orcamentosPendentes.length > 0) {
@@ -628,8 +628,11 @@ async function renderDashboard() {
   el.innerHTML = html;
 }
 
-function statCard(icon, valor, label) {
-  return '<div class="card" style="text-align:center; margin-bottom:0;">' +
+// tab: pra qual aba o card leva ao clicar (atalho) — opcional, card sem
+// aba fica só informativo, do jeito que já era.
+function statCard(icon, valor, label, tab) {
+  const clicavel = tab ? ' onclick="showTab(\'' + tab + '\')" onmouseover="this.style.borderColor=\'#0061f7\'" onmouseout="this.style.borderColor=\'\'" style="text-align:center; margin-bottom:0; cursor:pointer; transition:border-color .15s;"' : ' style="text-align:center; margin-bottom:0;"';
+  return '<div class="card"' + clicavel + '>' +
     '<div style="font-size:22px;">' + icon + '</div>' +
     '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:22px; margin-top:4px;">' + valor + '</div>' +
     '<div style="color:var(--muted); font-size:12px; margin-top:2px;">' + escapeHtml(label) + '</div>' +
