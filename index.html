@@ -1476,7 +1476,7 @@ async function abrirAprovarProjeto(lineItemId) {
     '<h3>Quanto cobrar por esse projeto?</h3>' +
     '<p style="color:var(--muted); font-size:13px; margin:0 0 12px;">' +
       escapeHtml(li.custom_description || 'Projeto personalizado') + '</p>' +
-    perguntasDeCustoHtml({}) +
+    perguntasDeCustoHtml({}, li.material) +
     '<div id="rcPreview" style="margin-top:16px;"></div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
@@ -2390,12 +2390,24 @@ async function mudarStatusFilaItem(itemId, novoStatus) {
   await renderFila();
 }
 
+// "Terminei" já pedia rolo e gramas pra baixar do estoque — vira também
+// o momento de acertar o CUSTO da peça com o número real, não mais só a
+// estimativa da colinha. Rolo e gramas continuam obrigatórios (é o que
+// baixa o estoque); horas é opcional, sem trava — vale por si só ("aí me
+// pergunta se tem algo a alterar ou se mantém os dados"), e sem ela ainda
+// dá pra guardar as gramas reais mesmo sem hora nenhuma.
+let _receitaDaConclusao = null;
 async function openConcluirImpressao(itemId) {
   const item = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
+  _receitaDaConclusao = null;
   let gramasEstimado = '';
+  let horasEstimado = '';
   if (item.product_id) {
-    const receita = await q(SUPA.from('product_recipes').select('estimated_grams').eq('product_id', item.product_id).maybeSingle());
-    if (receita) gramasEstimado = receita.estimated_grams;
+    _receitaDaConclusao = await q(SUPA.from('product_recipes').select('*').eq('product_id', item.product_id).maybeSingle());
+    if (_receitaDaConclusao) {
+      gramasEstimado = _receitaDaConclusao.estimated_grams;
+      horasEstimado = _receitaDaConclusao.estimated_print_hours;
+    }
   }
   const cores = await getFilamentosSafe();
   const spools = await getSpools(true);
@@ -2410,6 +2422,12 @@ async function openConcluirImpressao(itemId) {
     '<h3>Terminei de imprimir essa peça</h3>' +
     '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>' +
     '<label class="pergunta">Quantos gramas ela gastou?</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
+    '<label class="pergunta">Quantas horas a impressora ficou ligada?</label>' +
+    dicaCampo('Se souber, ajuda a manter o custo dessa peça sempre certo — mas dá pra terminar sem preencher.') +
+    '<div style="display:flex; gap:8px;">' +
+      '<div style="flex:1;"><input id="ccHorasH" type="number" step="1" min="0" placeholder="horas" value="' + horasParteInteira(horasEstimado) + '"></div>' +
+      '<div style="flex:1;"><input id="ccHorasM" type="number" step="1" min="0" max="59" placeholder="minutos" value="' + horasParteMinutos(horasEstimado) + '"></div>' +
+    '</div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Pronto, terminei</button>' +
@@ -2420,18 +2438,43 @@ async function openConcluirImpressao(itemId) {
 async function salvarConclusaoImpressao(itemId) {
   const spoolId = document.getElementById('ccSpool').value;
   const gramas = parseFloat(document.getElementById('ccGramas').value);
+  const horas = (parseFloat(document.getElementById('ccHorasH').value) || 0) +
+    (parseFloat(document.getElementById('ccHorasM').value) || 0) / 60;
   if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
   if (isNaN(gramas) || gramas <= 0) { toast('Preenche as gramas usadas.'); return; }
   const { error: e1 } = await SUPA.rpc('consume_filament', {
     p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramas, p_reason: 'print_job_consumption',
   });
   if (e1) { toast('Erro: ' + e1.message); return; }
-  const { error: e2 } = await SUPA.from('order_line_items').update({
+  const { data: item, error: e2 } = await SUPA.from('order_line_items').update({
     filament_spool_id: spoolId, grams_used_actual: gramas, line_status: 'pos_processamento', updated_at: new Date().toISOString(),
-  }).eq('id', itemId);
+  }).eq('id', itemId).select('product_id').maybeSingle();
   if (e2) { toast('Erro: ' + e2.message); return; }
+
+  // Número real da impressão vira a nova estimativa de custo do produto —
+  // é mais confiável que qualquer chute, e é ele que a aba "Quanto sobrou"
+  // acaba lendo. Só roda pra item de catálogo (produto tem receita própria;
+  // projeto guarda custo direto no pedido, aprovado antes de imprimir).
+  if (item && item.product_id) {
+    const spools = await getSpools();
+    const spoolUsado = spools.find((s) => s.id === spoolId);
+    const payload = {
+      product_id: item.product_id,
+      estimated_grams: gramas,
+      estimated_print_hours: horas || (_receitaDaConclusao ? _receitaDaConclusao.estimated_print_hours : 0.1),
+      filament_color_id: (spoolUsado && spoolUsado.color_id) || (_receitaDaConclusao ? _receitaDaConclusao.filament_color_id : null),
+      printer_id: (_receitaDaConclusao && _receitaDaConclusao.printer_id) || null,
+      has_painting: _receitaDaConclusao ? _receitaDaConclusao.has_painting : false,
+    };
+    const { error: e3 } = _receitaDaConclusao
+      ? await SUPA.from('product_recipes').update(payload).eq('id', _receitaDaConclusao.id)
+      : await SUPA.from('product_recipes').insert([payload]);
+    if (e3) { toast('Estoque atualizado, mas não consegui guardar o custo real: ' + e3.message); closeModal(); await renderFila(); return; }
+    await getReceitas(true);
+  }
+
   closeModal();
-  toast('Impressão concluída, estoque atualizado.');
+  toast('Impressão concluída, estoque atualizado' + (item && item.product_id ? ' e o custo real dessa peça, guardado.' : '.'));
   await renderFila();
 }
 
@@ -3602,15 +3645,29 @@ function dicaCampo(texto) {
 // o que a máquina gasta sozinha, e o que você faz depois com a mão. Na
 // tela de dar preço cada grupo vira um passo numerado; na janela de
 // aprovar projeto os dois aparecem seguidos, como antes.
-function perguntasImpressora(r) {
+// material: o que a colinha da IA já decidiu pra essa peça ('pla'/'petg'/...,
+// patch-33), se existir. Só serve pra PRÉ-marcar o filamento quando dá pra
+// saber sem chute — nunca esconde opção nem decide sozinho a cor, que
+// continua sendo escolha de gente. Auto-marca só quando existe exatamente
+// UM filamento cadastrado daquele material (mais de um, a cor importa e
+// fica em aberto); a impressora auto-marca sempre que só existe uma
+// cadastrada, sem depender da colinha — hoje é sempre o caso.
+function perguntasImpressora(r, material) {
+  const materialDaPeca = (material || '').trim().toLowerCase();
+  const filamentosDoMaterial = materialDaPeca
+    ? filamentosCache.filter((c) => (c.material || '').trim().toLowerCase() === materialDaPeca)
+    : [];
+  const corPreSelecionada = r.filament_color_id || (filamentosDoMaterial.length === 1 ? filamentosDoMaterial[0].id : null);
+  const impressoraPreSelecionada = r.printer_id || (impressorasCache.length === 1 ? impressorasCache[0].id : null);
+
   let coresOptions = '<option value="">— escolha —</option>';
   filamentosCache.forEach((c) => {
-    coresOptions += '<option value="' + c.id + '"' + (c.id === r.filament_color_id ? ' selected' : '') + '>' +
+    coresOptions += '<option value="' + c.id + '"' + (c.id === corPreSelecionada ? ' selected' : '') + '>' +
       escapeHtml(c.name) + ' (' + fmtMoney(c.cost_per_kg) + ' o quilo)</option>';
   });
   let impOptions = '<option value="">— escolha —</option>';
   impressorasCache.forEach((imp) => {
-    impOptions += '<option value="' + imp.id + '"' + (imp.id === r.printer_id ? ' selected' : '') + '>' +
+    impOptions += '<option value="' + imp.id + '"' + (imp.id === impressoraPreSelecionada ? ' selected' : '') + '>' +
       escapeHtml(imp.name) + (imp.hourly_cost ? ' (' + fmtMoney(imp.hourly_cost) + ' por hora ligada)' : '') + '</option>';
   });
 
@@ -3648,8 +3705,8 @@ function perguntaPintura(r) {
     '</select>';
 }
 
-function perguntasDeCustoHtml(r) {
-  return perguntasImpressora(r) + perguntaPintura(r);
+function perguntasDeCustoHtml(r, material) {
+  return perguntasImpressora(r, material) + perguntaPintura(r);
 }
 
 function campoMultiplicador() {
@@ -3707,7 +3764,7 @@ function desenharPrecificar(el) {
 
   html += '<div class="card">';
   html += passoHtml(1, 'O que a impressora gasta', 'Esses números o fatiador te dá quando termina de fatiar a peça.');
-  html += perguntasImpressora(r);
+  html += perguntasImpressora(r, p.material);
   html += '<hr class="passo-sep">';
   html += passoHtml(2, 'Acabamento', 'Se você pintou ou caprichou no acabamento da peça, isso entra na conta.');
   html += perguntaPintura(r);
