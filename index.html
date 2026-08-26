@@ -1748,6 +1748,10 @@ async function renderPedidoDetalhe(id) {
   html += '</div>';
   html += '<div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">';
   if (contatoCliente) {
+    // A cartinha fica aqui, e não só no bloco de entrega, porque vale
+    // pra todo pedido — inclusive o que o cliente vem buscar, que não
+    // tem etiqueta nenhuma.
+    html += '<button class="btn ghost" onclick="abrirCartinha(\'' + id + '\')">💌 Imprimir a cartinha</button>';
     html += '<button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button>';
   }
   html += '<button class="btn ghost" onclick="excluirPedido(\'' + id + '\')">🗑️ Excluir pedido</button>';
@@ -1772,7 +1776,10 @@ async function renderPedidoDetalhe(id) {
         html += '<span class="badge on">Etiqueta gerada</span> ';
         if (order.shipping_tracking_code) html += '<span style="font-size:12px; color:var(--muted);">Rastreio: ' + escapeHtml(order.shipping_tracking_code) + '</span>';
         if (order.shipping_label_url) {
-          html += '<div style="margin-top:6px;"><a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn">🖨️ Abrir etiqueta pra imprimir</a></div>';
+          html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">'
+            + '<button class="btn" onclick="imprimirPraDespachar(\'' + id + '\', true)">🖨️ Imprimir etiqueta e cartinha</button>'
+            + '<a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn ghost">só a etiqueta</a>'
+            + '</div>';
         } else {
           // Sem link, a tela dizia "Etiqueta gerada" e mais nada — um
           // beco, com a etiqueta paga e sem jeito de imprimir. O botão
@@ -1904,6 +1911,84 @@ async function abrirAgradecimento(orderId) {
     'Já recebemos seu pedido' + (order.order_number ? ' ' + order.order_number : '') + ' e vamos começar a preparar com carinho. ' +
     'Qualquer dúvida durante o processo é só chamar por aqui!';
   window.open('https://wa.me/' + numeroCompleto + '?text=' + encodeURIComponent(mensagem), '_blank');
+}
+
+/* ====== CARTINHA DE AGRADECIMENTO ======
+   Vai dentro da caixa, impressa em papel comum. É o único pedaço da
+   entrega que fala na voz do Rafa — a etiqueta da transportadora é
+   documento padronizado e não dá pra personalizar.
+
+   Sai em A6 deitado (14,8 x 10,5 cm) no meio de uma folha A4, com linha
+   pontilhada pra cortar. Fundo branco de propósito: cartinha com fundo
+   colorido gasta um cartucho por encomenda. */
+async function abrirCartinha(orderId) {
+  const order = await q(SUPA.from('orders')
+    .select('order_number, customer_name, customers(name)')
+    .eq('id', orderId).maybeSingle());
+  if (!order) { toast('Não achei esse pedido.'); return; }
+
+  const nome = (order.customers ? order.customers.name : order.customer_name) || '';
+  const primeiro = nome.trim().split(' ')[0] || '';
+  const saudacao = primeiro ? 'Oi, ' + escapeHtml(primeiro) + '!' : 'Oi!';
+
+  const html =
+    '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
+    '<title>Cartinha — ' + escapeHtml(order.order_number || '') + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;600&display=swap" rel="stylesheet">' +
+    '<style>' +
+      '@page { size: A4; margin: 0; }' +
+      'body { margin:0; font-family:Manrope,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; }' +
+      // A borda pontilhada é guia de corte e some na impressão? Não —
+      // fica de propósito, senão não dá pra cortar reto.
+      '.cartao { width:148mm; height:105mm; box-sizing:border-box; padding:12mm 14mm;' +
+        ' border:1px dashed #c9cfda; display:flex; flex-direction:column; justify-content:space-between; }' +
+      '.topo { display:flex; align-items:center; gap:10px; }' +
+      '.topo img { height:16mm; }' +
+      '.marca { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:15pt; color:#0b1733; letter-spacing:.3px; }' +
+      '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:19pt; color:#0061f7; margin:0 0 3mm; }' +
+      '.texto { font-size:11.5pt; line-height:1.65; color:#26324a; margin:0; }' +
+      '.assina { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:13pt; color:#0b1733; margin-top:4mm; }' +
+      '.rodape { display:flex; justify-content:space-between; align-items:flex-end; font-size:8.5pt; color:#6b7a94; }' +
+      '.rodape strong { color:#0b1733; }' +
+      '@media print { .cartao { border-color:#e3e7ee; } }' +
+    '</style></head><body><div class="cartao">' +
+
+      '<div class="topo"><img src="catalogo/assets/logo_clean.png" alt=""><span class="marca">RAFA 3D</span></div>' +
+
+      '<div>' +
+        '<p class="oi">' + saudacao + '</p>' +
+        '<p class="texto">Eu tenho <strong>10 anos</strong> e essa loja é minha. Fui eu que desenhei, imprimi, ' +
+        'embalei e mandei essa peça pra você.<br><br>' +
+        'Obrigado de coração por prestigiar o meu trabalho! 💙</p>' +
+        '<div class="assina">— Rafa</div>' +
+      '</div>' +
+
+      '<div class="rodape">' +
+        '<span>Pedido <strong>' + escapeHtml(order.order_number || '') + '</strong></span>' +
+        '<span>Gostou? Tem mais em<br><strong>sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo</strong></span>' +
+        '<span>WhatsApp<br><strong>(11) 98719-0466</strong></span>' +
+      '</div>' +
+
+    '</div>' +
+    // Espera as fontes e a imagem antes de chamar a impressão, senão a
+    // janela abre pra imprimir com o cartão ainda sem logo.
+    '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>' +
+    '</body></html>';
+
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra imprimir a cartinha.'); return; }
+  janela.document.write(html);
+  janela.document.close();
+}
+
+// Abre etiqueta e cartinha de uma vez — é o que se faz na hora de
+// despachar, e separar em dois cliques só cria chance de esquecer uma.
+async function imprimirPraDespachar(orderId, temEtiqueta) {
+  if (temEtiqueta) {
+    const order = await q(SUPA.from('orders').select('shipping_label_url').eq('id', orderId).maybeSingle());
+    if (order && order.shipping_label_url) window.open(order.shipping_label_url, '_blank', 'noopener');
+  }
+  await abrirCartinha(orderId);
 }
 
 async function gerarEtiqueta(orderId) {
