@@ -1949,6 +1949,44 @@ function abrirCartinha(orderId) {
   preencherCartinha(orderId, janela);
 }
 
+// Ícones simples, traço preenchido, ligados a impressão 3D — espalhados
+// como confete de fundo. Formas preenchidas + paleta de festa (não só
+// azul discreto) porque a primeira versão "sem graça" foi rejeitada:
+// "ele tem 10 anos, falta alegria".
+const CARTINHA_ICONES = {
+  cubo: '<path d="M30 4 L54 17 L54 43 L30 56 L6 43 L6 17 Z" fill="currentColor" opacity="0.85"/><path d="M30 4 L30 30 M30 30 L54 17 M30 30 L6 17" stroke="#fff" stroke-width="2" fill="none" opacity="0.6"/>',
+  carretel: '<circle cx="30" cy="30" r="27" fill="currentColor"/><circle cx="30" cy="30" r="10" fill="#fff" opacity="0.85"/>',
+  bico: '<path d="M20 4 H40 V20 L33 32 H27 L20 20 Z" fill="currentColor"/><rect x="24" y="32" width="12" height="20" rx="3" fill="currentColor"/>',
+  gota: '<path d="M30 4 C42 22 52 34 52 44 A22 22 0 0 1 8 44 C8 34 18 22 30 4 Z" fill="currentColor"/>',
+  estrela: '<path d="M30 3 L37 22 L57 22 L41 34 L47 54 L30 42 L13 54 L19 34 L3 22 L23 22 Z" fill="currentColor"/>',
+  bolinha: '<circle cx="30" cy="30" r="26" fill="currentColor"/>',
+  triangulo: '<path d="M30 5 L55 52 H5 Z" fill="currentColor"/>',
+  coracao: '<path d="M30 52 C10 38 4 26 4 17 A13 13 0 0 1 30 12 A13 13 0 0 1 56 17 C56 26 50 38 30 52 Z" fill="currentColor"/>',
+};
+const CARTINHA_PALETA = ['#0061f7', '#ffb703', '#ff6b5b', '#22c55e', '#a06bff'];
+const CARTINHA_DECOR = [
+  { icone: 'cubo', left: 63, top: 6, size: 40, rot: -10, cor: 0, op: 0.9 },
+  { icone: 'estrela', left: 88, top: 5, size: 22, rot: 12, cor: 1, op: 1 },
+  { icone: 'gota', left: 80, top: 28, size: 26, rot: 6, cor: 2, op: 0.85 },
+  { icone: 'bolinha', left: 92, top: 45, size: 14, rot: 0, cor: 3, op: 0.9 },
+  { icone: 'carretel', left: 62, top: 74, size: 34, rot: 8, cor: 3, op: 0.85 },
+  { icone: 'triangulo', left: 84, top: 70, size: 22, rot: -8, cor: 4, op: 0.85 },
+  { icone: 'estrela', left: 4, top: 86, size: 18, rot: -14, cor: 1, op: 1 },
+  { icone: 'bolinha', left: 44, top: 84, size: 12, rot: 0, cor: 0, op: 0.8 },
+  { icone: 'coracao', left: 55, top: 4, size: 18, rot: -6, cor: 2, op: 0.9 },
+  { icone: 'bico', left: 74, top: 58, size: 20, rot: 16, cor: 0, op: 0.85 },
+  { icone: 'bolinha', left: 68, top: 20, size: 10, rot: 0, cor: 1, op: 0.85 },
+  { icone: 'triangulo', left: 6, top: 6, size: 16, rot: 20, cor: 3, op: 0.75 },
+];
+function cartinhaCamadaDecorativa() {
+  return CARTINHA_DECOR.map(function (d) {
+    return '<div style="position:absolute; left:' + d.left + '%; top:' + d.top + '%; width:' + d.size + 'px; height:' + d.size + 'px;' +
+      ' color:' + CARTINHA_PALETA[d.cor] + '; opacity:' + d.op + '; transform:rotate(' + d.rot + 'deg); pointer-events:none;' +
+      ' filter:drop-shadow(0 1px 1px rgba(0,0,0,.08));">' +
+      '<svg viewBox="0 0 60 60">' + CARTINHA_ICONES[d.icone] + '</svg></div>';
+  }).join('');
+}
+
 // O molde é o MESMO em toda encomenda de propósito — "Para" e a
 // assinatura ficam em branco, pro Rafa preencher à mão em cada peça
 // depois de imprimir. Isso também é o que permite imprimir um lote
@@ -1963,43 +2001,50 @@ function preencherCartinha(orderId, janela) {
     '<style>' +
       '@page { size: A4; margin: 0; }' +
       'body { margin:0; font-family:Manrope,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; }' +
-      '* { box-sizing:border-box; }' +
+      // Sem isso o navegador some com fundo colorido/gradiente na hora de
+      // imprimir, pra "economizar tinta" — e a cartinha voltava a sair
+      // branca, depois de todo esse trabalho de dar cor nela.
+      '* { box-sizing:border-box; -webkit-print-color-adjust:exact; print-color-adjust:exact; }' +
       // A borda pontilhada é guia de corte e some na impressão? Não —
       // fica de propósito, senão não dá pra cortar reto.
-      '.cartao { width:148mm; height:105mm; border:1px dashed #c9cfda; border-radius:2mm;' +
-        ' display:grid; grid-template-columns:34mm 1fr; overflow:hidden; }' +
-      '.lado { background:#eef3fc; padding:7mm 5mm; display:flex; flex-direction:column;' +
-        ' align-items:center; justify-content:space-between; border-right:1px dashed #c5d3ef; }' +
-      '.retrato { width:100%; aspect-ratio:1; border-radius:50%; overflow:hidden;' +
-        ' border:1.2mm solid #fff; box-shadow:0 2mm 3mm -1.5mm rgba(11,23,51,.35); }' +
+      '.cartao { width:148mm; height:105mm; border:1px dashed #c9cfda; border-radius:6px;' +
+        ' background:linear-gradient(150deg, #fef2d4 0%, #fdf9f2 35%, #dfeaff 100%);' +
+        ' display:grid; grid-template-columns:41mm 1fr; overflow:hidden; position:relative; }' +
+      '.decor-layer { position:absolute; inset:0; z-index:1; }' +
+      '.lado { background:linear-gradient(180deg, #adc8fc 0%, #dbe7fc 100%); padding:5mm 3.5mm; display:flex; flex-direction:column;' +
+        ' align-items:center; justify-content:space-between; border-right:1px dashed #a9c0ee; position:relative; z-index:2; }' +
+      '.retrato { width:100%; aspect-ratio:458/610; border-radius:14%; overflow:hidden;' +
+        ' border:1.4mm solid #fff; box-shadow:0 2mm 3mm -1.5mm rgba(11,23,51,.35); }' +
       '.retrato img { width:100%; height:100%; object-fit:cover; display:block; }' +
-      '.assinatura-nome { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:8.2pt;' +
-        ' color:#0b1733; text-align:center; margin-top:2.5mm; line-height:1.25; }' +
-      '.assinatura-nome span { display:block; font-weight:500; font-size:6.6pt; color:#5b6b87; margin-top:.8mm; }' +
+      '.assinatura-nome { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:10.5pt;' +
+        ' color:#0b1733; text-align:center; margin-top:3mm; line-height:1.3; }' +
+      '.assinatura-nome span { display:block; font-weight:600; font-size:8pt; color:#3d4c6b; margin-top:1mm; }' +
       '.qr-bloco { text-align:center; }' +
-      '.qr-bloco img { width:17mm; height:17mm; display:block; margin:0 auto; }' +
-      '.qr-bloco p { font-size:5.8pt; color:#5b6b87; margin:1mm 0 0; line-height:1.3; }' +
-      '.corpo { padding:6mm 7mm 5mm; display:flex; flex-direction:column; justify-content:space-between; position:relative; }' +
-      '.marca-mini { position:absolute; top:5mm; right:6mm; }' +
-      '.marca-mini img { height:15mm; width:auto; }' +
-      '.campo-para { display:flex; align-items:baseline; gap:2mm; margin:0 30mm 3mm 0; }' +
+      '.qr-bloco img { width:22mm; height:22mm; display:block; margin:0 auto; }' +
+      '.qr-bloco p { font-size:6.6pt; color:#3d4c6b; margin:1.2mm 0 0; line-height:1.3; font-weight:600; }' +
+      '.corpo { padding:6mm 7mm 5mm; display:flex; flex-direction:column; justify-content:space-between; position:relative; z-index:2; }' +
+      '.marca-mini { position:absolute; top:5mm; right:6mm; z-index:3; }' +
+      '.marca-mini img { height:15mm; width:auto; filter:drop-shadow(0 1px 2px rgba(255,255,255,.9)); }' +
+      '.campo-para { display:flex; align-items:baseline; gap:2mm; margin:0 30mm 3mm 0;' +
+        ' background:rgba(255,255,255,.72); border-radius:3mm; padding:1.5mm 2mm; }' +
       '.campo-para .rotulo { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:8pt;' +
         ' color:#0061f7; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }' +
-      '.campo-para .linha { flex:1; border-bottom:1px dotted #b7c2d6; height:5mm; }' +
+      '.campo-para .linha { flex:1; border-bottom:1px dotted #8fa3c9; height:5mm; }' +
       '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:20pt; color:#0b1733; margin:0 0 2.4mm; }' +
-      '.texto { font-size:10pt; line-height:1.5; color:#2b3652; margin:0; }' +
+      '.texto { font-size:10pt; line-height:1.5; color:#2b3652; margin:0; background:rgba(255,255,255,.66); border-radius:3mm; padding:2mm 2.5mm; }' +
       '.texto strong { color:#0b1733; }' +
       '.rodape { display:flex; align-items:flex-end; justify-content:space-between; gap:4mm;' +
-        ' margin-top:4mm; padding-top:3mm; border-top:1px dashed #d7deec; }' +
+        ' margin-top:4mm; padding-top:3mm; border-top:1px dashed #c9b077; position:relative; z-index:2; }' +
       '.assine { flex:1; }' +
-      '.assine .linha-assinatura { border-bottom:1px solid #d9a441; height:7mm; margin-bottom:1mm; }' +
+      '.assine .linha-assinatura { border-bottom:2px solid #ffb703; height:7mm; margin-bottom:1mm; }' +
       '.assine .rotulo-assine { font-size:6.6pt; color:#5b6b87; letter-spacing:.03em; }' +
       '.contato { text-align:right; font-size:7pt; color:#5b6b87; line-height:1.5; }' +
       '.contato strong { color:#0b1733; display:block; font-size:7.6pt; }' +
-      '@media print { .cartao, .lado, .rodape { border-color:#e3e7ee; } }' +
+      '@media print { .cartao { border-color:#e3e7ee; } .lado, .rodape { border-color:#e3e7ee; } }' +
     '</style></head><body>' +
 
     '<div class="cartao">' +
+      '<div class="decor-layer">' + cartinhaCamadaDecorativa() + '</div>' +
       '<div class="lado">' +
         '<div class="retrato"><img src="catalogo/assets/rafa_cartinha.png" alt="Rafa"></div>' +
         '<div class="assinatura-nome">Rafael Dalessi<span>10 anos · fundador</span></div>' +
