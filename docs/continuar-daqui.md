@@ -21,20 +21,31 @@ Depois, suba o agente (`start-hidden.vbs`). Sem ele, todo botão de
 colinha e de fatiador fica girando pra sempre, **sem erro nenhum na
 tela** — o sintoma mais confuso do projeto.
 
-## 🔴 O computador do Rafa não está preparado
+## ✅ O computador do Rafa está preparado — 26/08, à noite
 
-Ele clicou em "abrir no fatiador" e nada aconteceu. **Não é permissão** —
-a escrita funcionou e a peça entrou na fila.
+Ele clicou em "abrir no fatiador" e nada aconteceu. **Nunca foi
+permissão** — a escrita funcionou e a peça entrou na fila. Aquela máquina
+simplesmente nunca tinha rodado o agente, então nem aparecia na lista de
+escolher computador; a única opção era a do Anderson, desligada, e a peça
+foi pra lá esperar.
 
-O problema: **aquela máquina nunca rodou o agente**, então nem aparece na
-lista de escolher computador. A única opção oferecida era a do Anderson,
-desligada — e a peça foi pra lá esperar.
+Resolvido de ponta a ponta: Node, repositório, dependências, `.env` com
+as chaves, atalho no `shell:startup` e o agente de pé. A peça da **Joice**
+que estava parada há 71 minutos foi redirecionada e saiu em **15
+segundos**.
 
-A tela agora explica isso (avisa quando nenhum está ligado, diz o que
-fazer quando o seu não está na lista, e o aviso de "parado" passou a
-olhar o computador *escolhido* em vez de "algum ligado"). Mas a solução é
-física: rodar o `conferir-maquina.ps1` na máquina dele. O `.env` precisa
-do Anderson, porque as chaves são por máquina.
+Duas coisas que valem pra qualquer máquina nova:
+
+- **`AGENT_NAME=Rafa`.** Sem isso o agente usa o nome de rede do Windows,
+  e a lista de escolher computador mostra algo tipo `DESKTOP-4F2K9` —
+  ilegível pra quem tem 10 anos. Nome de gente resolve.
+- **Preencha TODAS as chaves, não só a do banco.** Com dois agentes
+  ligados, quem pega o serviço primeiro é quem faz. Se for a máquina sem
+  `ANTHROPIC_API_KEY` ou `HI3D_*`, o agente **marca o pedido como erro**
+  em vez de deixar a outra fazer.
+- **Suba o agente visível na primeira vez** (`node agent.js`). O
+  `start-hidden.vbs` esconde o erro junto com a janela; visível, ele diz
+  na hora o que está errado no `.env`.
 
 ## O chaveiro de cereja está CANCELADO
 
@@ -122,9 +133,8 @@ Foi o dia que ligou **preço, custo e produção** de ponta a ponta.
 
 ## Pendências que são do Anderson, não do agente
 
-1. **Preparar o computador do Rafa** (acima).
-2. **Testar o "Sugerir categoria e tamanho" logado de verdade** — a
+1. **Testar o "Sugerir categoria e tamanho" logado de verdade** — a
    função foi testada por fora, o caminho navegador→função não.
-3. **Testar o botão de copiar o PIX num celular.**
-4. **Falar com os clientes de 23/08** — ficaram na regra antiga de 50% de
+2. **Testar o botão de copiar o PIX num celular.**
+3. **Falar com os clientes de 23/08** — ficaram na regra antiga de 50% de
    propósito, e as mensagens escritas pra eles falam em metade.

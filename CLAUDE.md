@@ -13,13 +13,7 @@ em [docs/continuar-daqui.md](docs/continuar-daqui.md).
    de tudo (veja a seção seguinte). Depois, subir o agente
    (`start-hidden.vbs`) — sem ele, todo botão de colinha e de fatiador
    fica girando pra sempre, sem erro nenhum na tela.
-2. **Preparar o computador do Rafa.** Ele clicou em "abrir no fatiador"
-   e não aconteceu nada: **aquela máquina nunca rodou o agente**, então
-   nem aparece na lista de escolher computador, e a peça foi parar na
-   máquina do pai (desligada). A tela agora explica isso, mas a solução
-   é física — rodar o `conferir-maquina.ps1` lá, e o `.env` precisa do
-   Anderson, porque as chaves são por máquina.
-3. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
+2. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
    cancelado sem querer; existe o botão "Reabrir orçamento" pra desfazer.
    É encomenda real, já vendida. Falta o entalhe do abridor, o bolso do
    NFC de 23mm e a pausa — nada disso foi impresso, só validado em
