@@ -709,10 +709,22 @@ async function perguntarComputador() {
     html += '<div class="empty">Nenhum computador está com o programa do fatiador ligado agora. ' +
       'Ligue o programa naquele que você quer usar (o atalho <strong>start-hidden.vbs</strong>) e clique aqui de novo.</div>';
   } else {
+    // Só aparece aqui o computador que JÁ rodou o programa alguma vez.
+    // Se o seu não está na lista, ele nunca foi preparado — e essa é a
+    // resposta que faltava quando o Rafa clicou, escolheu o único da
+    // lista (o do pai, desligado) e nada aconteceu.
+    const algumLigado = _computadoresListados.some((c) => c.ligado);
+    if (!algumLigado) {
+      html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:12.5px; color:#8a5b00; line-height:1.55;">'
+        + '<strong>Nenhum deles está ligado agora.</strong> Escolher um desligado deixa a peça esperando na fila até ele ligar — não vai abrir nada.</div>';
+    }
     _computadoresListados.forEach((c, i) => {
-      html += '<button class="btn full" style="margin-bottom:8px;" onclick="escolherComputador(' + i + ')">' +
+      html += '<button class="btn full" style="margin-bottom:8px;' + (c.ligado ? '' : ' opacity:.65;') + '" onclick="escolherComputador(' + i + ')">' +
         escapeHtml(c.nome) + (c.ligado ? ' ✅ ligado agora' : ' 💤 desligado') + '</button>';
     });
+    html += '<div style="font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:2px;">'
+      + '<strong>Não achou o seu computador na lista?</strong> É porque o programa do fatiador nunca foi ligado nele. '
+      + 'Peça pro Anderson preparar essa máquina — sem isso, o botão de abrir no fatiador não funciona daqui.</div>';
   }
   html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Agora não</button></div>';
   openModal(html);
@@ -1020,6 +1032,24 @@ async function renderProjetos() {
     html += '</div>';
   }
   html += '</div>';
+
+  // As partes têm fila própria, na tabela project_parts. Sem consultar
+  // ela aqui, a tela concluía "não tem nada em andamento" quando só as
+  // partes estavam trabalhando, parava de se atualizar, e elas ficavam
+  // em "gerando…" pra sempre — mesmo já prontas no banco há minutos.
+  const partesEmAndamento = await q(SUPA.from('project_parts').select('id').limit(1)
+    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued'));
+  const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
+    li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
+    li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
+    li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
+    li.open_slicer_status === 'queued');
+
+  // O aviso de computador desligado tem que aparecer AQUI também: é
+  // desta aba que se manda projeto pro fatiador, e foi aqui que o Rafa
+  // clicou e ficou sem resposta.
+  if (emAndamento) html = (await avisoAgenteParado()) + html;
+
   el.innerHTML = html;
   window.scrollTo(0, scrollY);
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
@@ -1037,17 +1067,6 @@ async function renderProjetos() {
   }
 
   clearTimeout(_projetosPollTimer);
-  // As partes têm fila própria, na tabela project_parts. Sem consultar
-  // ela aqui, a tela concluía "não tem nada em andamento" quando só as
-  // partes estavam trabalhando, parava de se atualizar, e elas ficavam
-  // em "gerando…" pra sempre — mesmo já prontas no banco há minutos.
-  const partesEmAndamento = await q(SUPA.from('project_parts').select('id').limit(1)
-    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued'));
-  const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
-    li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
-    li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
-    li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
-    li.open_slicer_status === 'queued');
   if (emAndamento && !el.classList.contains('hidden')) {
     _projetosPollTimer = setTimeout(() => { renderProjetos(); }, 4000);
   }
@@ -1865,12 +1884,27 @@ async function avisoAgenteParado() {
   const { data: agentes, error } = await SUPA.from('slicer_agents').select('name, last_seen_at');
   if (error || !agentes) return '';
   const agora = Date.now();
-  const vivo = agentes.some((a) => (agora - new Date(a.last_seen_at)) / 1000 < SEGUNDOS_PRA_CONSIDERAR_PARADO);
-  if (vivo) return '';
+  const estaVivo = (a) => (agora - new Date(a.last_seen_at)) / 1000 < SEGUNDOS_PRA_CONSIDERAR_PARADO;
 
-  const ultimo = agentes
-    .map((a) => new Date(a.last_seen_at))
-    .sort((a, b) => b - a)[0];
+  // Quando um computador já foi escolhido, é ELE que importa — não
+  // adianta ter outro ligado, porque a peça foi endereçada pra este.
+  // Foi assim que o Rafa ficou esperando: escolheu o computador do pai
+  // (o único da lista) e a peça foi pra uma máquina desligada.
+  const escolhido = computadorEscolhido();
+  if (escolhido) {
+    const alvo = agentes.find((a) => a.name === escolhido);
+    if (alvo && estaVivo(alvo)) return '';
+    return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'
+      + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; color:#8a5b00;">⏸️ O computador <em>' + escapeHtml(escolhido) + '</em> está desligado</div>'
+      + '<div style="font-size:13px; color:#8a5b00; line-height:1.6; margin-top:6px;">'
+      + 'A peça foi mandada pra ele, e vai ficar esperando até ele ligar — os botões de <strong>colinha</strong> e de <strong>fatiador</strong> não fazem nada enquanto isso.'
+      + '<br>Pra ligar nele: dois cliques em <strong>slicer-agent\\start-hidden.vbs</strong>.'
+      + '<br>Se você está em <em>outro</em> computador, <button class="btn ghost" style="padding:3px 10px; font-size:12px;" onclick="trocarComputador()">escolher outro</button></div>'
+      + '</div>';
+  }
+
+  if (agentes.some(estaVivo)) return '';
+  const ultimo = agentes.map((a) => new Date(a.last_seen_at)).sort((a, b) => b - a)[0];
   const quando = ultimo ? ' (visto pela última vez ' + fmtDate(ultimo) + ')' : '';
   return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'
     + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; color:#8a5b00;">⏸️ O ajudante do computador está parado' + quando + '</div>'
