@@ -899,21 +899,41 @@ async function tickHi3d() {
 // produtos do catálogo. Como .stl não carrega miniatura embutida (ao
 // contrário do .3mf), usa a miniatura que a própria Meshy renderizou
 // (capturada em gerarModeloMeshyUm); se o modelo foi anexado à mão sem
-// passar pela Meshy, cai de volta pra foto de referência do cliente.
+// passar pela Meshy, cai de volta pra foto de referência do cliente — e,
+// se isso também não existir, tenta extrair a miniatura de dentro do
+// próprio .3mf anexado (mesmo truque que o produto do catálogo já usa).
+// Achado testando o "+ Adicionar item" → "🪄 Gerenciar" novo: quem anexa
+// um .3mf à mão, sem nunca ter passado por Meshy nem subido foto
+// nenhuma, batia direto em "sem imagem pra analisar" — mesmo o arquivo
+// já trazendo uma miniatura pronta lá dentro.
 async function analisarProjetoUm(li) {
   const nomeRef = li.requester_name || li.id;
   try {
-    const imagemPath = li.meshy_thumbnail_path || li.custom_reference_image_path;
-    if (!imagemPath) throw new Error('projeto não tem miniatura do modelo nem foto de referência pra analisar.');
+    let imagemPath = li.meshy_thumbnail_path || li.custom_reference_image_path;
+    let fileBuf, mediaType;
 
-    log('Baixando imagem do projeto de "' + nomeRef + '" pra analisar...');
-    const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(imagemPath);
-    if (dlErr) throw new Error('download da imagem falhou: ' + dlErr.message);
-    const fileBuf = Buffer.from(await fileData.arrayBuffer());
+    if (imagemPath) {
+      log('Baixando imagem do projeto de "' + nomeRef + '" pra analisar...');
+      const { data: fileData, error: dlErr } = await supabase.storage.from(FOTOS_BUCKET).download(imagemPath);
+      if (dlErr) throw new Error('download da imagem falhou: ' + dlErr.message);
+      fileBuf = Buffer.from(await fileData.arrayBuffer());
+      mediaType = mediaTypeFromPath(imagemPath);
+    } else if (li.model_file_path && /\.3mf$/i.test(li.model_file_path)) {
+      log('Sem foto nem miniatura da Meshy — tentando extrair do .3mf de "' + nomeRef + '"...');
+      const { data: modelData, error: dlErr } = await supabase.storage.from(BUCKET).download(li.model_file_path);
+      if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+      const modelBuf = Buffer.from(await modelData.arrayBuffer());
+      const miniatura = extrairMiniatura(modelBuf);
+      if (!miniatura) throw new Error('projeto não tem miniatura do modelo nem foto de referência pra analisar (o .3mf também não trazia uma dentro).');
+      fileBuf = miniatura;
+      mediaType = 'image/png';
+    } else {
+      throw new Error('projeto não tem miniatura do modelo nem foto de referência pra analisar.');
+    }
 
     log('Analisando projeto de "' + nomeRef + '" com IA...');
     const historico = await buscarHistoricoFeedback('order_line_item_id', li.id);
-    const respostaCompleta = await chamarClaude(fileBuf, mediaTypeFromPath(imagemPath), historico, li.bed_plate, li.material);
+    const respostaCompleta = await chamarClaude(fileBuf, mediaType, historico, li.bed_plate, li.material);
     const ajustes = extrairAjustesEstruturados(respostaCompleta);
     const tips = removerBlocoJSON(respostaCompleta);
 
@@ -933,7 +953,7 @@ async function analisarProjetoUm(li) {
 async function tickAIProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, meshy_thumbnail_path, custom_reference_image_path, bed_plate, material')
+    .select('id, requester_name, meshy_thumbnail_path, custom_reference_image_path, model_file_path, bed_plate, material')
     .eq('line_type', 'custom').eq('ai_analysis_status', 'queued')
     .order('ai_analysis_requested_at', { ascending: true })
     .limit(1);
