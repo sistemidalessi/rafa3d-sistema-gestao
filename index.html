@@ -1938,57 +1938,88 @@ function abrirCartinha(orderId) {
   preencherCartinha(orderId, janela);
 }
 
-async function preencherCartinha(orderId, janela) {
-  const order = await q(SUPA.from('orders')
-    .select('order_number, customer_name, customers(name)')
-    .eq('id', orderId).maybeSingle());
-  if (!order) { toast('Não achei esse pedido.'); janela.close(); return; }
-
-  const nome = (order.customers ? order.customers.name : order.customer_name) || '';
-  const primeiro = nome.trim().split(' ')[0] || '';
-  const saudacao = primeiro ? 'Oi, ' + escapeHtml(primeiro) + '!' : 'Oi!';
-
+// O molde é o MESMO em toda encomenda de propósito — "Para" e a
+// assinatura ficam em branco, pro Rafa preencher à mão em cada peça
+// depois de imprimir. Isso também é o que permite imprimir um lote
+// inteiro numa gráfica de uma vez, em vez de uma cartinha por vez daqui.
+// Por isso não busca mais nada no banco — orderId fica só pra manter a
+// mesma assinatura de função que os dois lugares que chamam isso já usam.
+function preencherCartinha(orderId, janela) {
   const html =
     '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
-    '<title>Cartinha — ' + escapeHtml(order.order_number || '') + '</title>' +
-    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;600&display=swap" rel="stylesheet">' +
+    '<title>Cartinha do Rafa</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">' +
     '<style>' +
       '@page { size: A4; margin: 0; }' +
       'body { margin:0; font-family:Manrope,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; background:#fff; }' +
+      '* { box-sizing:border-box; }' +
       // A borda pontilhada é guia de corte e some na impressão? Não —
       // fica de propósito, senão não dá pra cortar reto.
-      '.cartao { width:148mm; height:105mm; box-sizing:border-box; padding:12mm 14mm;' +
-        ' border:1px dashed #c9cfda; display:flex; flex-direction:column; justify-content:space-between; }' +
-      '.topo { display:flex; align-items:center; gap:10px; }' +
-      '.topo img { height:16mm; }' +
-      '.marca { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:15pt; color:#0b1733; letter-spacing:.3px; }' +
-      '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:19pt; color:#0061f7; margin:0 0 3mm; }' +
-      '.texto { font-size:11.5pt; line-height:1.65; color:#26324a; margin:0; }' +
-      '.assina { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:13pt; color:#0b1733; margin-top:4mm; }' +
-      '.rodape { display:flex; justify-content:space-between; align-items:flex-end; font-size:8.5pt; color:#6b7a94; }' +
-      '.rodape strong { color:#0b1733; }' +
-      '@media print { .cartao { border-color:#e3e7ee; } }' +
-    '</style></head><body><div class="cartao">' +
+      '.cartao { width:148mm; height:105mm; border:1px dashed #c9cfda; border-radius:2mm;' +
+        ' display:grid; grid-template-columns:34mm 1fr; overflow:hidden; }' +
+      '.lado { background:#eef3fc; padding:7mm 5mm; display:flex; flex-direction:column;' +
+        ' align-items:center; justify-content:space-between; border-right:1px dashed #c5d3ef; }' +
+      '.retrato { width:100%; aspect-ratio:1; border-radius:50%; overflow:hidden;' +
+        ' border:1.2mm solid #fff; box-shadow:0 2mm 3mm -1.5mm rgba(11,23,51,.35); }' +
+      '.retrato img { width:100%; height:100%; object-fit:cover; display:block; }' +
+      '.assinatura-nome { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:8.2pt;' +
+        ' color:#0b1733; text-align:center; margin-top:2.5mm; line-height:1.25; }' +
+      '.assinatura-nome span { display:block; font-weight:500; font-size:6.6pt; color:#5b6b87; margin-top:.8mm; }' +
+      '.qr-bloco { text-align:center; }' +
+      '.qr-bloco img { width:17mm; height:17mm; display:block; margin:0 auto; }' +
+      '.qr-bloco p { font-size:5.8pt; color:#5b6b87; margin:1mm 0 0; line-height:1.3; }' +
+      '.corpo { padding:6mm 7mm 5mm; display:flex; flex-direction:column; justify-content:space-between; position:relative; }' +
+      '.marca-mini { position:absolute; top:5mm; right:6mm; }' +
+      '.marca-mini img { height:15mm; width:auto; }' +
+      '.campo-para { display:flex; align-items:baseline; gap:2mm; margin:0 30mm 3mm 0; }' +
+      '.campo-para .rotulo { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:8pt;' +
+        ' color:#0061f7; text-transform:uppercase; letter-spacing:.06em; white-space:nowrap; }' +
+      '.campo-para .linha { flex:1; border-bottom:1px dotted #b7c2d6; height:5mm; }' +
+      '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:20pt; color:#0b1733; margin:0 0 2.4mm; }' +
+      '.texto { font-size:10pt; line-height:1.5; color:#2b3652; margin:0; }' +
+      '.texto strong { color:#0b1733; }' +
+      '.rodape { display:flex; align-items:flex-end; justify-content:space-between; gap:4mm;' +
+        ' margin-top:4mm; padding-top:3mm; border-top:1px dashed #d7deec; }' +
+      '.assine { flex:1; }' +
+      '.assine .linha-assinatura { border-bottom:1px solid #d9a441; height:7mm; margin-bottom:1mm; }' +
+      '.assine .rotulo-assine { font-size:6.6pt; color:#5b6b87; letter-spacing:.03em; }' +
+      '.contato { text-align:right; font-size:7pt; color:#5b6b87; line-height:1.5; }' +
+      '.contato strong { color:#0b1733; display:block; font-size:7.6pt; }' +
+      '@media print { .cartao, .lado, .rodape { border-color:#e3e7ee; } }' +
+    '</style></head><body>' +
 
-      '<div class="topo"><img src="catalogo/assets/logo_clean.png" alt=""><span class="marca">RAFA 3D</span></div>' +
-
-      '<div>' +
-        '<p class="oi">' + saudacao + '</p>' +
-        '<p class="texto">Eu tenho <strong>10 anos</strong> e essa loja é minha. Fui eu que desenhei, imprimi, ' +
-        'embalei e mandei essa peça pra você.<br><br>' +
-        'Obrigado de coração por prestigiar o meu trabalho! 💙</p>' +
-        '<div class="assina">— Rafa</div>' +
+    '<div class="cartao">' +
+      '<div class="lado">' +
+        '<div class="retrato"><img src="catalogo/assets/rafa_cartinha.png" alt="Rafa"></div>' +
+        '<div class="assinatura-nome">Rafael Dalessi<span>10 anos · fundador</span></div>' +
+        '<div class="qr-bloco">' +
+          '<img src="catalogo/assets/qr_catalogo.png" alt="QR do catálogo">' +
+          '<p>aponte a câmera<br>e veja mais peças</p>' +
+        '</div>' +
       '</div>' +
 
-      '<div class="rodape">' +
-        '<span>Pedido <strong>' + escapeHtml(order.order_number || '') + '</strong></span>' +
-        '<span>Gostou? Tem mais em<br><strong>sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo</strong></span>' +
-        '<span>WhatsApp<br><strong>(11) 98719-0466</strong></span>' +
-      '</div>' +
+      '<div class="corpo">' +
+        '<div class="marca-mini"><img src="catalogo/assets/logo_clean.png" alt="RAFA 3D"></div>' +
 
+        '<div>' +
+          '<div class="campo-para"><span class="rotulo">Para</span><span class="linha"></span></div>' +
+          '<p class="oi">Oi!</p>' +
+          '<p class="texto">Essa peça eu desenhei, fatiei e imprimi com as minhas próprias mãos — devagar, ' +
+          'camada por camada, até ficar do jeitinho certo. Tenho só <strong>10 anos</strong>, mas cada ' +
+          'encomenda que chega é trabalho de verdade pra mim.<br><br>' +
+          'Obrigado por confiar numa loja pequena (e numa pessoa pequena)! Espero que você ame essa peça ' +
+          'tanto quanto eu amei fazer ela pra você. 💙</p>' +
+        '</div>' +
+
+        '<div class="rodape">' +
+          '<div class="assine"><div class="linha-assinatura"></div><div class="rotulo-assine">🖊️ assinado à mão pelo Rafa</div></div>' +
+          '<div class="contato"><strong>WhatsApp</strong>(11) 98719-0466</div>' +
+        '</div>' +
+      '</div>' +
     '</div>' +
-    // Espera as fontes e a imagem antes de chamar a impressão, senão a
-    // janela abre pra imprimir com o cartão ainda sem logo.
+
+    // Espera as fontes e as imagens antes de chamar a impressão, senão a
+    // janela abre pra imprimir com o cartão ainda incompleto.
     '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>' +
     '</body></html>';
 
