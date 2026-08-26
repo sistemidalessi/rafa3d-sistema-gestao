@@ -1776,9 +1776,15 @@ async function renderPedidoDetalhe(id) {
         html += '<span class="badge on">Etiqueta gerada</span> ';
         if (order.shipping_tracking_code) html += '<span style="font-size:12px; color:var(--muted);">Rastreio: ' + escapeHtml(order.shipping_tracking_code) + '</span>';
         if (order.shipping_label_url) {
-          html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">'
-            + '<button class="btn" onclick="imprimirPraDespachar(\'' + id + '\', true)">🖨️ Imprimir etiqueta e cartinha</button>'
-            + '<a href="' + escapeHtml(order.shipping_label_url) + '" target="_blank" rel="noopener" class="btn ghost">só a etiqueta</a>'
+          // Três botões de propósito: o de cima é o do dia a dia (sai
+          // tudo o que vai na caixa), e os dois de baixo servem pra
+          // quando uma das folhas emperra ou sai borrada e só ela
+          // precisa sair de novo.
+          const urlEtiqueta = escapeHtml(order.shipping_label_url);
+          html += '<div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">'
+            + '<button class="btn" onclick="imprimirPraDespachar(\'' + id + '\', \'' + urlEtiqueta + '\')">🖨️ Imprimir etiqueta e cartinha</button>'
+            + '<a href="' + urlEtiqueta + '" target="_blank" rel="noopener" class="btn ghost">🏷️ Só a etiqueta</a>'
+            + '<button class="btn ghost" onclick="abrirCartinha(\'' + id + '\')">💌 Só a cartinha</button>'
             + '</div>';
         } else {
           // Sem link, a tela dizia "Etiqueta gerada" e mais nada — um
@@ -1921,11 +1927,22 @@ async function abrirAgradecimento(orderId) {
    Sai em A6 deitado (14,8 x 10,5 cm) no meio de uma folha A4, com linha
    pontilhada pra cortar. Fundo branco de propósito: cartinha com fundo
    colorido gasta um cartucho por encomenda. */
-async function abrirCartinha(orderId) {
+// A janela é aberta AQUI, no clique, e só depois preenchida. O
+// navegador só permite abrir janela enquanto o clique está "fresco":
+// depois de um await ele considera que não houve gesto do usuário e
+// bloqueia em silêncio. Era por isso que a cartinha não aparecia.
+function abrirCartinha(orderId) {
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra imprimir a cartinha.'); return; }
+  janela.document.write('<p style="font-family:sans-serif;padding:20px;color:#666;">Montando a cartinha…</p>');
+  preencherCartinha(orderId, janela);
+}
+
+async function preencherCartinha(orderId, janela) {
   const order = await q(SUPA.from('orders')
     .select('order_number, customer_name, customers(name)')
     .eq('id', orderId).maybeSingle());
-  if (!order) { toast('Não achei esse pedido.'); return; }
+  if (!order) { toast('Não achei esse pedido.'); janela.close(); return; }
 
   const nome = (order.customers ? order.customers.name : order.customer_name) || '';
   const primeiro = nome.trim().split(' ')[0] || '';
@@ -1975,20 +1992,24 @@ async function abrirCartinha(orderId) {
     '<script>window.onload=function(){setTimeout(function(){window.print();},400);};<\/script>' +
     '</body></html>';
 
-  const janela = window.open('', '_blank');
-  if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra imprimir a cartinha.'); return; }
+  janela.document.open();
   janela.document.write(html);
   janela.document.close();
 }
 
-// Abre etiqueta e cartinha de uma vez — é o que se faz na hora de
-// despachar, e separar em dois cliques só cria chance de esquecer uma.
-async function imprimirPraDespachar(orderId, temEtiqueta) {
-  if (temEtiqueta) {
-    const order = await q(SUPA.from('orders').select('shipping_label_url').eq('id', orderId).maybeSingle());
-    if (order && order.shipping_label_url) window.open(order.shipping_label_url, '_blank', 'noopener');
+// As DUAS janelas são abertas no mesmo instante do clique, antes de
+// qualquer consulta ao banco. Abrir uma, esperar o banco e abrir a
+// outra fazia o navegador bloquear a segunda — o sintoma era "clico em
+// etiqueta e cartinha e só vem a etiqueta".
+function imprimirPraDespachar(orderId, labelUrl) {
+  const janelaCartinha = window.open('', '_blank');
+  if (labelUrl) window.open(labelUrl, '_blank', 'noopener');
+  if (!janelaCartinha) {
+    toast('O navegador bloqueou a janela da cartinha. Libere os pop-ups deste site.');
+    return;
   }
-  await abrirCartinha(orderId);
+  janelaCartinha.document.write('<p style="font-family:sans-serif;padding:20px;color:#666;">Montando a cartinha…</p>');
+  preencherCartinha(orderId, janelaCartinha);
 }
 
 async function gerarEtiqueta(orderId) {
