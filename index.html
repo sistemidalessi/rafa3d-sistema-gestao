@@ -1683,7 +1683,17 @@ async function avisoAgenteParado() {
 // Item personalizado não entra: o caminho dele é a aba Projetos, que já
 // tem a cadeia inteira (gerar, dividir, colinha, fatiador).
 function acoesDeImpressaoDoItem(it, orderId) {
-  if (it.line_type !== 'catalog') return '';
+  // Item personalizado é a MESMA linha que a aba Projetos gerencia
+  // (order_line_items com line_type='custom') — só que até aqui, quem
+  // adicionava um pelo "+ Adicionar item" do pedido não tinha nenhum
+  // caminho até anexar arquivo, pedir colinha ou abrir no fatiador: essas
+  // ações só existiam de dentro da aba Projetos, sem ponte nenhuma daqui
+  // pra lá. Achado testando o lançamento de um pedido antigo — o dono
+  // queria exatamente essa ponte, mais "virar produto do catálogo" (que
+  // já existe, é o botão "🎁 Transformar em Produto" lá dentro).
+  if (it.line_type !== 'catalog') {
+    return '<button class="btn" onclick="abrirGerenciarProjeto(\'' + it.id + '\')">🪄 Gerenciar (arquivo, colinha, fatiador...)</button>';
+  }
   const p = it.products;
   if (!p) return '';
   const volta = 'pedido:' + orderId;
@@ -2142,10 +2152,16 @@ async function openItemForm(orderId) {
   const produtos = await getProdutos();
   let options = '<option value="">— selecione —</option>';
   produtos.forEach((p) => { options += '<option value="' + p.id + '" data-price="' + p.sale_price + '">' + escapeHtml(p.catalog_code) + ' — ' + escapeHtml(p.name) + '</option>'; });
+  // O <label> padrão do modal é bloco, maiúsculo, 11px (serve pra nome de
+  // campo) — encaixar um rádio dentro dele deixava a bolinha desalinhada
+  // do texto. Aqui o rótulo é a própria opção clicável, então o estilo
+  // vira inline-flex, tamanho normal, sem virar caixa alta.
+  var estiloOpcaoRadio = 'display:inline-flex; align-items:center; gap:5px; text-transform:none;' +
+    ' font-size:13px; font-weight:400; letter-spacing:normal; color:var(--text); margin:12px 18px 5px 0;';
   openModal(
     '<h3>Adicionar item</h3>' +
-    '<label><input type="radio" name="itTipo" value="catalog" checked onchange="toggleItemTipo()"> Do catálogo</label> ' +
-    '<label><input type="radio" name="itTipo" value="custom" onchange="toggleItemTipo()"> Personalizado</label>' +
+    '<label style="' + estiloOpcaoRadio + '"><input type="radio" name="itTipo" value="catalog" checked onchange="toggleItemTipo()"> Do catálogo</label>' +
+    '<label style="' + estiloOpcaoRadio + '"><input type="radio" name="itTipo" value="custom" onchange="toggleItemTipo()"> Personalizado</label>' +
     '<div id="itCatalogFields">' +
       '<label>Produto</label>' +
       '<select id="itProduto" onchange="preencherPrecoItem()">' + options + '</select>' +
