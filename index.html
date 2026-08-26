@@ -1204,16 +1204,24 @@ async function abrirGerenciarProjeto(lineItemId) {
   // entrega). Cancelado ganha volta: "reabrir orçamento" desfaz um
   // cancelamento — de propósito ou clique errado — sem apagar nada.
   const projetoEmProducaoOuAlem = ['orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'].indexOf(li.line_status) !== -1;
+  // Mandar o orçamento não depende de estado nenhum — vale reenviar
+  // mesmo já aprovado (o cliente pode ter perdido a mensagem) ou até
+  // cancelado (pra retomar a conversa). Só precisa ter um preço pra
+  // mostrar.
+  const botaoOrcamento = li.unit_price
+    ? '<button class="btn ghost" onclick="abrirOrcamentoParaEnviar(\'' + li.id + '\')">📤 Ver orçamento pra mandar</button>' : '';
   if (li.line_status === 'cancelado') {
     html += '<span>4. Aprovação — <span class="badge off">cancelado</span></span>';
-    html += '<button class="btn ghost" onclick="reabrirOrcamentoProjeto(\'' + li.id + '\')">↩️ Reabrir orçamento</button>';
+    html += '<span class="row-actions">' + botaoOrcamento +
+      '<button class="btn ghost" onclick="reabrirOrcamentoProjeto(\'' + li.id + '\')">↩️ Reabrir orçamento</button></span>';
   } else if (projetoEmProducaoOuAlem) {
     html += '<span>4. Aprovação — <span class="badge on">' + escapeHtml(LINE_STATUS_LABELS[li.line_status] || 'aprovado') + ', ' + fmtMoney(li.unit_price) + '</span></span>';
+    if (botaoOrcamento) html += '<span class="row-actions">' + botaoOrcamento + '</span>';
   } else if (li.unit_price) {
     html += '<span>4. Aprovação — <span class="badge on">preço calculado, ' + fmtMoney(li.unit_price) + '</span> — falta o cliente aprovar</span>';
     html += '<span class="row-actions">';
     html += '<button class="btn ghost" onclick="abrirAprovarProjeto(\'' + li.id + '\')">🔁 Recalcular</button>';
-    html += '<button class="btn ghost" onclick="abrirOrcamentoParaEnviar(\'' + li.id + '\')">📤 Ver orçamento pra mandar</button>';
+    html += botaoOrcamento;
     html += '<button class="btn" onclick="confirmarAprovarProjeto(\'' + li.id + '\')">✅ Cliente aprovou</button>';
     html += '</span>';
   } else {
