@@ -2620,6 +2620,10 @@ async function salvarConclusaoImpressao(itemId) {
       estimated_grams: gramasPorPeca,
       estimated_print_hours: horasPorPeca,
       filament_color_id: (spoolUsado && spoolUsado.color_id) || (_receitaDaConclusao ? _receitaDaConclusao.filament_color_id : null),
+      // Rolo de verdade usado agora sempre vence uma "média" que
+      // porventura tivesse sido escolhida antes — depois de imprimir, a
+      // cor exata é fato, não estimativa.
+      filament_material_media: spoolUsado ? null : (_receitaDaConclusao ? _receitaDaConclusao.filament_material_media : null),
       printer_id: (_receitaDaConclusao && _receitaDaConclusao.printer_id) || null,
       has_painting: _receitaDaConclusao ? _receitaDaConclusao.has_painting : false,
       extra_cost: _receitaDaConclusao ? _receitaDaConclusao.extra_cost : 0,
@@ -3242,8 +3246,19 @@ async function getReceitas(force) {
 function calcularCustoReceita(receita) {
   if (!receita) return null;
   const cor = filamentosCache.find((c) => c.id === receita.filament_color_id);
+  // Sem cor exata, mas com um material escolhido ("média de PLA"): custo
+  // por quilo vira a média de tudo cadastrado daquele material — cor
+  // exata quase nunca muda o custo, só o material muda.
+  let custoPorKg = null;
+  if (cor) {
+    custoPorKg = cor.cost_per_kg;
+  } else if (receita.filament_material_media) {
+    const doMaterial = filamentosCache.filter((c) =>
+      (c.material || '').trim().toLowerCase() === receita.filament_material_media);
+    if (doMaterial.length) custoPorKg = doMaterial.reduce((s, c) => s + Number(c.cost_per_kg || 0), 0) / doMaterial.length;
+  }
   const impressora = impressorasCache.find((p) => p.id === receita.printer_id);
-  const custoMaterial = cor ? (receita.estimated_grams / 1000) * cor.cost_per_kg : 0;
+  const custoMaterial = custoPorKg !== null ? (receita.estimated_grams / 1000) * custoPorKg : 0;
   const custoMaquina = impressora && impressora.hourly_cost ? receita.estimated_print_hours * impressora.hourly_cost : 0;
   // Pintura soma 20% em cima do filamento+luz — igual à planilha que já era usada antes desse sistema existir.
   const custoPintura = receita.has_painting ? (custoMaterial + custoMaquina) * 0.2 : 0;
@@ -3254,7 +3269,7 @@ function calcularCustoReceita(receita) {
   return {
     custoMaterial, custoMaquina, custoPintura, custoExtra,
     total: custoMaterial + custoMaquina + custoPintura + custoExtra,
-    corFaltando: !cor, impressoraFaltando: !impressora,
+    corFaltando: custoPorKg === null, impressoraFaltando: !impressora,
   };
 }
 
@@ -3810,23 +3825,51 @@ function dicaCampo(texto) {
 // material: o que a colinha da IA já decidiu pra essa peça ('pla'/'petg'/...,
 // patch-33), se existir. Só serve pra PRÉ-marcar o filamento quando dá pra
 // saber sem chute — nunca esconde opção nem decide sozinho a cor, que
-// continua sendo escolha de gente. Auto-marca só quando existe exatamente
-// UM filamento cadastrado daquele material (mais de um, a cor importa e
-// fica em aberto); a impressora auto-marca sempre que só existe uma
-// cadastrada, sem depender da colinha — hoje é sempre o caso.
+// continua sendo escolha de gente. A impressora auto-marca sempre que só
+// existe uma cadastrada, sem depender da colinha — hoje é sempre o caso.
+//
+// A cor exata quase nunca muda o custo — o que muda é o MATERIAL (PLA
+// custa diferente de PETG, mas vermelho e azul do mesmo PLA custam
+// igual). Por isso o seletor ganhou opções de "média de PLA/PETG/...",
+// calculadas na hora a partir de tudo que está cadastrado — e essa
+// passou a ser a pré-seleção automática (antes só auto-marcava com
+// exatamente UMA cor cadastrada; agora marca com qualquer quantidade,
+// porque a média serve mesmo tendo dez cores diferentes). Cor
+// específica continua existindo pra quem quiser ser exato.
 function perguntasImpressora(r, material) {
   const materialDaPeca = (material || '').trim().toLowerCase();
   const filamentosDoMaterial = materialDaPeca
     ? filamentosCache.filter((c) => (c.material || '').trim().toLowerCase() === materialDaPeca)
     : [];
-  const corPreSelecionada = r.filament_color_id || (filamentosDoMaterial.length === 1 ? filamentosDoMaterial[0].id : null);
-  const impressoraPreSelecionada = r.printer_id || (impressorasCache.length === 1 ? impressorasCache[0].id : null);
+
+  // Um grupo "média" por material realmente cadastrado, não só o da
+  // peça — a pessoa pode sempre trocar pra outro material na mão.
+  const materiaisDisponiveis = {};
+  filamentosCache.forEach((c) => {
+    const m = (c.material || '').trim();
+    if (!m) return;
+    const chave = m.toLowerCase();
+    if (!materiaisDisponiveis[chave]) materiaisDisponiveis[chave] = { rotulo: m, soma: 0, qtd: 0 };
+    materiaisDisponiveis[chave].soma += Number(c.cost_per_kg) || 0;
+    materiaisDisponiveis[chave].qtd += 1;
+  });
+
+  const mediaPreSelecionada = !r.filament_color_id &&
+    (r.filament_material_media || (materialDaPeca && filamentosDoMaterial.length ? materialDaPeca : null));
+  const corPreSelecionada = r.filament_color_id || null;
 
   let coresOptions = '<option value="">— escolha —</option>';
+  Object.keys(materiaisDisponiveis).forEach((chave) => {
+    const info = materiaisDisponiveis[chave];
+    const media = info.soma / info.qtd;
+    coresOptions += '<option value="media:' + chave + '"' + (chave === mediaPreSelecionada ? ' selected' : '') + '>' +
+      '🧮 ' + escapeHtml(info.rotulo) + ' (média, ' + fmtMoney(media) + ' o quilo)</option>';
+  });
   filamentosCache.forEach((c) => {
     coresOptions += '<option value="' + c.id + '"' + (c.id === corPreSelecionada ? ' selected' : '') + '>' +
       escapeHtml(c.name) + ' (' + fmtMoney(c.cost_per_kg) + ' o quilo)</option>';
   });
+  const impressoraPreSelecionada = r.printer_id || (impressorasCache.length === 1 ? impressorasCache[0].id : null);
   let impOptions = '<option value="">— escolha —</option>';
   impressorasCache.forEach((imp) => {
     impOptions += '<option value="' + imp.id + '"' + (imp.id === impressoraPreSelecionada ? ' selected' : '') + '>' +
@@ -4020,13 +4063,25 @@ function atualizarContaPrecificar() {
         : (dif > 0 ? '<strong>' + fmtMoney(dif) + ' mais barato do que devia.</strong>'
                    : fmtMoney(-dif) + ' mais caro do que precisa.')) + '</div>';
   }
-  html += '<button class="btn full" style="margin-top:12px;" onclick="saveReceita(true)">✅ Usar ' + fmtMoney(preco) + ' como preço</button>';
+  // A conta é sugestão — o preço que de fato vai pro catálogo pode ser
+  // outro (arredondar pra um número redondo, competir com algo do
+  // mercado, promoção). Por isso vira campo editável, pré-cheio com a
+  // sugestão, e é ELE (não o número calculado direto) que salva.
+  html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">';
+  html += '<label class="pergunta">Qual preço vai pro catálogo?</label>';
+  html += dicaCampo('Já vem com a sugestão de cima, mas edita se quiser um número redondo ou outro valor.');
+  html += '<input id="rcPrecoFinal" type="number" step="0.01" value="' + preco.toFixed(2) + '">';
+  html += '</div>';
+  html += '<button class="btn full" style="margin-top:12px;" onclick="saveReceita(true)">✅ Usar esse preço</button>';
   el.innerHTML = html;
 }
 
 function lerFormularioCusto() {
+  const valorCor = document.getElementById('rcCor').value;
+  const ehMedia = valorCor.indexOf('media:') === 0;
   return {
-    filament_color_id: document.getElementById('rcCor').value || null,
+    filament_color_id: (!ehMedia && valorCor) || null,
+    filament_material_media: ehMedia ? valorCor.slice(6) : null,
     printer_id: document.getElementById('rcImpressora').value || null,
     estimated_grams: parseFloat(document.getElementById('rcGramas').value) || 0,
     estimated_print_hours: (parseFloat(document.getElementById('rcHorasH').value) || 0) +
@@ -4111,7 +4166,12 @@ async function saveReceita(aplicarPreco) {
   if (error) { toast('Erro: ' + error.message); return; }
 
   if (aplicarPreco) {
-    const preco = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMultiplicador);
+    // O campo "qual preço vai pro catálogo" começa com a sugestão mas é
+    // editável — é o que realmente publica, não o número calculado direto.
+    const precoSugerido = precoAPartirDoCusto(calcularCustoReceita(form).total, custoMultiplicador);
+    const precoFinalEl = document.getElementById('rcPrecoFinal');
+    const preco = precoFinalEl ? parseFloat(precoFinalEl.value) : precoSugerido;
+    if (precoFinalEl && (!preco || preco <= 0)) { toast('Escreve o preço que vai pro catálogo.'); return; }
     if (preco) {
       // Só o primeiro preço (produto nascia com sale_price 0) publica sozinho.
       // Reajustar o preço de um produto que o dono já desativou por outro
