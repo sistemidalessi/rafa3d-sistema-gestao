@@ -161,7 +161,7 @@
             <div style="flex:1;"></div>
             <sc-if value="{{ showHeights }}" hint-placeholder-val="{{ true }}">
               <sc-if value="{{ p.hasH }}" hint-placeholder-val="{{ true }}">
-                <div style="font-size:0.75em; color:#7b879c; font-weight:500;">Altura: {{ p.h }}</div>
+                <div style="font-size:0.75em; color:#7b879c; font-weight:500;">Tamanho: {{ p.h }}</div>
               </sc-if>
             </sc-if>
             <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
@@ -730,8 +730,14 @@ class Component extends DCLogic {
           n: parseInt(parts[1], 10) || 0,
           code: row.catalog_code,
           name: row.name,
-          h: row.height_cm ? Number(row.height_cm) + ' cm' : '',
-          hasH: !!row.height_cm,
+          // size_note é texto livre ("18cm de altura", "9 × 9cm") e
+          // vence quando existe — nem toda peça é bem descrita só pela
+          // altura. height_cm continua valendo pra produto antigo que
+          // ainda não foi editado desde que isso virou texto livre — por
+          // isso o rótulo no card virou "Tamanho:" genérico, não mais
+          // "Altura:" fixo (ver mais abaixo, perto de "{{ p.h }}").
+          h: row.size_note || (row.height_cm ? Number(row.height_cm) + ' cm' : ''),
+          hasH: !!(row.size_note || row.height_cm),
           price: this.fmtPrice(Number(row.sale_price)),
           per: row.price_unit_note || '',
           promo: row.promo_note || '',

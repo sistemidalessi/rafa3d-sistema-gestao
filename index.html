@@ -4219,17 +4219,24 @@ function desenharCadastroProduto(el) {
   if (!isNovo && p.image_path) {
     html += '<img src="' + escapeHtml(produtoFotoSrc(p)) + '" style="width:90px; height:90px; object-fit:cover; border-radius:12px; border:1px solid var(--border); margin-bottom:8px; display:block;" onerror="this.style.visibility=\'hidden\'">';
   }
-  html += '<input id="pcFoto" type="file" accept="image/*">';
+  html += '<input id="pcFoto" type="file" accept="image/*" onchange="pcFotoMudou()">';
 
   html += '<label class="pergunta">Qual o nome dela?</label>';
   html += '<input id="pcNome" value="' + escapeHtml(p.name || '') + '" placeholder="Ex: Vaso Bloom">';
 
+  html += '<div id="pcSugestaoIA" style="margin:8px 0;"></div>';
+
   html += '<label class="pergunta">Em qual parte do catálogo ela fica?</label>';
   html += '<select id="pcCategoria">' + opcoesCategoria + '</select>';
+  html += '<div id="pcNotaCategoria" style="font-size:11.5px; color:var(--muted); margin:-2px 0 6px;"></div>';
 
-  html += '<label class="pergunta">Qual a altura dela? (cm)</label>';
-  html += dicaCampo('Opcional — só preenche se ajudar o cliente a imaginar o tamanho.');
-  html += '<input id="pcAltura" type="number" step="0.1" value="' + (p.height_cm || '') + '">';
+  // "Altura" nem sempre é a medida que ajuda o cliente a entender o
+  // tamanho — uma peça baixa e larga (porta-anel, porta-joia) é melhor
+  // descrita pela largura ou pelo diâmetro. Vira texto livre, pra
+  // descrever do jeito que fizer sentido pra CADA peça.
+  html += '<label class="pergunta">Qual o tamanho dela?</label>';
+  html += dicaCampo('Opcional — do jeito que ajudar o cliente a entender o tamanho. Ex: "18cm de altura", "9 × 9cm", "12cm de diâmetro".');
+  html += '<input id="pcTamanho" value="' + escapeHtml(p.size_note || (p.height_cm ? p.height_cm + 'cm de altura' : '')) + '" placeholder="Ex: 18cm de altura">';
 
   html += '<label class="pergunta">Aparece no catálogo pros clientes verem?</label>';
   if (isNovo) html += dicaCampo('Fica escondida até você dar um preço de verdade pra ela — assim que aplicar o preço, ela aparece sozinha.');
@@ -4273,12 +4280,76 @@ function desenharCadastroProduto(el) {
   el.innerHTML = html;
 }
 
+// Assim que escolhe a foto, mostra o botão de sugestão — sem foto a IA
+// não tem o que olhar. O nome pode ser preenchido antes ou depois, não
+// trava nada (a foto sozinha já dá pra sugerir categoria e tamanho).
+function pcFotoMudou() {
+  const el = document.getElementById('pcSugestaoIA');
+  if (!el) return;
+  const temFoto = document.getElementById('pcFoto').files.length > 0;
+  el.innerHTML = temFoto
+    ? '<button class="btn ghost" onclick="sugerirCadastroComIA()">🤖 Sugerir categoria e tamanho com a foto</button>'
+    : '';
+}
+
+function arquivoParaBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// Categoria e tamanho são hoje decisão manual de quem cadastra — e
+// quem cadastra no dia a dia é o Rafael, com 10 anos. Pedido dele
+// (Anderson): a peça já tem foto nessa tela, então usa ela pra sugerir
+// os dois em vez de deixar tudo por conta de adivinhação. Não decide
+// sozinho — só pré-preenche, e a pessoa confere/troca se quiser.
+async function sugerirCadastroComIA() {
+  const file = document.getElementById('pcFoto').files[0];
+  const nome = document.getElementById('pcNome').value.trim();
+  const el = document.getElementById('pcSugestaoIA');
+  if (!file) { toast('Escolhe a foto primeiro.'); return; }
+  if (!nome) { toast('Escreve o nome da peça primeiro — ajuda a IA a entender o que é.'); return; }
+
+  el.innerHTML = '<span style="color:var(--muted); font-size:13px;">🤖 Olhando a foto...</span>';
+  try {
+    const { data: sessao } = await SUPA.auth.getSession();
+    const token = sessao && sessao.session ? sessao.session.access_token : null;
+    if (!token) { toast('Sessão expirada, entra de novo.'); el.innerHTML = ''; return; }
+
+    const imagem_base64 = await arquivoParaBase64(file);
+    const resp = await fetch(DEFAULT_SB_URL + '/functions/v1/sugerir-cadastro-produto', {
+      method: 'POST',
+      headers: { apikey: DEFAULT_SB_ANON, Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome, imagem_base64, media_type: file.type || 'image/jpeg' }),
+    });
+    const dados = await resp.json();
+    if (dados.error) { toast('Erro: ' + dados.error); el.innerHTML = ''; return; }
+
+    document.getElementById('pcCategoria').value = dados.categoria;
+    if (dados.tamanho_sugerido) document.getElementById('pcTamanho').value = dados.tamanho_sugerido;
+
+    const notaEl = document.getElementById('pcNotaCategoria');
+    if (notaEl) {
+      notaEl.innerHTML = dados.boa_correspondencia
+        ? '🤖 ' + escapeHtml(dados.nota_categoria || 'Sugestão da IA.')
+        : '<span style="color:#a15c00;">🤖 ' + escapeHtml(dados.nota_categoria || 'Nenhuma categoria bate perfeitamente — confere se essa é a melhor opção mesmo.') + '</span>';
+    }
+    el.innerHTML = '<span style="color:#1f8a3b; font-size:13px;">✅ Sugestão aplicada — confere e troca se quiser.</span>';
+  } catch (e) {
+    toast('Não consegui pedir a sugestão agora.');
+    el.innerHTML = '<button class="btn ghost" onclick="sugerirCadastroComIA()">🤖 Tentar de novo</button>';
+  }
+}
+
 async function salvarCadastroProduto() {
   const isNovo = produtoCadastroAberto === 'novo';
   const id = isNovo ? null : produtoCadastroAberto;
   const name = document.getElementById('pcNome').value.trim();
   const category = document.getElementById('pcCategoria').value;
-  const height_cm = document.getElementById('pcAltura').value ? parseFloat(document.getElementById('pcAltura').value) : null;
+  const size_note = document.getElementById('pcTamanho').value.trim() || null;
   const active = document.getElementById('pcAtivo').value === 'true';
   const badge_label = document.getElementById('pcSelo').value.trim() || null;
   const price_unit_note = document.getElementById('pcUnidade').value.trim() || null;
@@ -4286,7 +4357,7 @@ async function salvarCadastroProduto() {
   const extra_note = document.getElementById('pcExtra').value.trim() || null;
   if (!name || !category) { toast('Preenche o nome e escolhe a categoria.'); return; }
 
-  const dados = { name, category, height_cm, active, badge_label, price_unit_note, promo_note, extra_note, updated_at: new Date().toISOString() };
+  const dados = { name, category, size_note, active, badge_label, price_unit_note, promo_note, extra_note, updated_at: new Date().toISOString() };
 
   const file = document.getElementById('pcFoto').files[0];
 
