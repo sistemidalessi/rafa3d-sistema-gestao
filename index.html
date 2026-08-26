@@ -2314,11 +2314,12 @@ function imprimirPraDespachar(orderId, labelUrl) {
    Todo projeto é, no fundo, um orçamento — o cliente pediu algo que não
    está no catálogo. Assim que o preço sai da conta, tem que virar
    alguma coisa que dá pra mandar por WhatsApp. Reaproveita a mesma cara
-   da cartinha (foto, confete, paleta azul/dourado), mas pra TELA — a
-   pessoa tira um print e manda, não é feito pra imprimir em papel.
-   Fica junto de um botão que já abre o WhatsApp com uma mensagem
-   pronta, pros dois formatos que o Anderson pediu (arte OU texto) — não
-   escolhe por ele, oferece os dois. */
+   da cartinha (foto, confete, paleta azul/dourado), mas pra TELA, não
+   pra imprimir em papel — e "Mandar a arte" transforma esse cartão numa
+   imagem de verdade (html2canvas) e já abre o compartilhar do aparelho
+   com ela anexada, em vez da pessoa ter que tirar print e recortar.
+   Um segundo botão manda só o texto puro — os dois formatos que o
+   Anderson pediu, sem escolher um pelo dono. */
 function abrirOrcamentoParaEnviar(lineItemId) {
   const janela = window.open('', '_blank');
   if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra ver o orçamento.'); return; }
@@ -2386,29 +2387,74 @@ async function preencherOrcamentoCard(lineItemId, janela) {
         ' box-shadow:0 2px 5px rgba(11,23,51,.25); flex:none; }' +
       '.rodape-txt { font-size:11px; line-height:1.45; color:#5b6b87; }' +
       '.rodape-txt strong { color:#0b1733; display:block; font-size:11.5px; font-family:"Space Grotesk",sans-serif; }' +
+      '.botao:disabled { opacity:.6; cursor:default; }' +
     '</style></head><body>' +
 
-    '<div class="instrucao">📸 Tira um print dessa arte (ou usa o botão de baixo) e manda pro cliente — ou, se ele já tem o WhatsApp cadastrado, manda a mensagem de texto pronta.</div>' +
+    '<div class="instrucao" id="instrucaoTxt">📲 "Mandar a arte" já abre o WhatsApp com essa imagem pronta pra enviar — só escolher a conversa. Se o aparelho não deixar, baixa a imagem sozinha pra você anexar na mão.</div>' +
     '<div class="acoes">' +
-      (linkWhats ? '<a class="botao cheio" href="' + linkWhats + '" target="_blank" rel="noopener">📱 Mandar mensagem de texto</a>'
-        : '<span class="botao" style="opacity:.5; cursor:default;" title="Edita o projeto e adiciona o WhatsApp do cliente">📱 Sem WhatsApp cadastrado</span>') +
+      '<button class="botao cheio" id="btnMandarArte">📲 Mandar a arte</button>' +
+      (linkWhats ? '<a class="botao" href="' + linkWhats + '" target="_blank" rel="noopener">💬 Só o texto</a>'
+        : '<span class="botao" style="opacity:.5; cursor:default;" title="Edita o projeto e adiciona o WhatsApp do cliente">💬 Sem WhatsApp cadastrado</span>') +
     '</div>' +
 
-    '<div class="cartao">' +
+    '<div class="cartao" id="cartaoOrcamento">' +
       '<div class="decor-layer">' + cartinhaCamadaDecorativa() + '</div>' +
-      '<div class="topo"><span class="eyebrow">Orçamento</span><img src="catalogo/assets/logo_clean.png" alt="RAFA 3D"></div>' +
-      '<div class="foto-peca"><img src="' + escapeHtml(fotoPeca || 'catalogo/assets/rafa_cartinha.png') + '" alt="a peça"></div>' +
+      '<div class="topo"><span class="eyebrow">Orçamento</span><img src="catalogo/assets/logo_clean.png" alt="RAFA 3D" crossorigin="anonymous"></div>' +
+      '<div class="foto-peca"><img src="' + escapeHtml(fotoPeca || 'catalogo/assets/rafa_cartinha.png') + '" alt="a peça" crossorigin="anonymous"></div>' +
       '<div class="corpo">' +
         '<p class="oi">Oi' + (primeiroNome ? ', ' + escapeHtml(primeiroNome) : '') + '!</p>' +
         '<p class="item-nome">Segue o orçamento que você pediu pra <strong>' + escapeHtml(li.custom_description || 'sua peça') + '</strong>.</p>' +
         '<div class="preco-bloco"><div class="preco-rotulo">Fica</div><div class="preco-valor">' + fmtMoney(li.unit_price) + '</div></div>' +
         '<p class="texto">Cada peça eu desenho, fatio e imprimo com as minhas próprias mãos — tenho só <strong>10 anos</strong>, mas cada encomenda é trabalho de verdade pra mim. Fico muito feliz em fazer essa pra você! 💙</p>' +
         '<div class="rodape">' +
-          '<img src="catalogo/assets/rafa_cartinha.png" alt="Rafa">' +
+          '<img src="catalogo/assets/rafa_cartinha.png" alt="Rafa" crossorigin="anonymous">' +
           '<div class="rodape-txt"><strong>Rafael Dalessi · 10 anos</strong>WhatsApp (11) 98719-0466</div>' +
         '</div>' +
       '</div>' +
     '</div>' +
+
+    // html2canvas transforma o cartão (que é HTML/CSS, não uma imagem de
+    // verdade) num PNG de verdade — só assim dá pra anexar ele numa
+    // conversa. crossOrigin:'anonymous' bate com o crossorigin="anonymous"
+    // que cada <img> do cartão já leva, senão a foto do Storage deixa o
+    // canvas "contaminado" e o navegador recusa exportar.
+    //
+    // navigator.share COM arquivo é o mais perto que dá de "clicou e já
+    // foi pro WhatsApp": abre o menu de compartilhar do aparelho com a
+    // imagem já anexada, falta só escolher a conversa. Existe hoje em
+    // celular (Android/iPhone) e em alguns Chrome de computador — onde
+    // não existir, cai pra baixar o arquivo, que ainda é bem menos
+    // trabalho que print + recortar.
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script>' +
+      'var MENSAGEM_ORCAMENTO = ' + JSON.stringify(mensagemTexto) + ';' +
+      'async function gerarImagemCartao() {' +
+        'var canvas = await html2canvas(document.getElementById("cartaoOrcamento"), { useCORS: true, scale: 2, backgroundColor: null });' +
+        'return new Promise(function(resolve){ canvas.toBlob(resolve, "image/png"); });' +
+      '}' +
+      'document.getElementById("btnMandarArte").addEventListener("click", async function() {' +
+        'var btn = this;' +
+        'var textoOriginal = btn.textContent;' +
+        'btn.disabled = true; btn.textContent = "Preparando a imagem...";' +
+        'try {' +
+          'var blob = await gerarImagemCartao();' +
+          'var arquivo = new File([blob], "orcamento.png", { type: "image/png" });' +
+          'if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {' +
+            'await navigator.share({ files: [arquivo], title: "Orçamento", text: MENSAGEM_ORCAMENTO });' +
+          '} else {' +
+            'var url = URL.createObjectURL(blob);' +
+            'var a = document.createElement("a");' +
+            'a.href = url; a.download = "orcamento.png";' +
+            'document.body.appendChild(a); a.click(); a.remove();' +
+            'setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);' +
+            'document.getElementById("instrucaoTxt").textContent = "📥 Baixei a imagem pra você (esse aparelho não deixa mandar direto) — agora é só abrir o WhatsApp e anexar o arquivo orcamento.png na conversa.";' +
+          '}' +
+        '} catch (e) {' +
+          'if (e && e.name !== "AbortError") alert("Não consegui gerar a imagem: " + e.message);' +
+        '}' +
+        'btn.disabled = false; btn.textContent = textoOriginal;' +
+      '});' +
+    '<\/script>' +
 
     '</body></html>';
 
