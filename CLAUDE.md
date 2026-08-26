@@ -11,7 +11,14 @@ em [docs/continuar-daqui.md](docs/continuar-daqui.md).
 
 1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
    de tudo (veja a seção seguinte). **As chaves são por máquina** e o
-   segredo só aparece na hora de criar.
+   segredo só aparece na hora de criar. Depois, subir o agente
+   (`start-hidden.vbs`) — sem ele, todo botão de colinha e de fatiador
+   fica girando pra sempre, sem erro nenhum na tela.
+
+   **A boa notícia da troca de máquina:** o arquivo da cereja está no
+   servidor (`projetos/272a0ff0…/cereja-inteira.3mf`) e o agente baixa
+   sozinho. `slicer-agent\downloads\` não viaja, mas não precisa mais —
+   o que importa já subiu.
 2. **Terminar o chaveiro de cereja** (encomenda real, já vendida). Já tem
    projeto no sistema, arquivo no servidor, colinha da IA pronta e aberto
    no fatiador — falta **imprimir um teste de verdade**: o entalhe do
