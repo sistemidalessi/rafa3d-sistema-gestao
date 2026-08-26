@@ -2154,7 +2154,9 @@ async function openItemForm(orderId) {
       '<label>Descrição</label><input id="itDescricao" placeholder="Ex: Suporte personalizado com logo">' +
       '<label>Referência (link, se houver)</label><input id="itLink" placeholder="Link do Pinterest, foto etc.">' +
     '</div>' +
-    '<label>Quantidade</label><input id="itQtd" type="number" value="1" min="1">' +
+    '<label class="pergunta">Quantas peças?</label>' +
+    dicaCampo('Pode ser uma encomenda de várias — o preço e o custo se multiplicam sozinhos.') +
+    '<input id="itQtd" type="number" value="1" min="1">' +
     '<label>Preço unitário (R$)</label><input id="itPreco" type="number" step="0.01" value="0">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
@@ -2509,17 +2511,28 @@ async function mudarStatusFilaItem(itemId, novoStatus) {
 // baixa o estoque); horas é opcional, sem trava — vale por si só ("aí me
 // pergunta se tem algo a alterar ou se mantém os dados"), e sem ela ainda
 // dá pra guardar as gramas reais mesmo sem hora nenhuma.
+//
+// PEDIDO COM MAIS DE UMA PEÇA (ex: encomenda de 60): o rolo gasta o total
+// das peças TODAS, mas a receita do produto (product_recipes) guarda o
+// custo de UMA peça só — é o número que qualquer pedido futuro desse
+// mesmo produto reaproveita. Por isso pergunta o total gasto pras N
+// peças e divide por N sozinho antes de guardar na receita; o estoque
+// recebe o total sem dividir, porque foi isso que saiu do rolo de
+// verdade. Achado testando um pedido de 60 peças — com quantidade 1 (o
+// caso mais comum até agora) as duas contas davam o mesmo número, e por
+// isso essa conta errada nunca tinha aparecido.
 let _receitaDaConclusao = null;
 async function openConcluirImpressao(itemId) {
   const item = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
   _receitaDaConclusao = null;
+  const qtd = item.quantity || 1;
   let gramasEstimado = '';
   let horasEstimado = '';
   if (item.product_id) {
     _receitaDaConclusao = await q(SUPA.from('product_recipes').select('*').eq('product_id', item.product_id).maybeSingle());
     if (_receitaDaConclusao) {
-      gramasEstimado = _receitaDaConclusao.estimated_grams;
-      horasEstimado = _receitaDaConclusao.estimated_print_hours;
+      gramasEstimado = _receitaDaConclusao.estimated_grams * qtd;
+      horasEstimado = _receitaDaConclusao.estimated_print_hours * qtd;
     }
   }
   const cores = await getFilamentosSafe();
@@ -2531,11 +2544,14 @@ async function openConcluirImpressao(itemId) {
     const cor = cores.find((c) => c.id === s.color_id);
     options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + fmtKg(s.remaining_weight_g) + ' restantes</option>';
   });
+  const rotuloGramas = qtd > 1 ? 'Quantos gramas gastou NO TOTAL, pras ' + qtd + ' peças?' : 'Quantos gramas ela gastou?';
+  const rotuloHoras = qtd > 1 ? 'Quantas horas a impressora ficou ligada, no total?' : 'Quantas horas a impressora ficou ligada?';
   openModal(
-    '<h3>Terminei de imprimir essa peça</h3>' +
+    '<h3>Terminei de imprimir' + (qtd > 1 ? ' (' + qtd + ' peças)' : ' essa peça') + '</h3>' +
+    '<input type="hidden" id="ccQtd" value="' + qtd + '">' +
     '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>' +
-    '<label class="pergunta">Quantos gramas ela gastou?</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
-    '<label class="pergunta">Quantas horas a impressora ficou ligada?</label>' +
+    '<label class="pergunta">' + rotuloGramas + '</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
+    '<label class="pergunta">' + rotuloHoras + '</label>' +
     dicaCampo('Se souber, ajuda a manter o custo dessa peça sempre certo — mas dá pra terminar sem preencher.') +
     '<div style="display:flex; gap:8px;">' +
       '<div style="flex:1;"><input id="ccHorasH" type="number" step="1" min="0" placeholder="horas" value="' + horasParteInteira(horasEstimado) + '"></div>' +
@@ -2550,17 +2566,18 @@ async function openConcluirImpressao(itemId) {
 
 async function salvarConclusaoImpressao(itemId) {
   const spoolId = document.getElementById('ccSpool').value;
-  const gramas = parseFloat(document.getElementById('ccGramas').value);
-  const horas = (parseFloat(document.getElementById('ccHorasH').value) || 0) +
+  const qtd = parseInt(document.getElementById('ccQtd').value, 10) || 1;
+  const gramasTotal = parseFloat(document.getElementById('ccGramas').value);
+  const horasTotal = (parseFloat(document.getElementById('ccHorasH').value) || 0) +
     (parseFloat(document.getElementById('ccHorasM').value) || 0) / 60;
   if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
-  if (isNaN(gramas) || gramas <= 0) { toast('Preenche as gramas usadas.'); return; }
+  if (isNaN(gramasTotal) || gramasTotal <= 0) { toast('Preenche as gramas usadas.'); return; }
   const { error: e1 } = await SUPA.rpc('consume_filament', {
-    p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramas, p_reason: 'print_job_consumption',
+    p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramasTotal, p_reason: 'print_job_consumption',
   });
   if (e1) { toast('Erro: ' + e1.message); return; }
   const { data: item, error: e2 } = await SUPA.from('order_line_items').update({
-    filament_spool_id: spoolId, grams_used_actual: gramas, line_status: 'pos_processamento', updated_at: new Date().toISOString(),
+    filament_spool_id: spoolId, grams_used_actual: gramasTotal, line_status: 'pos_processamento', updated_at: new Date().toISOString(),
   }).eq('id', itemId).select('product_id').maybeSingle();
   if (e2) { toast('Erro: ' + e2.message); return; }
 
@@ -2568,13 +2585,16 @@ async function salvarConclusaoImpressao(itemId) {
   // é mais confiável que qualquer chute, e é ele que a aba "Quanto sobrou"
   // acaba lendo. Só roda pra item de catálogo (produto tem receita própria;
   // projeto guarda custo direto no pedido, aprovado antes de imprimir).
+  // A receita guarda o custo de UMA peça — divide o total pela quantidade.
   if (item && item.product_id) {
     const spools = await getSpools();
     const spoolUsado = spools.find((s) => s.id === spoolId);
+    const gramasPorPeca = gramasTotal / qtd;
+    const horasPorPeca = horasTotal > 0 ? horasTotal / qtd : (_receitaDaConclusao ? _receitaDaConclusao.estimated_print_hours : 0.1);
     const payload = {
       product_id: item.product_id,
-      estimated_grams: gramas,
-      estimated_print_hours: horas || (_receitaDaConclusao ? _receitaDaConclusao.estimated_print_hours : 0.1),
+      estimated_grams: gramasPorPeca,
+      estimated_print_hours: horasPorPeca,
       filament_color_id: (spoolUsado && spoolUsado.color_id) || (_receitaDaConclusao ? _receitaDaConclusao.filament_color_id : null),
       printer_id: (_receitaDaConclusao && _receitaDaConclusao.printer_id) || null,
       has_painting: _receitaDaConclusao ? _receitaDaConclusao.has_painting : false,
