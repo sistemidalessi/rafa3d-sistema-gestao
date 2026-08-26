@@ -1919,8 +1919,17 @@ async function gerarEtiqueta(orderId) {
       body: JSON.stringify({ order_id: orderId }),
     });
     const dados = await resp.json();
-    if (dados.error) { toast('Erro: ' + dados.error); if (btn) { btn.disabled = false; btn.textContent = '🏷️ Tentar de novo'; } await renderPedidoDetalhe(orderId); return; }
-    toast('Etiqueta gerada!');
+    if (dados.error) {
+      // O detalhe vai pro console e fica registrado na tela do pedido:
+      // erro de transportadora sem o motivo não dá pra investigar
+      // depois, e "tente de novo" não resolve o que não é temporário.
+      if (dados.detalhe) console.error('Melhor Envio:', dados.detalhe);
+      toast('Erro: ' + dados.error + (dados.detalhe ? ' (' + String(dados.detalhe).slice(0, 120) + ')' : ''));
+      if (btn) { btn.disabled = false; btn.textContent = '🔎 Tentar de novo'; }
+      await renderPedidoDetalhe(orderId);
+      return;
+    }
+    toast(dados.recuperada ? 'Achei a etiqueta!' : 'Etiqueta gerada!');
     await renderPedidoDetalhe(orderId);
   } catch (e) {
     toast('Não consegui gerar a etiqueta agora.');

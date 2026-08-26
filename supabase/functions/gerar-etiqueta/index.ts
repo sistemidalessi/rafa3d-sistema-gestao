@@ -30,26 +30,37 @@ const PACOTE_PADRAO = { altura_cm: 10, largura_cm: 15, comprimento_cm: 20, peso_
 async function buscarEtiquetaPronta(cartItemId: string, token: string) {
   let url: string | null = null;
   let tracking: string | null = null;
+  let motivo: string | null = null;
 
   try {
-    const impressao = await chamarMelhorEnvio(
-      "/shipment/print?mode=public&orders%5B%5D=" + encodeURIComponent(cartItemId), token, "GET",
-    );
+    // POST com o corpo, não GET com parâmetros na URL — é o que a
+    // documentação manda, e chamar do jeito errado era o motivo real de
+    // o link nunca chegar. "mode: public" porque o link privado exige
+    // estar logado no Melhor Envio pra abrir.
+    const impressao = await chamarMelhorEnvio("/shipment/print", token, "POST", {
+      mode: "public",
+      orders: [cartItemId],
+    });
     url = impressao?.url || null;
+    if (!url) motivo = "o Melhor Envio respondeu sem link: " + JSON.stringify(impressao).slice(0, 200);
   } catch (e) {
-    console.error("Não consegui o link de impressão:", (e as Error).message);
+    // Guarda o motivo pra tela poder mostrar. Engolir o erro aqui foi o
+    // que fez a primeira tentativa dizer só "não consegui agora", sem
+    // dar pista nenhuma de por quê.
+    const det = (e as any).detalhe;
+    motivo = (e as Error).message + (det ? " — " + JSON.stringify(det).slice(0, 300) : "");
+    console.error("Não consegui o link de impressão:", motivo);
   }
 
   try {
     const info = await chamarMelhorEnvio("/shipment/tracking", token, "POST", { orders: [cartItemId] });
-    // A resposta vem com o id do envio como chave.
     const envio = info?.[cartItemId] || (info && typeof info === "object" ? Object.values(info)[0] : null);
     tracking = (envio as any)?.tracking || (envio as any)?.self_tracking || null;
   } catch (e) {
     console.error("Não consegui o código de rastreio:", (e as Error).message);
   }
 
-  return { url, tracking };
+  return { url, tracking, motivo };
 }
 
 async function chamarMelhorEnvio(caminho: string, token: string, metodo: string, corpo?: unknown) {
@@ -125,10 +136,13 @@ export default {
     // Recuperação: a etiqueta já existe e já foi paga, só falta o link.
     // Não passa por carrinho, checkout nem generate — nada é comprado.
     if (precisaRecuperar) {
-      const { url, tracking } = await buscarEtiquetaPronta(pedido.shipping_melhorenvio_id, token);
+      const { url, tracking, motivo } = await buscarEtiquetaPronta(pedido.shipping_melhorenvio_id, token);
       if (!url) {
+        // O motivo vai junto: sem ele, a tela dizia "tente de novo" pra
+        // um erro que não passava com tentativa nenhuma.
         return Response.json({
-          error: "A etiqueta existe no Melhor Envio, mas não consegui o link de impressão agora. Tente de novo em instantes.",
+          error: "A etiqueta existe no Melhor Envio, mas não consegui o link de impressão.",
+          detalhe: motivo || "sem detalhe",
         }, { status: 502 });
       }
       await ctx.supabaseAdmin.from("orders").update({
