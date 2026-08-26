@@ -43,7 +43,9 @@ if (Test-Path (Join-Path $pasta "node_modules")) { Ok "Dependencias do agente in
 else {
   Falta "Faltam as dependencias do agente (node_modules)"
   $faltando += "cd slicer-agent"
-  $faltando += "npm install"
+  $faltando += "npm.cmd install"
+  $faltando += "   O .cmd e de proposito: o npm normal e um script .ps1, e o"
+  $faltando += "   Windows bloqueia script por padrao. O npm.cmd e identico e passa."
 }
 
 # --- .env -------------------------------------------------------------

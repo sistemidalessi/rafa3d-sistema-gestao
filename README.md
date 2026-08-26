@@ -163,8 +163,13 @@ máquina (`node_modules` não vai pro repositório):
 
 ```bash
 cd slicer-agent
-npm install
+npm.cmd install
 ```
+
+O `.cmd` é de propósito. O `npm` comum é um script `.ps1`, e o Windows sai de
+fábrica bloqueando script — o erro é `execução de scripts foi desabilitada`.
+O `npm.cmd` é o mesmo programa e não esbarra nisso, então não é preciso mexer
+em configuração de segurança da máquina.
 
 O `.env` também não viaja — cada máquina tem o seu, preenchido a partir do
 [`.env.example`](slicer-agent/.env.example). É de propósito: ele carrega a
@@ -254,7 +259,7 @@ OrcaSlicer (pro fatiamento por linha de comando).
 
 ```bash
 cd slicer-agent
-npm install
+npm.cmd install
 copy .env.example .env
 ```
 
