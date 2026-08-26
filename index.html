@@ -1501,7 +1501,8 @@ function atualizarPrecoProjeto() {
     calcularCustoReceita(lerFormularioCusto()),
     {
       precoAtual: li && li.unit_price ? li.unit_price : null,
-      rotuloBotao: '✅ Aprovar e cobrar {preco}',
+      pedirPrecoFinal: true,
+      rotuloBotao: '✅ Aprovar esse pedido',
       acaoBotao: 'aprovarProjeto(\'' + (li ? li.id : '') + '\', true)',
     });
 }
@@ -1512,11 +1513,18 @@ async function aprovarProjeto(lineItemId, comCalculadora) {
   if (comCalculadora) {
     const form = lerFormularioCusto();
     const custo = calcularCustoReceita(form);
-    const preco = precoAPartirDoCusto(custo.total, custoMultiplicador);
-    if (!preco) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return; }
+    const precoSugerido = precoAPartirDoCusto(custo.total, custoMultiplicador);
+    if (!precoSugerido) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return; }
+    // O campo "vendeu por quanto" começa com a sugestão mas é editável —
+    // é o que realmente vai pro pedido, pra dar conta de venda antiga,
+    // negociação ou promoção que não bateu com a conta padrão.
+    const precoFinalEl = document.getElementById('rcPrecoFinal');
+    const preco = precoFinalEl ? parseFloat(precoFinalEl.value) : precoSugerido;
+    if (!preco || preco <= 0) { toast('Escreve por quanto vendeu esse pedido.'); return; }
     payload.unit_price = preco;
     // Guarda o custo junto: é ele que a aba Margem vai usar pra saber se
-    // esse projeto deu lucro de verdade lá na frente.
+    // esse projeto deu lucro de verdade lá na frente. Continua sendo o
+    // custo calculado, não o preço editado — lucro real precisa disso.
     payload.unit_cost_estimate = custo.total;
   } else {
     const preco = parseFloat(document.getElementById('projPreco').value);
@@ -4050,6 +4058,18 @@ function blocoCustoEPrecoHtml(custo, opts) {
         (Math.abs(dif) < 0.01 ? 'igualzinho ao sugerido.'
           : (dif > 0 ? 'ou seja, ' + fmtMoney(dif) + ' mais barato do que devia.'
                      : 'ou seja, ' + fmtMoney(-dif) + ' mais caro do que precisa.')) + '</div>';
+    }
+    // A conta acima é sugestão de preço (pra publicar no catálogo, se um
+    // dia virar produto) — o que esse pedido específico realmente cobrou
+    // pode ser outro valor (venda antiga, negociação, promoção). Por
+    // isso o campo vem pré-cheio com a sugestão, mas editável, e é ELE
+    // que vai pro pedido — não o número calculado direto.
+    if (opts.pedirPrecoFinal) {
+      html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">';
+      html += '<label class="pergunta">Vendeu (ou vai vender) esse pedido por quanto?</label>';
+      html += dicaCampo('Já vem com a sugestão de cima, mas edita se cobrou outro valor — pedido antigo, combinado diferente, promoção...');
+      html += '<input id="rcPrecoFinal" type="number" step="0.01" value="' + preco.toFixed(2) + '">';
+      html += '</div>';
     }
     html += '<button class="btn full" style="margin-top:12px;" onclick="' + opts.acaoBotao + '">' +
       opts.rotuloBotao.replace('{preco}', fmtMoney(preco)) + '</button>';
