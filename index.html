@@ -843,6 +843,11 @@ const LINE_STATUS_LABELS = {
   falhou_reimprimir: 'Deu errado, tem que refazer',
   cancelado: 'Cancelado',
 };
+// Peça entregue ou cancelada não tem mais trabalho nenhum pendente —
+// usado tanto em Pedidos quanto em Projetos pra esconder da lista
+// principal o que já está encerrado (sem apagar nada, só fora do
+// caminho de quem ainda precisa de atenção).
+const LINE_STATUS_ENCERRADO = ['entregue', 'cancelado'];
 const PAYMENT_STATUS_LABELS = {
   aguardando_sinal: 'Ainda não pagou',
   sinal_pago: 'Pagou uma parte',
@@ -949,28 +954,54 @@ window.repintarSelect = function (el) {
 let _projetosPollTimer = null;
 let _projetoGerenciarAberto = null;
 
+// Antes só reconhecia até "pos_processamento" — qualquer projeto que
+// já tivesse passado disso (embalado, enviado, entregue) caía no "falta
+// aprovar preço" de novo, como se nada tivesse acontecido. Agora usa o
+// rótulo de verdade do status assim que ele passa de "aprovado".
 function projetoStatusBadge(li) {
-  if (li.line_status === 'orcamento_aprovado' || li.line_status === 'fila_impressao' || li.line_status === 'imprimindo' || li.line_status === 'pos_processamento') {
-    return '<span class="badge on">Aprovado — virou pedido</span>';
+  const emProducaoOuAlem = ['orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'].indexOf(li.line_status) !== -1;
+  if (emProducaoOuAlem) {
+    return '<span class="badge on">' + escapeHtml(LINE_STATUS_LABELS[li.line_status] || 'Aprovado') + '</span>';
   }
   if (li.line_status === 'cancelado') return '<span class="badge off">Cancelado</span>';
   if (li.meshy_status === 'queued' || li.meshy_status === 'processing') return '<span class="badge andando">Gerando modelo 3D…</span>';
-  if (li.model_file_path) return '<span class="badge on">Modelo pronto — falta aprovar preço</span>';
+  if (li.unit_price) return '<span class="badge on">Preço calculado — falta o cliente aprovar</span>';
+  if (li.model_file_path) return '<span class="badge on">Modelo pronto — falta calcular o preço</span>';
   return '<span style="color:var(--muted); font-size:11px;">Recebido — aguardando modelo 3D</span>';
+}
+
+// Mesmo esquema já usado em Pedidos: projeto entregue ou cancelado some
+// da lista principal (sem apagar nada), atrás de um botão "Ver os já
+// finalizados" — antes ficava tudo junto pra sempre, e um projeto
+// entregue há semanas continuava aparecendo do lado do que ainda
+// precisa de atenção.
+let mostrarProjetosFinalizados = false;
+function alternarProjetosFinalizados() {
+  mostrarProjetosFinalizados = !mostrarProjetosFinalizados;
+  renderProjetos();
 }
 
 async function renderProjetos() {
   const el = document.getElementById('tab-projetos');
   const scrollY = window.scrollY;
-  const projetos = await q(SUPA.from('order_line_items').select('*, orders(order_number)').eq('line_type', 'custom').order('created_at', { ascending: false }));
+  const todosProjetos = await q(SUPA.from('order_line_items').select('*, orders(order_number)').eq('line_type', 'custom').order('created_at', { ascending: false }));
+  const projetosFechados = todosProjetos.filter((li) => LINE_STATUS_ENCERRADO.indexOf(li.line_status) !== -1);
+  const projetos = mostrarProjetosFinalizados ? todosProjetos : todosProjetos.filter((li) => LINE_STATUS_ENCERRADO.indexOf(li.line_status) === -1);
 
   let html = '<div class="card">';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">';
-  html += '<strong>' + projetos.length + ' projetos</strong>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px; flex-wrap:wrap; gap:8px;">';
+  html += '<strong>' + projetos.length + ' projeto' + (projetos.length === 1 ? '' : 's') + '</strong>';
+  html += '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
+  if (projetosFechados.length > 0) {
+    html += '<button class="btn ghost" onclick="alternarProjetosFinalizados()">' +
+      (mostrarProjetosFinalizados ? 'Esconder os já finalizados' : 'Ver os ' + projetosFechados.length + ' já finalizados') + '</button>';
+  }
   html += '<button class="btn" onclick="abrirNovoProjeto()">+ Novo Projeto</button>';
-  html += '</div>';
+  html += '</div></div>';
   if (projetos.length === 0) {
-    html += '<div class="empty">Nenhum projeto ainda. Cliente mandou foto pedindo uma peça? Clica em "+ Novo Projeto".</div>';
+    html += '<div class="empty">' + (todosProjetos.length === 0
+      ? 'Nenhum projeto ainda. Cliente mandou foto pedindo uma peça? Clica em "+ Novo Projeto".'
+      : 'Nenhum projeto em andamento — todos já foram entregues ou cancelados.') + '</div>';
   } else {
     html += '<div style="display:grid; grid-template-columns:repeat(auto-fill, minmax(220px, 1fr)); gap:14px;">';
     projetos.forEach((li) => {
@@ -1088,7 +1119,10 @@ async function abrirGerenciarProjeto(lineItemId) {
     : '<div style="width:110px; height:110px; border-radius:12px; background:#f3f4f7;"></div>';
   html += '<button class="btn ghost" style="width:110px; margin-top:6px; font-size:11px; padding:5px;" onclick="abrirAnexarFotoProjeto(\'' + li.id + '\')">' + (fotoUrl ? '🔁 Trocar foto' : '📷 Anexar foto') + '</button>';
   html += '</div>';
-  html += '<div><h3 style="margin:0 0 4px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</h3>' +
+  html += '<div style="flex:1; min-width:0;"><div style="display:flex; justify-content:space-between; align-items:flex-start; gap:8px;">' +
+    '<h3 style="margin:0 0 4px;">' + escapeHtml(li.requester_name || 'Sem nome') + '</h3>' +
+    '<button class="btn ghost" style="font-size:11px; padding:5px 9px; flex:none;" onclick="abrirEditarProjeto(\'' + li.id + '\')">✏️ Editar</button>' +
+    '</div>' +
     '<div style="font-size:12px; color:var(--muted); margin-bottom:6px;">' + escapeHtml(li.requester_contact || '') + ' · ' + escapeHtml(li.orders ? li.orders.order_number : '') + '</div>' +
     '<div style="font-size:13px;">' + escapeHtml(li.custom_description || '') + '</div></div>';
   html += '</div>';
@@ -1162,10 +1196,28 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '</div>';
   }
 
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">';
-  html += '<span>4. Aprovação — ' + (li.line_status === 'orcamento_aprovado' ? '<span class="badge on">aprovado, ' + fmtMoney(li.unit_price) + '</span>' : '<span style="color:var(--muted); font-size:11px;">aguardando preço</span>') + '</span>';
-  if (li.line_status !== 'orcamento_aprovado' && li.line_status !== 'cancelado') {
-    html += '<button class="btn" onclick="abrirAprovarProjeto(\'' + li.id + '\')">💰 Aprovar e Definir Preço</button>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap; gap:8px;">';
+  // Calcular o preço e o cliente aprovar são dois momentos diferentes —
+  // por isso "preço calculado, falta aprovar" é um estado próprio, com
+  // um botão fraco (recalcular) e um forte (confirmar) separados do que
+  // já virou pedido de verdade (line_status avançou pra fila/impressão/
+  // entrega). Cancelado ganha volta: "reabrir orçamento" desfaz um
+  // cancelamento — de propósito ou clique errado — sem apagar nada.
+  const projetoEmProducaoOuAlem = ['orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'].indexOf(li.line_status) !== -1;
+  if (li.line_status === 'cancelado') {
+    html += '<span>4. Aprovação — <span class="badge off">cancelado</span></span>';
+    html += '<button class="btn ghost" onclick="reabrirOrcamentoProjeto(\'' + li.id + '\')">↩️ Reabrir orçamento</button>';
+  } else if (projetoEmProducaoOuAlem) {
+    html += '<span>4. Aprovação — <span class="badge on">' + escapeHtml(LINE_STATUS_LABELS[li.line_status] || 'aprovado') + ', ' + fmtMoney(li.unit_price) + '</span></span>';
+  } else if (li.unit_price) {
+    html += '<span>4. Aprovação — <span class="badge on">preço calculado, ' + fmtMoney(li.unit_price) + '</span> — falta o cliente aprovar</span>';
+    html += '<span class="row-actions">';
+    html += '<button class="btn ghost" onclick="abrirAprovarProjeto(\'' + li.id + '\')">🔁 Recalcular</button>';
+    html += '<button class="btn" onclick="confirmarAprovarProjeto(\'' + li.id + '\')">✅ Cliente aprovou</button>';
+    html += '</span>';
+  } else {
+    html += '<span>4. Aprovação — <span style="color:var(--muted); font-size:11px;">aguardando preço</span></span>';
+    html += '<button class="btn" onclick="abrirAprovarProjeto(\'' + li.id + '\')">💰 Calcular Preço</button>';
   }
   html += '</div>';
 
@@ -1181,6 +1233,33 @@ async function abrirGerenciarProjeto(lineItemId) {
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
+}
+
+async function abrirEditarProjeto(lineItemId) {
+  const li = await q(SUPA.from('order_line_items').select('requester_name, requester_contact, custom_description').eq('id', lineItemId).maybeSingle());
+  openModal(
+    '<h3>Editar projeto</h3>' +
+    '<label>Nome de quem pediu</label><input id="projEditNome" type="text" value="' + escapeHtml(li.requester_name || '') + '" placeholder="Nome do cliente">' +
+    '<label>Contato (WhatsApp)</label><input id="projEditContato" type="text" value="' + escapeHtml(li.requester_contact || '') + '" placeholder="(11) 90000-0000">' +
+    '<label>O que o cliente quer</label>' +
+    '<textarea id="projEditDescricao" rows="3" style="width:100%; padding:11px 13px; border:1.5px solid var(--border); border-radius:10px; font-size:14px; font-family:inherit;">' + escapeHtml(li.custom_description || '') + '</textarea>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
+      '<button class="btn" onclick="salvarEdicaoProjeto(\'' + lineItemId + '\')">Salvar</button>' +
+    '</div>'
+  );
+}
+
+async function salvarEdicaoProjeto(lineItemId) {
+  const requester_name = document.getElementById('projEditNome').value.trim();
+  const requester_contact = document.getElementById('projEditContato').value.trim();
+  const custom_description = document.getElementById('projEditDescricao').value.trim();
+  if (!requester_name || !custom_description) { toast('Preenche pelo menos o nome e a descrição.'); return; }
+  const { error } = await SUPA.from('order_line_items')
+    .update({ requester_name, requester_contact, custom_description, updated_at: new Date().toISOString() }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Projeto atualizado.');
+  await abrirGerenciarProjeto(lineItemId);
 }
 
 const PARTE_STATUS_BADGE = {
@@ -1502,35 +1581,64 @@ function atualizarPrecoProjeto() {
     {
       precoAtual: li && li.unit_price ? li.unit_price : null,
       pedirPrecoFinal: true,
-      rotuloBotao: '✅ Aprovar esse pedido',
+      rotuloBotao: '✅ Cliente aprovou, virar pedido',
       acaoBotao: 'aprovarProjeto(\'' + (li ? li.id : '') + '\', true)',
+      botaoSecundarioRotulo: 'Só guardar o preço, ainda não aprovei com o cliente',
+      botaoSecundarioAcao: 'salvarCotacaoProjeto(\'' + (li ? li.id : '') + '\')',
     });
+}
+
+// Calcular o preço não é a mesma coisa que o cliente ter dito sim — às
+// vezes você só quer ver quanto custaria. Essa função monta o que seria
+// gravado (preço, custo, gramas/horas por peça) sem decidir SE isso
+// aprova o pedido ou só guarda a cotação; quem chama decide.
+function montarCotacaoProjeto() {
+  const form = lerFormularioCusto();
+  const custo = calcularCustoReceita(form);
+  const precoSugerido = precoAPartirDoCusto(custo.total, custoMultiplicador);
+  if (!precoSugerido) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return null; }
+  // O campo "vendeu por quanto" começa com a sugestão mas é editável —
+  // é o que realmente vai pro pedido, pra dar conta de venda antiga,
+  // negociação ou promoção que não bateu com a conta padrão.
+  const precoFinalEl = document.getElementById('rcPrecoFinal');
+  const preco = precoFinalEl ? parseFloat(precoFinalEl.value) : precoSugerido;
+  if (!preco || preco <= 0) { toast('Escreve por quanto vendeu (ou vai vender) esse pedido.'); return null; }
+  return {
+    unit_price: preco,
+    // Guarda o custo junto: é ele que a aba Margem vai usar pra saber se
+    // esse projeto deu lucro de verdade lá na frente. Continua sendo o
+    // custo calculado, não o preço editado — lucro real precisa disso.
+    unit_cost_estimate: custo.total,
+    // Gramas e horas são POR PEÇA (mesma convenção do product_recipes) —
+    // guarda pra "Terminei de imprimir" puxar sozinho depois, já que
+    // projeto não tem product_id pra ligar numa receita (patch-39).
+    estimated_grams: form.estimated_grams || null,
+    estimated_print_hours: form.estimated_print_hours || null,
+  };
+}
+
+// Guarda o preço calculado SEM aprovar — o projeto continua esperando o
+// cliente dizer sim, não entra na fila de impressão. Existe porque
+// "ver quanto custaria" e "o cliente topou" viraram a mesma ação sem
+// querer: terminar a conta de preço empurrava o projeto pra "virou
+// pedido" mesmo quando era só uma simulação.
+async function salvarCotacaoProjeto(lineItemId) {
+  const cotacao = montarCotacaoProjeto();
+  if (!cotacao) return;
+  const { error } = await SUPA.from('order_line_items')
+    .update(Object.assign({ updated_at: new Date().toISOString() }, cotacao)).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Preço guardado: ' + fmtMoney(cotacao.unit_price) + '. Quando o cliente disser sim, é só abrir o projeto de novo e clicar em "Cliente aprovou".');
+  await abrirGerenciarProjeto(lineItemId);
 }
 
 async function aprovarProjeto(lineItemId, comCalculadora) {
   const payload = { line_status: 'orcamento_aprovado', updated_at: new Date().toISOString() };
 
   if (comCalculadora) {
-    const form = lerFormularioCusto();
-    const custo = calcularCustoReceita(form);
-    const precoSugerido = precoAPartirDoCusto(custo.total, custoMultiplicador);
-    if (!precoSugerido) { toast('Falta dizer quantos gramas a peça gasta e quantas horas ela demora.'); return; }
-    // O campo "vendeu por quanto" começa com a sugestão mas é editável —
-    // é o que realmente vai pro pedido, pra dar conta de venda antiga,
-    // negociação ou promoção que não bateu com a conta padrão.
-    const precoFinalEl = document.getElementById('rcPrecoFinal');
-    const preco = precoFinalEl ? parseFloat(precoFinalEl.value) : precoSugerido;
-    if (!preco || preco <= 0) { toast('Escreve por quanto vendeu esse pedido.'); return; }
-    payload.unit_price = preco;
-    // Guarda o custo junto: é ele que a aba Margem vai usar pra saber se
-    // esse projeto deu lucro de verdade lá na frente. Continua sendo o
-    // custo calculado, não o preço editado — lucro real precisa disso.
-    payload.unit_cost_estimate = custo.total;
-    // Gramas e horas são POR PEÇA (mesma convenção do product_recipes) —
-    // guarda pra "Terminei de imprimir" puxar sozinho depois, já que
-    // projeto não tem product_id pra ligar numa receita (patch-39).
-    payload.estimated_grams = form.estimated_grams || null;
-    payload.estimated_print_hours = form.estimated_print_hours || null;
+    const cotacao = montarCotacaoProjeto();
+    if (!cotacao) return;
+    Object.assign(payload, cotacao);
   } else {
     const preco = parseFloat(document.getElementById('projPreco').value);
     if (!preco || preco <= 0) { toast('Escreve quanto vai cobrar por esse projeto.'); return; }
@@ -1550,7 +1658,45 @@ async function aprovarProjeto(lineItemId, comCalculadora) {
   await renderProjetos();
 }
 
+// Preço já foi calculado e guardado antes (salvarCotacaoProjeto) — só
+// falta confirmar que o cliente disse sim. Não mexe no preço, só avança
+// o status pra "aprovado" e o projeto entra na fila de impressão.
+async function confirmarAprovarProjeto(lineItemId) {
+  const li = await q(SUPA.from('order_line_items').select('order_id, unit_price').eq('id', lineItemId).maybeSingle());
+  if (!li || !li.unit_price) { toast('Calcula o preço primeiro.'); return; }
+  const { error } = await SUPA.from('order_line_items')
+    .update({ line_status: 'orcamento_aprovado', updated_at: new Date().toISOString() }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  if (li.order_id) await recalcularTotalPedido(li.order_id);
+  toast('Aprovado por ' + fmtMoney(li.unit_price) + '! Já entrou na fila de impressão.');
+  await abrirGerenciarProjeto(lineItemId);
+}
+
+// Desfaz um cancelamento — de propósito ou clique errado no status —
+// sem apagar nada do que já foi calculado. Volta pro começo do fluxo de
+// orçamento; se já tinha preço guardado, ele continua lá.
+async function reabrirOrcamentoProjeto(lineItemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ line_status: 'recebido', updated_at: new Date().toISOString() }).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Reaberto — voltou pra orçamento.');
+  await abrirGerenciarProjeto(lineItemId);
+}
+
 async function excluirProjeto(lineItemId, orderId) {
+  // Projeto que já baixou filamento do estoque (já imprimiu de verdade)
+  // ou já tem pagamento registrado não pode ser apagado — excluir o
+  // pedido some com esse histórico junto (pagamento é apagado em
+  // cascata; filamento baixado vira um buraco sem explicação no
+  // estoque). Achado com o Porta Anel: o botão dava erro sem dizer por
+  // quê. Se o projeto já terminou, o caminho certo é deixar como
+  // "Entregue"/"Cancelado" — ele já some sozinho da lista principal.
+  const movimentos = await q(SUPA.from('filament_stock_movements').select('id').eq('order_line_item_id', lineItemId).limit(1));
+  const pagamentos = orderId ? await q(SUPA.from('payments').select('id').eq('order_id', orderId).limit(1)) : [];
+  if ((movimentos && movimentos.length > 0) || (pagamentos && pagamentos.length > 0)) {
+    alert('Esse projeto já tem histórico de verdade — filamento baixado do estoque e/ou pagamento registrado. Apagar ele apagaria isso tudo junto, então não dá.\n\nSe já terminou, é só deixar o status como "Entregue" (ou "Cancelado") — ele já some sozinho da lista principal, com o botão "Ver os já finalizados" pra achar de novo se precisar.');
+    return;
+  }
   if (!confirm('Excluir esse projeto de vez? Não tem como desfazer.')) return;
   const { data: liData } = await SUPA.from('order_line_items').select('custom_reference_image_path, model_file_path').eq('id', lineItemId).maybeSingle();
   if (liData) {
@@ -1574,9 +1720,8 @@ let pedidoDetalheId = null;
 // e o "Terminei de imprimir" já mantêm certinho. Pedido "fechado" é o
 // que já tem pelo menos uma peça e todas elas terminaram (entregue) ou
 // foram canceladas — não sobrou nada pra fazer.
-const PEDIDO_STATUS_FECHADO = ['entregue', 'cancelado'];
 function pedidoEstaFechado(itensDoPedido) {
-  return itensDoPedido.length > 0 && itensDoPedido.every((it) => PEDIDO_STATUS_FECHADO.indexOf(it.line_status) !== -1);
+  return itensDoPedido.length > 0 && itensDoPedido.every((it) => LINE_STATUS_ENCERRADO.indexOf(it.line_status) !== -1);
 }
 
 // Só esconde da lista principal — nada é apagado, e dá pra ver os
@@ -4192,7 +4337,14 @@ function blocoCustoEPrecoHtml(custo, opts) {
       html += '<input id="rcPrecoFinal" type="number" step="0.01" value="' + preco.toFixed(2) + '">';
       html += '</div>';
     }
-    html += '<button class="btn full" style="margin-top:12px;" onclick="' + opts.acaoBotao + '">' +
+    // Calcular o preço e o cliente aprovar são dois momentos diferentes —
+    // ver a conta não pode empurrar sozinho o projeto pra "virou pedido".
+    // O botão fraco guarda o número sem mexer no status; só o forte avança.
+    if (opts.botaoSecundarioAcao) {
+      html += '<button class="btn ghost full" style="margin-top:12px;" onclick="' + opts.botaoSecundarioAcao + '">' +
+        opts.botaoSecundarioRotulo + '</button>';
+    }
+    html += '<button class="btn full" style="margin-top:8px;" onclick="' + opts.acaoBotao + '">' +
       opts.rotuloBotao.replace('{preco}', fmtMoney(preco)) + '</button>';
   }
   return html + '</div></div>';
