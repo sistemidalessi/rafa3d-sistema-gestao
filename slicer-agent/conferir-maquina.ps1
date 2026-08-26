@@ -67,9 +67,23 @@ if (Test-Path $env_) {
     }
   }
 } else {
-  Falta ".env nao existe"
-  $faltando += "copy slicer-agent\.env.example slicer-agent\.env"
-  $faltando += "Depois abra o .env e preencha a service_role (Supabase - Project Settings - API)"
+  # Cria o .env sozinho a partir do modelo. E copia de arquivo sem
+  # segredo nenhum -- as chaves continuam em branco, esperando quem
+  # sabe elas. Antes isso era um comando pra pessoa digitar, e digitar
+  # comando e onde a preparacao de maquina nova costuma emperrar.
+  $modelo = Join-Path $PSScriptRoot ".env.example"
+  if (Test-Path $modelo) {
+    Copy-Item $modelo $env_
+    Write-Host "  [ok]    .env criado a partir do modelo (falta preencher as chaves)" -ForegroundColor Green
+    $faltando += "Abra slicer-agent\.env e preencha:"
+    $faltando += "   SUPABASE_SERVICE_ROLE_KEY  (Supabase - Project Settings - API - service_role)"
+    $faltando += "   ANTHROPIC_API_KEY          (console.anthropic.com - crie uma chave POR maquina)"
+    $faltando += "   HI3D_ACCESS_KEY / HI3D_SECRET_KEY  (platform.hi3d.ai - API Key)"
+    $faltando += "As chaves so aparecem na hora de criar. Guarde no gerenciador de senhas."
+  } else {
+    Falta ".env nao existe e o modelo .env.example tambem nao"
+    $faltando += "Baixe o repositorio de novo - faltou arquivo"
+  }
 }
 
 # --- Bambu Studio -----------------------------------------------------
