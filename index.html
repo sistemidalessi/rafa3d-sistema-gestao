@@ -1761,6 +1761,7 @@ async function renderPedidoDetalhe(id) {
     html += '<button class="btn ghost" onclick="abrirCartinha(\'' + id + '\')">💌 Imprimir a cartinha</button>';
     html += '<button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button>';
   }
+  html += '<button class="btn" onclick="abrirPedidoPronto(\'' + id + '\')">✅ Pedido pronto</button>';
   html += '<button class="btn ghost" onclick="excluirPedido(\'' + id + '\')">🗑️ Excluir pedido</button>';
   html += '</div>';
   html += '</div>';
@@ -2159,6 +2160,63 @@ async function mudarStatusItem(itemId, novoStatus, orderId) {
   const { error } = await SUPA.from('order_line_items').update({ line_status: novoStatus, updated_at: new Date().toISOString() }).eq('id', itemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Status atualizado.');
+}
+
+// "Terminei" (na Fila de Impressão) só marca que terminou de IMPRIMIR —
+// por design vira "Dando o acabamento", porque nem toda peça acaba na
+// impressora. Mas peça simples fica presa ali sem outro jeito claro de
+// dizer "isso aqui está pronto de verdade". Esse botão é esse ponto
+// final: só deixa passar se toda peça do pedido já saiu da impressora
+// (senão avisa qual falta), avança quem ainda está "dando o acabamento"
+// pra "embalado" (nunca volta atrás quem já está mais adiante, tipo
+// enviado/entregue) e mostra de cara se falta pagamento, sem travar
+// nisso — pagamento pode acontecer na entrega.
+const STATUS_AINDA_NAO_IMPRESSO = ['recebido', 'orcamento_pendente', 'orcamento_aprovado', 'fila_impressao', 'imprimindo', 'falhou_reimprimir'];
+
+async function abrirPedidoPronto(orderId) {
+  const order = await q(SUPA.from('orders').select('total_amount').eq('id', orderId).maybeSingle());
+  const items = await q(SUPA.from('order_line_items').select('id, line_status, products(name), custom_description').eq('order_id', orderId));
+  const ps = await q(SUPA.from('orders_payment_status').select('*').eq('order_id', orderId).maybeSingle());
+
+  const naoProntos = items.filter((it) => STATUS_AINDA_NAO_IMPRESSO.indexOf(it.line_status) !== -1);
+  if (naoProntos.length > 0) {
+    const nomes = naoProntos.map((it) => it.products ? it.products.name : (it.custom_description || 'peça')).join(', ');
+    toast('Ainda tem peça não terminada de imprimir: ' + nomes + '.');
+    return;
+  }
+
+  const aAvancar = items.filter((it) => it.line_status === 'pos_processamento').length;
+  const statusPagamento = ps ? ps.payment_status : 'aguardando_sinal';
+
+  openModal(
+    '<h3>✅ Marcar esse pedido como pronto</h3>' +
+    '<div style="background:var(--bg); border-radius:10px; padding:11px 13px; font-size:13px; line-height:1.9; margin-bottom:10px;">' +
+      '<div style="display:flex; justify-content:space-between;"><span>Total do pedido</span><strong>' + fmtMoney(order.total_amount) + '</strong></div>' +
+      '<div style="display:flex; justify-content:space-between;"><span>Pagamento</span><strong>' + selo(statusPagamento, PAYMENT_STATUS_LABELS[statusPagamento]) + '</strong></div>' +
+    '</div>' +
+    (aAvancar > 0
+      ? '<p style="font-size:13px; color:var(--muted); margin:0 0 10px;">' + aAvancar + ' peça(s) vão passar de "Dando o acabamento" pra "Embalado". O que já estiver mais adiante (enviado, entregue) fica como está.</p>'
+      : '<p style="font-size:13px; color:var(--muted); margin:0 0 10px;">Todas as peças já estão embaladas ou adiante — só confirmando.</p>') +
+    (statusPagamento !== 'quitado'
+      ? '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:9px; padding:9px 11px; font-size:12.5px; color:#8a5b00; margin-bottom:10px;">' +
+        'Ainda falta pagamento nesse pedido. ' +
+        '<button class="btn ghost" style="margin-top:6px;" onclick="closeModal(); openPagamentoForm(\'' + orderId + '\');">Anotar pagamento</button></div>'
+      : '') +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="confirmarPedidoPronto(\'' + orderId + '\')">Confirmar, pedido pronto</button>' +
+    '</div>'
+  );
+}
+
+async function confirmarPedidoPronto(orderId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ line_status: 'embalado', updated_at: new Date().toISOString() })
+    .eq('order_id', orderId).eq('line_status', 'pos_processamento');
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Pedido marcado como pronto.');
+  await renderPedidoDetalhe(orderId);
 }
 
 async function removerItem(itemId, orderId) {
