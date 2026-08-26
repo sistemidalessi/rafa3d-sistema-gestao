@@ -129,11 +129,23 @@ async function darSinalDeVida() {
    FATIAMENTO AUTOMÁTICO — fila slice_status em products
    Nada na tela enfileira isso hoje: o botão "Fatiar" foi substituído
    por "Abrir no Fatiador" no commit b4e0aa2, porque a CLI do OrcaSlicer
-   falha em peça com vários objetos ou troca de filamento (o detalhe
-   está na sliceOne, logo abaixo). O código fica de propósito, pronto
-   pra voltar se a CLI melhorar — pra religar, basta um botão na tela
-   que grave slice_status = 'queued'. Enquanto isso, a tick() só faz
-   uma consulta que sempre volta vazia.
+   falha (o detalhe está na sliceOne, logo abaixo).
+
+   CORRIGIDO EM 26/08: a causa NÃO é "peça com vários objetos/troca de
+   filamento" como este comentário dizia antes — testei ao vivo em
+   26/08 e a mesma "Slic3r::CLI::run found error, exit" apareceu até
+   numa peça single-object/single-filament já validada, e também num
+   .stl cru sem nenhum perfil. Fui no código-fonte do OrcaSlicer no
+   GitHub: essa frase é um catch-all impresso em QUALQUER erro interno
+   da CLI (parâmetro inválido, config que não parseia, malha que não
+   parseia, falta de memória — tudo cai na mesma mensagem). Não achei
+   nenhum caso em que a CLI funcionasse, nem no mais simples que tentei
+   — a notícia é pior que a suposição antiga, não melhor.
+
+   O código fica de propósito, pronto pra voltar se a CLI melhorar —
+   pra religar, basta um botão na tela que grave slice_status =
+   'queued'. Enquanto isso, a tick() só faz uma consulta que sempre
+   volta vazia.
    ============================================================ */
 
 function runOrca(args) {
@@ -191,13 +203,16 @@ async function sliceOne(product) {
 
     if (!fs.existsSync(outputLocal)) {
       const bruto = combined.trim();
-      // "Slic3r::CLI::run found error, exit" sozinho, sem mais detalhe, é a
-      // assinatura de um bug conhecido do OrcaSlicer: a CLI dele falha em
-      // projetos com vários objetos/partes/troca de filamento mesmo quando a
-      // interface gráfica do mesmo programa fatia sem problema. Não é algo
-      // que dá pra corrigir por parâmetro — a peça precisa ser fatiada à mão.
+      // "Slic3r::CLI::run found error, exit" sozinho, sem mais detalhe, NÃO
+      // é assinatura de peça complexa — é um catch-all que a CLI do
+      // OrcaSlicer imprime em qualquer erro interno (parâmetro inválido,
+      // config que não parseia, malha que não parseia, sem memória...).
+      // Confirmado em 26/08 direto no código-fonte no GitHub, depois de
+      // reproduzir a mesma mensagem numa peça single-object simples. Não
+      // dá pra saber qual é o motivo real só por essa frase — a peça
+      // precisa ser fatiada à mão de qualquer jeito.
       const mensagemAmigavel = /^Slic3r::CLI::run found error, exit\.?$/i.test(bruto)
-        ? 'Peça complexa demais pra fatiar sozinho (provavelmente tem vários objetos, partes ou trocas de filamento) — limitação conhecida do OrcaSlicer em modo automático. Fatie esta manualmente no programa.'
+        ? 'O fatiamento automático por linha de comando falhou (motivo interno não detalhado pelo OrcaSlicer). Fatie esta manualmente no programa.'
         : (bruto || 'OrcaSlicer não gerou o arquivo de saída (motivo desconhecido).');
       throw new Error(mensagemAmigavel);
     }
