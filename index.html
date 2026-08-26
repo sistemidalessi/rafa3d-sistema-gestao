@@ -2622,6 +2622,7 @@ async function salvarConclusaoImpressao(itemId) {
       filament_color_id: (spoolUsado && spoolUsado.color_id) || (_receitaDaConclusao ? _receitaDaConclusao.filament_color_id : null),
       printer_id: (_receitaDaConclusao && _receitaDaConclusao.printer_id) || null,
       has_painting: _receitaDaConclusao ? _receitaDaConclusao.has_painting : false,
+      extra_cost: _receitaDaConclusao ? _receitaDaConclusao.extra_cost : 0,
     };
     const { error: e3 } = _receitaDaConclusao
       ? await SUPA.from('product_recipes').update(payload).eq('id', _receitaDaConclusao.id)
@@ -3246,9 +3247,13 @@ function calcularCustoReceita(receita) {
   const custoMaquina = impressora && impressora.hourly_cost ? receita.estimated_print_hours * impressora.hourly_cost : 0;
   // Pintura soma 20% em cima do filamento+luz — igual à planilha que já era usada antes desse sistema existir.
   const custoPintura = receita.has_painting ? (custoMaterial + custoMaquina) * 0.2 : 0;
+  // Extra (embalagem, personalização...) é valor direto em R$, não
+  // percentual — embalagem não escala com o tamanho da peça do jeito
+  // que a tinta escala.
+  const custoExtra = Number(receita.extra_cost) || 0;
   return {
-    custoMaterial, custoMaquina, custoPintura,
-    total: custoMaterial + custoMaquina + custoPintura,
+    custoMaterial, custoMaquina, custoPintura, custoExtra,
+    total: custoMaterial + custoMaquina + custoPintura + custoExtra,
     corFaltando: !cor, impressoraFaltando: !impressora,
   };
 }
@@ -3862,8 +3867,18 @@ function perguntaPintura(r) {
     '</select>';
 }
 
+// Embalagem, personalização, gravação... o que não é filamento nem luz
+// e mesmo assim custa. Diferente da pintura (sempre 20%), aqui é valor
+// direto em R$ — pedido de encomenda quase sempre tem algo desse tipo,
+// então já fica com o campo pronto em vez de esconder esse custo.
+function perguntaCustoExtra(r) {
+  return '<label class="pergunta">Teve algum custo extra? (R$)</label>' +
+    dicaCampo('Caixa personalizada, fita, cartão, gravação de nome, personalização de uma foto... o que saiu do seu bolso além de filamento, luz e tinta.') +
+    '<input id="rcCustoExtra" type="number" step="0.01" min="0" value="' + (r.extra_cost || 0) + '" oninput="recalcularPreco()">';
+}
+
 function perguntasDeCustoHtml(r, material) {
-  return perguntasImpressora(r, material) + perguntaPintura(r);
+  return perguntasImpressora(r, material) + perguntaPintura(r) + perguntaCustoExtra(r);
 }
 
 function campoMultiplicador() {
@@ -3932,8 +3947,9 @@ function desenharPrecificar(el) {
   html += passoHtml(1, 'O que a impressora gasta', 'Esses números o fatiador te dá quando termina de fatiar a peça.');
   html += perguntasImpressora(r, p.material);
   html += '<hr class="passo-sep">';
-  html += passoHtml(2, 'Acabamento', 'Se você pintou ou caprichou no acabamento da peça, isso entra na conta.');
+  html += passoHtml(2, 'Acabamento', 'Se você pintou, caprichou no acabamento ou teve outro gasto extra, isso entra na conta.');
   html += perguntaPintura(r);
+  html += perguntaCustoExtra(r);
   html += '</div>';
 
   html += '<div class="card">';
@@ -3969,6 +3985,7 @@ function atualizarContaPrecificar() {
   html += '<div style="display:flex; justify-content:space-between;"><span>🧵 O filamento</span><strong>' + fmtMoney(custo.custoMaterial) + '</strong></div>';
   html += '<div style="display:flex; justify-content:space-between;"><span>⚡ A luz</span><strong>' + fmtMoney(custo.custoMaquina) + '</strong></div>';
   html += '<div style="display:flex; justify-content:space-between;"><span>🎨 A pintura</span><strong>' + fmtMoney(custo.custoPintura) + '</strong></div>';
+  html += '<div style="display:flex; justify-content:space-between;"><span>📦 Extra</span><strong>' + fmtMoney(custo.custoExtra) + '</strong></div>';
   html += '</div>';
   if (custo.corFaltando || custo.impressoraFaltando) {
     html += '<div style="color:var(--muted); font-size:11px;">Falta escolher ' +
@@ -4015,6 +4032,7 @@ function lerFormularioCusto() {
     estimated_print_hours: (parseFloat(document.getElementById('rcHorasH').value) || 0) +
       (parseFloat(document.getElementById('rcHorasM').value) || 0) / 60,
     has_painting: document.getElementById('rcPintura').value === 'true',
+    extra_cost: parseFloat(document.getElementById('rcCustoExtra').value) || 0,
   };
 }
 
@@ -4036,6 +4054,7 @@ function blocoCustoEPrecoHtml(custo, opts) {
   html += '<div>⚡ A luz da impressora: <strong>' + fmtMoney(custo.custoMaquina) + '</strong>' +
     (custo.impressoraFaltando ? ' <span style="color:var(--muted);">(escolhe a impressora pra eu contar isso)</span>' : '') + '</div>';
   html += '<div>🎨 A pintura: <strong>' + fmtMoney(custo.custoPintura) + '</strong></div>';
+  html += '<div>📦 Extra: <strong>' + fmtMoney(custo.custoExtra) + '</strong></div>';
   html += '</div>';
 
   html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:12px;">';
@@ -4465,12 +4484,14 @@ function calcularMargemFamilia(principal, reimpressoes, ctx) {
   const custoReceita = receitaProduto ? calcularCustoReceita(receitaProduto) : null;
 
   if (temBaixaDeEstoque) {
-    // Máquina e pintura são por peça produzida — uma reimpressão
-    // ocupa a impressora de novo, então conta de novo.
+    // Máquina, pintura e extra são por peça produzida — uma reimpressão
+    // ocupa a impressora de novo (e gasta embalagem de novo), então
+    // conta de novo. Só o material fica de fora daqui: esse já veio do
+    // estoque de verdade, contado ali em cima.
     const pecas = membros.reduce((soma, m) => soma + Number(m.quantity || 1), 0);
-    const maquinaPintura = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoPintura) * pecas : 0;
+    const custoNaoMaterial = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoPintura + custoReceita.custoExtra) * pecas : 0;
     return Object.assign(base, {
-      custo: materialReal + maquinaPintura,
+      custo: materialReal + custoNaoMaterial,
       fonte: custoReceita ? 'real' : 'real_parcial',
     });
   }
