@@ -1568,6 +1568,25 @@ async function excluirProjeto(lineItemId, orderId) {
 
 let pedidoDetalheId = null;
 
+// orders.status nunca foi atualizado por nenhuma tela (fica sempre em
+// "Vendo o preço", desde a criação) — quem diz de verdade se ainda tem
+// trabalho num pedido é o status de cada peça dele, o mesmo que a Fila
+// e o "Terminei de imprimir" já mantêm certinho. Pedido "fechado" é o
+// que já tem pelo menos uma peça e todas elas terminaram (entregue) ou
+// foram canceladas — não sobrou nada pra fazer.
+const PEDIDO_STATUS_FECHADO = ['entregue', 'cancelado'];
+function pedidoEstaFechado(itensDoPedido) {
+  return itensDoPedido.length > 0 && itensDoPedido.every((it) => PEDIDO_STATUS_FECHADO.indexOf(it.line_status) !== -1);
+}
+
+// Só esconde da lista principal — nada é apagado, e dá pra ver os
+// finalizados de novo a qualquer hora clicando no botão.
+let mostrarPedidosFinalizados = false;
+function alternarPedidosFinalizados() {
+  mostrarPedidosFinalizados = !mostrarPedidosFinalizados;
+  renderPedidos();
+}
+
 async function renderPedidos() {
   if (pedidoDetalheId) return renderPedidoDetalhe(pedidoDetalheId);
 
@@ -1577,17 +1596,32 @@ async function renderPedidos() {
   const statuses = await q(SUPA.from('orders_payment_status').select('*'));
   const statusById = {};
   statuses.forEach((s) => { statusById[s.order_id] = s; });
+  const itens = await q(SUPA.from('order_line_items').select('order_id, line_status'));
+  const itensPorPedido = {};
+  itens.forEach((it) => {
+    if (!itensPorPedido[it.order_id]) itensPorPedido[it.order_id] = [];
+    itensPorPedido[it.order_id].push(it);
+  });
+
+  const fechados = orders.filter((o) => pedidoEstaFechado(itensPorPedido[o.id] || []));
+  const abertos = orders.filter((o) => !pedidoEstaFechado(itensPorPedido[o.id] || []));
+  const listaExibida = mostrarPedidosFinalizados ? orders : abertos;
 
   let html = '<div class="card">';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
-  html += '<strong>' + orders.length + ' pedidos</strong>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">';
+  html += '<strong>' + listaExibida.length + ' pedido' + (listaExibida.length === 1 ? '' : 's') + '</strong>';
+  html += '<div style="display:flex; gap:8px; flex-wrap:wrap;">';
+  if (fechados.length > 0) {
+    html += '<button class="btn ghost" onclick="alternarPedidosFinalizados()">' +
+      (mostrarPedidosFinalizados ? 'Esconder os já finalizados' : 'Ver os ' + fechados.length + ' já finalizados') + '</button>';
+  }
   html += '<button class="btn" onclick="openPedidoForm()">+ Novo pedido</button>';
-  html += '</div>';
-  if (orders.length === 0) {
-    html += '<div class="empty">Nenhum pedido ainda.</div>';
+  html += '</div></div>';
+  if (listaExibida.length === 0) {
+    html += '<div class="empty">' + (orders.length === 0 ? 'Nenhum pedido ainda.' : 'Nenhum pedido em andamento — todos já foram entregues.') + '</div>';
   } else {
     html += '<table><tr><th>Pedido</th><th>Cliente</th><th>Tipo</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
-    orders.forEach((o) => {
+    listaExibida.forEach((o) => {
       const ps = statusById[o.id];
       html += '<tr>';
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
@@ -4570,13 +4604,6 @@ async function saveCliente(id) {
 // 'imprimindo' nada foi gasto ainda, e cancelado não é venda.
 const MARGEM_STATUS_PRODUZIDO = ['imprimindo', 'pos_processamento', 'embalado', 'enviado', 'entregue'];
 
-const MARGEM_FONTE_LABELS = {
-  real: 'Contei de verdade',
-  real_parcial: 'Contei só o filamento',
-  estimado: 'A conta que você digitou',
-  receita: 'A conta do produto',
-};
-
 let margemPeriodoDias = 90;
 let margemDataDe = '';
 let margemDataAte = '';
@@ -4653,14 +4680,14 @@ function margemPct(receita, custo) {
   return ((receita - custo) / receita) * 100;
 }
 
-// O selo mostra quanto sobra de cada R$ 100 que o cliente paga — em
-// reais, não em porcentagem, que é como as telas de preço perguntam.
-// Quando o custo passou do preço não existe "R$ -30 de cada R$ 100":
-// aí a frase certa é que faltou dinheiro pra pagar a peça.
+// O selo mostra a porcentagem de lucro líquido: tirando tudo que a peça
+// custou, quanto sobrou do que o cliente pagou. Quando o custo passou
+// do preço não existe "sobrou -30%": aí a frase certa é que perdeu
+// dinheiro, não que sobrou.
 function margemBadge(pct) {
   if (pct === null) return '<span class="badge off">—</span>';
-  if (pct < 0) return '<span class="badge off">faltou R$ ' + Math.abs(pct).toFixed(0) + '</span>';
-  return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">R$ ' + pct.toFixed(0) + '</span>';
+  if (pct < 0) return '<span class="badge off">perdeu ' + Math.abs(pct).toFixed(0) + '%</span>';
+  return '<span class="badge ' + (pct >= 40 ? 'on' : 'off') + '">' + pct.toFixed(0) + '%</span>';
 }
 function margemBotoesPeriodo() {
   const usandoData = !!(margemDataDe || margemDataAte);
@@ -4751,12 +4778,11 @@ async function renderMargem() {
   const porProduto = {};
   comCusto.filter((a) => a.linha.product_id).forEach((a) => {
     const k = a.linha.product_id;
-    if (!porProduto[k]) porProduto[k] = { qtd: 0, receita: 0, custo: 0, reimpressoes: 0, fontes: {} };
+    if (!porProduto[k]) porProduto[k] = { qtd: 0, receita: 0, custo: 0, reimpressoes: 0 };
     porProduto[k].qtd += a.quantidade;
     porProduto[k].receita += a.receita;
     porProduto[k].custo += a.custo;
     porProduto[k].reimpressoes += a.reimpressoes;
-    porProduto[k].fontes[a.fonte] = true;
   });
   const linhasProduto = Object.keys(porProduto).map((k) => {
     const v = porProduto[k];
@@ -4778,7 +4804,7 @@ async function renderMargem() {
   html += statCard('🧾', fmtMoney(faturamento), 'Os clientes pagaram');
   html += statCard('🧵', fmtMoney(custoTotal), 'Custou pra fazer');
   html += statCard(lucro >= 0 ? '📈' : '📉', fmtMoney(lucro), 'Sobrou pra você');
-  html += statCard('💰', pctGeral === null ? '—' : 'R$ ' + pctGeral.toFixed(0), 'Sobrou de cada R$ 100');
+  html += statCard('💰', pctGeral === null ? '—' : pctGeral.toFixed(0) + '%', 'Lucro líquido');
   html += '</div>';
 
   if (comCusto.length === 0 && semCusto.length === 0) {
@@ -4843,7 +4869,7 @@ async function renderMargem() {
   if (linhasProduto.length > 0) {
     html += '<div class="card"><strong>🎁 Quanto cada produto deixou</strong>';
     html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Começa pelo que mais sobrou.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Vendidos</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>De cada R$ 100</th><th>Como eu contei</th></tr>';
+    html += '<table style="margin-top:8px;"><tr><th>Produto</th><th>Vendidos</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>Lucro líquido</th></tr>';
     linhasProduto.forEach((r) => {
       html += '<tr>';
       html += '<td><strong>' + escapeHtml(r.nome) + '</strong>' +
@@ -4854,7 +4880,6 @@ async function renderMargem() {
       html += '<td>' + fmtMoney(r.d.custo) + '</td>';
       html += '<td>' + fmtMoney(r.lucro) + '</td>';
       html += '<td>' + margemBadge(margemPct(r.d.receita, r.d.custo)) + '</td>';
-      html += '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(Object.keys(r.d.fontes).map((f) => MARGEM_FONTE_LABELS[f]).join(', ')) + '</td>';
       html += '</tr>';
     });
     html += '</table></div>';
@@ -4865,7 +4890,7 @@ async function renderMargem() {
   if (projetos.length > 0) {
     html += '<div class="card"><strong>🪄 Projetos personalizados</strong>';
     html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Cada projeto é diferente do outro, por isso eles aparecem um por um.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Projeto</th><th>Cliente</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>De cada R$ 100</th><th>Como eu contei</th></tr>';
+    html += '<table style="margin-top:8px;"><tr><th>Projeto</th><th>Cliente</th><th>O cliente pagou</th><th>Custou</th><th>Sobrou</th><th>Lucro líquido</th></tr>';
     projetos.forEach((a) => {
       const cliente = a.linha.requester_name ||
         (a.linha.orders && a.linha.orders.customers ? a.linha.orders.customers.name : '—');
@@ -4876,7 +4901,6 @@ async function renderMargem() {
       html += '<td>' + fmtMoney(a.custo) + '</td>';
       html += '<td>' + fmtMoney(a.receita - a.custo) + '</td>';
       html += '<td>' + margemBadge(margemPct(a.receita, a.custo)) + '</td>';
-      html += '<td style="font-size:11px; color:var(--muted);">' + escapeHtml(MARGEM_FONTE_LABELS[a.fonte]) + '</td>';
       html += '</tr>';
     });
     html += '</table></div>';
@@ -4888,8 +4912,8 @@ async function renderMargem() {
     .sort((x, y) => x.pct - y.pct);
   if (problemas.length > 0) {
     html += '<div class="card"><strong>🔻 Vendas em que quase não sobrou nada</strong>';
-    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Sobrou menos de R$ 20 de cada R$ 100. Vale ver se o preço está baixo demais, se gastou filamento demais ou se demorou muito pra imprimir.</div>';
-    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Peça</th><th>O cliente pagou</th><th>Custou</th><th>De cada R$ 100</th><th>O que pode ter acontecido</th></tr>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">Sobrou menos de 20% do que o cliente pagou. Vale ver se o preço está baixo demais, se gastou filamento demais ou se demorou muito pra imprimir.</div>';
+    html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Peça</th><th>O cliente pagou</th><th>Custou</th><th>Lucro líquido</th><th>O que pode ter acontecido</th></tr>';
     problemas.forEach((x) => {
       const motivo = x.a.reimpressoes > 0
         ? 'teve que imprimir de novo ' + vezes(x.a.reimpressoes)
