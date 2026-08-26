@@ -4,32 +4,33 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — 25/08/2026
+## ⏳ TAREFAS EM ABERTO — 26/08/2026
 
 **Assim que a sessão começar, lembre o Anderson destas.** O detalhe está
 em [docs/continuar-daqui.md](docs/continuar-daqui.md).
 
 1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
-   de tudo (veja a seção seguinte). **As chaves são por máquina** e o
-   segredo só aparece na hora de criar. Depois, subir o agente
+   de tudo (veja a seção seguinte). Depois, subir o agente
    (`start-hidden.vbs`) — sem ele, todo botão de colinha e de fatiador
    fica girando pra sempre, sem erro nenhum na tela.
+2. **Preparar o computador do Rafa.** Ele clicou em "abrir no fatiador"
+   e não aconteceu nada: **aquela máquina nunca rodou o agente**, então
+   nem aparece na lista de escolher computador, e a peça foi parar na
+   máquina do pai (desligada). A tela agora explica isso, mas a solução
+   é física — rodar o `conferir-maquina.ps1` lá, e o `.env` precisa do
+   Anderson, porque as chaves são por máquina.
+3. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
+   cancelado sem querer; existe o botão "Reabrir orçamento" pra desfazer.
+   É encomenda real, já vendida. Falta o entalhe do abridor, o bolso do
+   NFC de 23mm e a pausa — nada disso foi impresso, só validado em
+   arquivo.
 
-   **A boa notícia da troca de máquina:** o arquivo da cereja está no
-   servidor (`projetos/272a0ff0…/cereja-inteira.3mf`) e o agente baixa
-   sozinho. `slicer-agent\downloads\` não viaja, mas não precisa mais —
-   o que importa já subiu.
-2. **Terminar o chaveiro de cereja** (encomenda real, já vendida). Já tem
-   projeto no sistema, arquivo no servidor, colinha da IA pronta e aberto
-   no fatiador — falta **imprimir um teste de verdade**: o entalhe do
-   abridor, o bolso do NFC de 23mm e a pausa pra encaixar o chip. Nada
-   disso foi impresso ainda, só validado em arquivo.
-
-Também pendente, e é com o Anderson e não com o agente: **testar o botão
-de copiar o PIX num celular de verdade**, **pedir pro Rafa recarregar a
-tela (Ctrl+F5)** e **falar com os clientes de 23/08** — esses ficaram na
-regra antiga de 50% de propósito, e as mensagens escritas pra eles falam
-em metade, então estão coerentes.
+Também pendente, e é com o Anderson e não com o agente: **testar o fluxo
+completo do "Sugerir categoria e tamanho com a foto"** logado de verdade
+(a função foi testada por fora, o caminho navegador→função não),
+**testar o botão de copiar o PIX num celular** e **falar com os clientes
+de 23/08** — esses ficaram na regra antiga de 50% de propósito, e as
+mensagens escritas pra eles falam em metade, então estão coerentes.
 
 **Antes de julgar qualquer modelo 3D, rode `node ver-peca.js arquivo.3mf`.**
 Ele desenha a peça de quatro ângulos, sem abrir fatiador. Em 24/08 eu
@@ -163,7 +164,7 @@ sai dali.
   `agent.js`, depois dois cliques em `start-hidden.vbs`.
 
 - **`GRANT` é separado de RLS, e vale até pro `service_role`.** Essa mesma
-  pegadinha derrubou os patches 06, 09, 17 e 19: sem `grant`, a consulta nem
+  pegadinha derrubou os patches 06, 09, 17, 19, 26, 34 e 35: sem `grant`, a consulta nem
   chega a ser avaliada pela política (erro 42501, "permission denied"). Tabela
   nova ou coluna nova usada pelo agente ou por Edge Function precisa do `grant`
   correspondente — já inclua no mesmo patch.
@@ -230,6 +231,30 @@ sai dali.
   item personalizado, quando o dono aprova o orçamento. Item de catálogo nunca
   preenche — `salvarItem()` não toca nele. Por isso a aba "Quanto sobrou" tem
   quatro fontes de custo em cascata em vez de simplesmente ler essa coluna.
+- **O fatiamento por linha de comando do OrcaSlicer não funciona — em caso
+  nenhum.** Testado em 26/08 numa peça simples, de um objeto e um
+  filamento, e num `.stl` cru sem perfil: a mesma
+  `Slic3r::CLI::run found error, exit` nos dois. Conferido no código-fonte
+  do OrcaSlicer: é um catch-all impresso em qualquer erro interno, não
+  assinatura de peça complexa. Não conte com essa via pra extrair peso e
+  tempo automaticamente — é por isso que "Terminei" pergunta os números.
+- **`orders.status` é campo morto.** Nada no sistema atualiza ele: fica
+  preso em "Vendo o preço" desde a criação. Quem sabe o estado de verdade
+  é o `line_status` de cada peça, e é nele que a lista de Pedidos e a Fila
+  se baseiam. Não escreva lógica nova em cima de `orders.status`.
+- **"Terminei" mistura duas contas que só são iguais quando a quantidade
+  é 1.** O peso baixado do estoque é o TOTAL impresso; o peso guardado na
+  receita do produto tem que ser de UMA peça, porque é reaproveitado em
+  qualquer pedido futuro. Num pedido de 60, guardar o total multiplicaria
+  o custo por 60 na próxima venda. A divisão é feita antes de gravar na
+  receita — se mexer ali, mantenha.
+- **As 10 categorias do catálogo vivem em DOIS lugares:** `CATEGORY_LABELS`
+  no [`index.html`](index.html) e a lista dentro da Edge Function
+  [`sugerir-cadastro-produto`](supabase/functions/sugerir-cadastro-produto/index.ts).
+  Categoria nova exige mexer nos dois — a IA nunca inventa uma.
+- **Fundo colorido some na impressão sem `print-color-adjust: exact`.** O
+  navegador apaga fundo "pra economizar tinta", e a cartinha saía branca.
+  Vale pra qualquer coisa desenhada pra imprimir.
 - **O OrcaSlicer sai com código 0 mesmo falhando.** A única checagem confiável
   é ver se o arquivo de saída existe.
 
