@@ -539,10 +539,17 @@ function openModal(html, opts) {
   root.classList.add('show');
   root.onclick = (e) => { if (e.target === root) closeModal(); };
 }
-function closeModal() {
+// Separado de closeModal() pra quem fecha o modal SÓ pra navegar pra
+// outra tela do mesmo produto (Editar, Dar preço) conseguir manter
+// _produtoGerenciarAberto vivo — closeModal() de verdade (fechar sem ir
+// pra lugar nenhum) é que precisa esquecer de qual produto era.
+function fecharModalDOM() {
   const root = document.getElementById('modalRoot');
   root.classList.remove('show');
   root.innerHTML = '';
+}
+function closeModal() {
+  fecharModalDOM();
   _produtoGerenciarAberto = null;
   _projetoGerenciarAberto = null;
 }
@@ -3222,11 +3229,11 @@ function abrirGerenciarProduto(productId) {
     '<div style="display:flex; flex-direction:column; gap:10px;">' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Dados do produto (nome, preço, foto...)</span>' +
-        '<button class="btn ghost" onclick="closeModal(); abrirEditarProduto(\'' + p.id + '\');">Editar</button>' +
+        '<button class="btn ghost" onclick="fecharModalDOM(); abrirEditarProduto(\'' + p.id + '\');">Editar</button>' +
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Receita de custo</span>' +
-        '<button class="btn ghost" onclick="closeModal(); abrirPrecificar(\'' + p.id + '\');">💰 Dar preço</button>' +
+        '<button class="btn ghost" onclick="fecharModalDOM(); abrirPrecificar(\'' + p.id + '\');">💰 Dar preço</button>' +
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Arquivo 3D' + (p.model_file_path ? ' <span class="badge on">anexado</span>' : ' <span style="color:var(--muted); font-size:11px;">nenhum</span>') + '</span>' +
@@ -3739,9 +3746,18 @@ function abrirPrecificar(productId) {
   window.scrollTo(0, 0);
 }
 
+// Se a pessoa chegou aqui vindo do "⚙️ Gerenciar" de um produto (o normal
+// hoje: Gerenciar → Editar/Dar preço → Voltar), volta pro MESMO Gerenciar
+// em vez de fechar tudo e cair no topo da lista — senão "voltar" some com
+// o produto que a pessoa estava mexendo, e ela tem que procurar de novo.
 function voltarProdutos() {
+  const productId = produtoPrecificarId;
   produtoPrecificarId = null;
-  renderProdutos();
+  if (_produtoGerenciarAberto && _produtoGerenciarAberto === productId) {
+    abrirGerenciarProduto(productId);
+  } else {
+    renderProdutos();
+  }
   window.scrollTo(0, 0);
 }
 
@@ -3973,10 +3989,17 @@ function abrirEditarProduto(id) {
   window.scrollTo(0, 0);
 }
 
+// Mesma lógica do voltarProdutos() logo acima: volta pro Gerenciar do
+// mesmo produto quando foi de lá que a edição começou.
 function sairCadastroProduto() {
+  const productId = produtoCadastroAberto;
   produtoCadastroAberto = null;
   produtoCadastroSeed = null;
-  renderProdutos();
+  if (_produtoGerenciarAberto && _produtoGerenciarAberto === productId) {
+    abrirGerenciarProduto(productId);
+  } else {
+    renderProdutos();
+  }
   window.scrollTo(0, 0);
 }
 
