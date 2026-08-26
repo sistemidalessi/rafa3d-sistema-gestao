@@ -132,6 +132,29 @@ nenhum até imprimir. Entrou tudo isto:
 O caminho do pedido até a impressão está escrito em
 [roteiro-pedido.md](roteiro-pedido.md), no nível do Rafa.
 
+- **A etiqueta de frete funciona, e agora aparece.** O link de impressão
+  nunca chegava: o endpoint `/shipment/print` do Melhor Envio é **POST
+  com o corpo**, e o código chamava com GET na URL. Além disso o link
+  saía em `mode=private`, que exige estar logado na conta deles pra
+  abrir. Os dois corrigidos, e testado de fora: o link abre sem login.
+
+  Se uma etiqueta ficar sem link outra vez, o botão **"🔎 Buscar o link
+  da etiqueta"** aparece sozinho — ele recupera a etiqueta que já foi
+  paga, sem comprar nada de novo.
+- **Existe uma cartinha de agradecimento** pra ir dentro da caixa, em
+  meia folha deitada, com o nome do cliente e o texto na voz do Rafa. Na
+  hora de despachar, um botão abre etiqueta e cartinha juntas.
+
+  Cuidado ao mexer nisso: o navegador **só deixa abrir uma janela por
+  clique**, e depois de um `await` ele nem considera mais que houve
+  clique. As duas janelas têm que ser abertas no gesto, e preenchidas
+  depois — foi exatamente esse o defeito que fez a cartinha não aparecer.
+- **Anotar pagamento traz o valor pronto**, calculado pelo tipo (tudo,
+  metade, o resto, devolução), com a conta do pedido à vista. E diz na
+  tela que o frete é repasse, não lucro — a aba "Quanto sobrou" já
+  calculava por `unit_price × quantidade` e nunca somou entrega, mas
+  isso não estava escrito em lugar nenhum.
+
 ### Uma coisa que o sistema NÃO resolve, de propósito
 
 **A placa tem que ser trocada na mão, no Bambu Studio.** O arquivo não

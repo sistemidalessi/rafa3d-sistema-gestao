@@ -98,12 +98,43 @@ conforme anda: **imprimindo → pós-processamento → pronto**.
 É por ela que dá pra saber, sem perguntar pra ninguém, o que está na
 impressora agora.
 
-## 8. Avisar o cliente
+## 8. Despachar
 
-Peça pronta:
+### Se vai pelo correio
 
-- **Vai pelos Correios** → o pedido tem o botão de **gerar etiqueta**
-- **Ele vem buscar** → chame no WhatsApp e combine
+No bloco **Entrega**, clique em **🏷️ Gerar etiqueta**. O sistema compra
+o frete e traz o código de rastreio.
+
+Depois aparecem três botões:
+
+| | |
+|---|---|
+| **🖨️ Imprimir etiqueta e cartinha** | o do dia a dia — abre as duas |
+| 🏷️ Só a etiqueta | se só ela emperrou ou saiu borrada |
+| 💌 Só a cartinha | idem |
+
+Na primeira vez o navegador pode barrar a segunda janela. Ele mostra um
+aviso na barra de endereço: libere os pop-ups pra este site e ele não
+pergunta mais.
+
+### Se o cliente vem buscar
+
+Não tem etiqueta. Use o **💌 Imprimir a cartinha** lá no topo do pedido
+e combine a retirada no WhatsApp.
+
+## 9. A cartinha vai dentro da caixa
+
+Ela sai em **meia folha deitada** (A6), com uma linha pontilhada pra
+cortar. Já vem com o nome do cliente, o número do pedido e o texto na
+voz do Rafa.
+
+É o único pedaço da encomenda que fala com o cliente — a etiqueta da
+transportadora é documento padronizado e não dá pra personalizar.
+
+## 10. Avisar o cliente
+
+O pedido tem o botão **🙏 Mandar agradecimento pelo WhatsApp**, que abre
+a conversa com a mensagem pronta. Se tiver rastreio, mande junto.
 
 ---
 
