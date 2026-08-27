@@ -35,6 +35,35 @@ código velho não é só "uma máquina desatualizada": ela **rouba** a
 tarefa da que está certa e refaz o defeito. Consertou o `agent.js`?
 Atualize as duas no mesmo dia.
 
+### E agora dá pra ver isso — patches 42 e 43
+
+O ponto cego era que um agente com código velho e um com código novo
+apareciam idênticos na lista: os dois "ligado ✅". O **patch 42** fez
+cada agente mandar o commit e a data do código junto com o sinal de
+vida, lidos **uma vez ao iniciar** — de propósito, porque é isso que o
+número precisa refletir. Ler a cada volta mostraria o código do disco,
+não o que está rodando, e mentiria justo no caso que isso veio resolver.
+
+A tela compara os computadores **entre si**, não com o GitHub (o
+navegador não conhece o GitHub), com um dia de folga pra não virar
+barulho. Quem ficou pra trás aparece com `⚠️ programa antigo` na lista e
+numa tarja no Dashboard, com o comando pronto — e **continua
+escolhível**, porque esconder deixaria alguém sem computador nenhum.
+
+O agente sobrevive ao patch não ter rodado: na primeira falha ele
+desiste da versão e segue mandando só o sinal de vida. Sem isso o
+`upsert` falharia inteiro e a máquina **sumiria da lista** — bem pior
+que não saber a versão.
+
+O **patch 43** saiu de um erro meu no meio disso: testei o 42 contra o
+banco de verdade, apaguei a linha de teste, imprimi "limpo" — e o
+`delete` tinha falhado com `permission denied` num campo que eu não
+olhei. Ficou um computador de mentira na lista do Rafa. A causa é o
+`GRANT` de sempre: o patch 25 concedeu `select, insert, update` e não
+`delete`. **Sem ele nenhum computador sai da lista, nunca** — máquina
+trocada, formatada ou aposentada ficaria ali pra sempre como opção
+válida.
+
 Coisas menores do mesmo dia:
 - `NOTIFY_EMAILS` (secret do Supabase) estava com um e-mail que o Resend
   sandbox (`onboarding@resend.dev`) não aceita mandar — ele só entrega

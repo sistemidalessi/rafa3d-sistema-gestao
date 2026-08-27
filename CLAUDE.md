@@ -125,10 +125,18 @@ sai dali.
   `agent.js`, depois dois cliques em `start-hidden.vbs`.
 
 - **`GRANT` é separado de RLS, e vale até pro `service_role`.** Essa mesma
-  pegadinha derrubou os patches 06, 09, 17, 19, 26, 34 e 35: sem `grant`, a consulta nem
+  pegadinha derrubou os patches 06, 09, 17, 19, 26, 34, 35 e 43: sem `grant`, a consulta nem
   chega a ser avaliada pela política (erro 42501, "permission denied"). Tabela
   nova ou coluna nova usada pelo agente ou por Edge Function precisa do `grant`
   correspondente — já inclua no mesmo patch.
+  **Conceda o verbo que vai faltar depois, não só os de hoje.** O patch 25
+  concedeu `select, insert, update` porque era o que a tela usava, e o
+  `delete` só fez falta no 43 — quando descobrimos que nenhum computador
+  saía da lista. Grant de tabela cobre coluna nova; grant de coluna não.
+  **E `delete` sem grant não estoura**: devolve `permission denied` no
+  campo `error`, e quem não conferir segue achando que apagou. Se você
+  escreveu no banco por script, confira o resultado — não a sua mensagem
+  de sucesso.
 - **São dois fatiadores, de propósito.** `SLICER_APP_PATH` (Bambu Studio) é o
   que abre pro Rafael trabalhar; `ORCA_PATH` (OrcaSlicer) é só pro fatiamento
   por linha de comando. Não unifique.
