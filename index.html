@@ -1463,6 +1463,18 @@ function abrirDividirHi3D(lineItemId) {
     'O sistema gera a peça inteira a partir da foto lá em cima e já corta sozinho em pedaços — cada um pode sair numa cor diferente. ' +
     'As pontas do corte saem lisas, sem encaixe: a montagem é na cola, do jeito que já é hoje.' +
     '</div>' +
+    // A IA reconstrói exatamente o que está na foto — não é um editor
+    // que entende "muda o design", e não sabe separar o objeto do
+    // resto que aparece atrás dele. Sem esse aviso, um pedido de "faz
+    // diferente da foto" ou uma foto com outra coisa no quadro (tipo um
+    // controle remoto dentro do organizador) gera uma peça estranha, e
+    // parece bug do sistema quando é o serviço fazendo exatamente o que
+    // sabe fazer: copiar a foto.
+    '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:10px 12px; margin-bottom:14px; font-size:12.5px; color:#8a5b00; line-height:1.55;">' +
+    '<strong>Pra sair bem:</strong> a foto tem que mostrar só a peça que você quer, sem mais nada no quadro (nem controle, nem celular, nem outro objeto do lado). ' +
+    'A IA copia exatamente o que está na foto — ela não entende pedido de "faz diferente", tipo "com só duas divisórias em vez de três". ' +
+    'Se quiser uma peça diferente da foto, o jeito é achar (ou tirar) uma foto que já mostre a peça do jeito que você quer.' +
+    '</div>' +
     '<label class="pergunta">Quantos pedaços você quer?</label>' +
     '<div style="display:flex; flex-direction:column; gap:8px; margin-top:8px;">' +
     '<button class="btn" onclick="confirmarDividirHi3D(\'' + lineItemId + '\', \'low\')">Poucos pedaços grandes — mais fácil de montar</button>' +
