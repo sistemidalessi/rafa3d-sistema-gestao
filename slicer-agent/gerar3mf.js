@@ -380,13 +380,34 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
   }
 
   // Junta o que já vinha marcado no template com o que a colinha mexeu.
+  //
+  // O vetor NEM SEMPRE tem três posições. Isso só é verdade pro arquivo
+  // gerado do zero (um filamento só). Peça dividida por cor no Hi3D tem
+  // um slot de filamento PRA CADA cor — 4 cores vira vetor de 6 posições
+  // (processo, filamento 1, 2, 3, 4, impressora), e a impressora deixa
+  // de ser a posição 2 pra virar a última. Escrever com índice fixo
+  // marcava só o filamento 1 como "mexido" (as cores 2-4 voltavam pro
+  // perfil, mesmo com o valor certo já gravado nelas) e gravava
+  // curr_bed_type na posição do filamento 2 em vez da impressora — os
+  // dois em silêncio, sem erro nenhum, o Bambu só ignorava. Achado com
+  // o Chaveiro do Pikachu (4 cores): abriu limpo, colinha nenhuma valeu.
   const listas = (settings.different_settings_to_system || ['', '', '']).slice();
-  mexidos.forEach((campo) => {
-    const i = CATEGORIA[campo];
-    if (i === undefined) return;
+  const indiceProcesso = 0;
+  const indiceImpressora = listas.length - 1;
+  const indicesFilamento = [];
+  for (let i = 1; i < listas.length - 1; i++) indicesFilamento.push(i);
+  if (indicesFilamento.length === 0) indicesFilamento.push(Math.min(1, indiceImpressora));
+
+  const marcar = (i, campo) => {
     const atuais = String(listas[i] || '').split(';').filter(Boolean);
     if (!atuais.includes(campo)) atuais.push(campo);
     listas[i] = atuais.join(';');
+  };
+  mexidos.forEach((campo) => {
+    const categoria = CATEGORIA[campo];
+    if (categoria === undefined) return;
+    const indices = categoria === 0 ? [indiceProcesso] : categoria === 2 ? [indiceImpressora] : indicesFilamento;
+    indices.forEach((i) => marcar(i, campo));
   });
   settings.different_settings_to_system = listas;
 
