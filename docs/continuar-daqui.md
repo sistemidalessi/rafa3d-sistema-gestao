@@ -9,8 +9,15 @@ Onde as coisas pararam em **27/08/2026**.
 ## ⚠️ Falta atualizar o agente no computador do Rafa — 27/08
 
 Ele só é usado à noite, então isso fica pendente até lá — **não deixe
-passar batido**. Rodar nele: `git pull`, depois fechar e abrir de novo
-`slicer-agent\start-hidden.vbs`.
+passar batido**. Rodar nele, no PowerShell, dentro da pasta do projeto:
+
+```
+git pull
+powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
+```
+
+(O `git pull` sozinho é só desta vez, pra trazer o próprio script. Da
+próxima, o script já faz tudo — veja a seção logo abaixo.)
 
 Por quê: hoje (27/08), com o Chaveiro do Pikachu (pedido de verdade),
 apareceram **dois** problemas seguidos no mesmo arquivo, e os dois
@@ -43,6 +50,22 @@ Coisas menores do mesmo dia:
   aparecia no `title` (tooltip) do badge — invisível em celular, e por
   isso um erro real parecia "não fez nada". Agora fica um texto sempre
   visível embaixo do badge, nas duas telas.
+
+
+## Atualizar o agente depois de um `git pull`
+
+Numa máquina que já está preparada, quando o `agent.js` ou o
+`gerar3mf.js` mudaram:
+
+```
+powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
+```
+
+Ele puxa o código, reinstala dependências se o `package.json` mudou,
+mata o agente antigo e sobe o novo. Existe porque o agente **lê o
+código uma vez só, ao iniciar** — depois de um `git pull` ele segue
+rodando a versão velha sem avisar nada, e o sintoma é um defeito já
+consertado voltando do túmulo.
 
 ## Antes de tudo, numa máquina nova
 
