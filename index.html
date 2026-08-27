@@ -2030,6 +2030,15 @@ async function renderPedidoDetalhe(id) {
   html += '<button class="btn" onclick="abrirPedidoPronto(\'' + id + '\')">✅ Pedido pronto</button>';
   html += '<button class="btn ghost" onclick="excluirPedido(\'' + id + '\')">🗑️ Excluir pedido</button>';
   html += '</div>';
+  // Opcional de propósito — nem todo pedido tem data pra entregar. Fica
+  // em orders (não por peça) porque quem tem prazo é o cliente todo, e
+  // a Fila usa isso junto do tempo de impressão de cada peça pra saber
+  // até quando ela precisa ir pra impressora (patch-40).
+  html += '<div style="margin-top:10px; padding-top:10px; border-top:1px solid var(--border); font-size:13px; display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+  html += '<span style="color:var(--muted);">🗓️ Quando o cliente precisa receber?</span>';
+  html += '<input type="date" value="' + (order.needed_by || '') + '" onchange="salvarPrazoEntrega(\'' + id + '\', this.value)" style="width:auto;">';
+  if (order.needed_by) html += '<button class="btn ghost" style="padding:3px 9px; font-size:11px;" onclick="salvarPrazoEntrega(\'' + id + '\', \'\')">Tirar a data</button>';
+  html += '</div>';
   html += '</div>';
 
   if (order.channel === 'catalogo') {
@@ -2636,6 +2645,13 @@ async function mudarStatusItem(itemId, novoStatus, orderId) {
   toast('Status atualizado.');
 }
 
+async function salvarPrazoEntrega(orderId, valor) {
+  const { error } = await SUPA.from('orders').update({ needed_by: valor || null, updated_at: new Date().toISOString() }).eq('id', orderId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(valor ? 'Prazo guardado.' : 'Prazo removido.');
+  await renderPedidoDetalhe(orderId);
+}
+
 // "Terminei" (na Fila de Impressão) só marca que terminou de IMPRIMIR —
 // por design vira "Dando o acabamento", porque nem toda peça acaba na
 // impressora. Mas peça simples fica presa ali sem outro jeito claro de
@@ -2835,15 +2851,100 @@ async function salvarPagamento(orderId) {
    ============================================================ */
 const FILA_STATUSES = ['recebido', 'orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir'];
 
+// Nem todo pedido tem prazo (needed_by, patch-40), e sem tempo de
+// impressão estimado não dá pra calcular nada — os dois casos ficam
+// neutros, sem alarme. Quando os dois existem, "até quando pode
+// começar" é o prazo de entrega menos o tempo de impressão (por peça
+// vezes a quantidade): pedido de 3 dias com peça de 2 dias pra
+// imprimir não pode esperar até o último dia. Peça já em produção não
+// entra em alarme — o alarme é sobre COMEÇAR a tempo, que já aconteceu.
+function calcularPrazoFila(it, receitasPorProduto) {
+  const horasPorPeca = it.line_type === 'catalog'
+    ? (it.product_id && receitasPorProduto[it.product_id] ? receitasPorProduto[it.product_id].estimated_print_hours : null)
+    : it.estimated_print_hours;
+  const horasTotal = horasPorPeca ? Number(horasPorPeca) * (it.quantity || 1) : null;
+  const neededBy = it.orders && it.orders.needed_by;
+  if (!neededBy) return { nivel: 'sem_prazo' };
+  const prazoEntrega = new Date(neededBy + 'T23:59:59');
+  if (!horasTotal) return { nivel: 'sem_tempo', prazoEntrega };
+  const comecarAte = new Date(prazoEntrega.getTime() - horasTotal * 3600000);
+  const emAndamento = it.line_status === 'imprimindo' || it.line_status === 'pos_processamento';
+  const agora = Date.now();
+  let nivel;
+  if (emAndamento) nivel = 'andamento';
+  else if (comecarAte.getTime() < agora) nivel = 'atrasado';
+  else if (comecarAte.getTime() - agora < 24 * 3600000) nivel = 'urgente';
+  else nivel = 'ok';
+  return { nivel, prazoEntrega, comecarAte };
+}
+
+function fmtDataHora(d) {
+  if (!d || isNaN(d)) return '—';
+  return String(d.getDate()).padStart(2, '0') + '/' + String(d.getMonth() + 1).padStart(2, '0') +
+    ' às ' + String(d.getHours()).padStart(2, '0') + 'h';
+}
+
+function badgePrazoFila(u) {
+  if (u.nivel === 'sem_prazo') return '';
+  if (u.nivel === 'sem_tempo') return '<br><span style="font-size:10.5px; color:var(--muted);">entrega até ' + fmtDate(u.prazoEntrega) + ' — ainda sem tempo de impressão estimado</span>';
+  if (u.nivel === 'andamento') return '<br><span style="font-size:10.5px; color:var(--muted);">entrega até ' + fmtDate(u.prazoEntrega) + '</span>';
+  if (u.nivel === 'atrasado') return '<br><span style="font-size:10.5px; color:#c0392b; font-weight:700;">⏰ já devia ter ido pra impressora</span>';
+  if (u.nivel === 'urgente') return '<br><span style="font-size:10.5px; color:#a15c00; font-weight:700;">⏰ bota pra imprimir até ' + fmtDataHora(u.comecarAte) + '</span>';
+  return '<br><span style="font-size:10.5px; color:#1f8a3b;">entrega até ' + fmtDate(u.prazoEntrega) + ', dá tempo</span>';
+}
+
+// Reúne quem está atrasado ou urgente de TODAS as impressoras num só
+// lugar — com só uma impressora dá pra ver isso rolando pela lista,
+// mas o dono já avisou que logo serão duas ou três, e aí "não se
+// perder no prazo" precisa de um lugar único que junte todas.
+function cartaoUrgentesFila(items) {
+  const urgentes = items.filter((it) => it._prazo.nivel === 'atrasado' || it._prazo.nivel === 'urgente');
+  if (!urgentes.length) return '';
+  const atrasados = urgentes.filter((it) => it._prazo.nivel === 'atrasado').length;
+  let html = '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">';
+  html += '<strong style="color:#8a5b00;">⏰ ' + urgentes.length + (urgentes.length === 1 ? ' peça precisa' : ' peças precisam') + ' de atenção com o prazo</strong>';
+  if (atrasados > 0) {
+    html += '<div style="color:#8a5b00; font-size:12px; margin-top:2px;">' +
+      (atrasados === 1 ? 'Uma já devia ter ido' : atrasados + ' já deviam ter ido') + ' pra impressora pra não perder a data combinada.</div>';
+  }
+  html += '<table style="margin-top:8px;"><tr><th>Pedido</th><th>Peça</th><th>Entrega</th><th>Precisa começar</th></tr>';
+  urgentes.forEach((it) => {
+    const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+    html += '<tr>';
+    html += '<td>' + escapeHtml(it.orders ? (it.orders.order_number || '') : '') + '</td>';
+    html += '<td>' + escapeHtml(nome || '') + '</td>';
+    html += '<td>' + fmtDate(it._prazo.prazoEntrega) + '</td>';
+    html += '<td>' + (it._prazo.nivel === 'atrasado'
+      ? '<strong style="color:#c0392b;">já devia ter começado</strong>'
+      : '<strong style="color:#a15c00;">até ' + fmtDataHora(it._prazo.comecarAte) + '</strong>') + '</td>';
+    html += '</tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
 async function renderFila() {
   const el = document.getElementById('tab-fila');
   el.innerHTML = '<div class="empty">Carregando...</div>';
 
   const items = await q(SUPA.from('order_line_items')
-    .select('*, orders(order_number, customers(name)), products(name)')
+    .select('*, orders(order_number, needed_by, customers(name)), products(name)')
     .in('line_status', FILA_STATUSES)
     .order('created_at'));
   const impressoras = await getImpressorasSafe();
+  const receitas = await getReceitas();
+  const receitasPorProduto = {};
+  receitas.forEach((r) => { receitasPorProduto[r.product_id] = r; });
+
+  items.forEach((it) => { it._prazo = calcularPrazoFila(it, receitasPorProduto); });
+  // Mais urgente primeiro; quem não tem prazo fica na ordem de chegada,
+  // depois de todo mundo que tem.
+  items.sort((a, b) => {
+    const pa = a._prazo.comecarAte ? a._prazo.comecarAte.getTime() : Infinity;
+    const pb = b._prazo.comecarAte ? b._prazo.comecarAte.getTime() : Infinity;
+    if (pa !== pb) return pa - pb;
+    return new Date(a.created_at) - new Date(b.created_at);
+  });
 
   const grupos = {};
   const semImpressora = [];
@@ -2853,7 +2954,7 @@ async function renderFila() {
     else semImpressora.push(it);
   });
 
-  let html = '';
+  let html = cartaoUrgentesFila(items);
   html += renderGrupoFila('📥 Ainda sem impressora', null, semImpressora, impressoras);
   impressoras.forEach((p) => {
     html += renderGrupoFila('🖨️ ' + p.name, p.id, grupos[p.id].itens, impressoras);
@@ -2873,7 +2974,10 @@ function renderGrupoFila(titulo, printerId, itens, impressoras) {
     itens.forEach((it) => {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       html += '<tr>';
-      html += '<td>' + escapeHtml(it.orders ? (it.orders.order_number || '') : '') + '<br><span style="color:var(--muted);font-size:11px;">' + escapeHtml(it.orders && it.orders.customers ? it.orders.customers.name : '') + '</span></td>';
+      html += '<td>' + escapeHtml(it.orders ? (it.orders.order_number || '') : '') +
+        '<br><span style="color:var(--muted);font-size:11px;">' + escapeHtml(it.orders && it.orders.customers ? it.orders.customers.name : '') + '</span>' +
+        '<br><span style="color:var(--muted);font-size:10.5px;">chegou ' + fmtDate(it.created_at) + '</span>' +
+        badgePrazoFila(it._prazo) + '</td>';
       html += '<td>' + escapeHtml(nome) + '</td>';
       html += '<td>' + it.quantity + '</td>';
       html += '<td id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</td>';
