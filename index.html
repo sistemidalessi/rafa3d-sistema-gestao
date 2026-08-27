@@ -127,6 +127,14 @@
     .preco-conta { position: static; }
   }
   table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  /* Tabela larga demais pro celular rola DENTRO do cartão, em vez de
+     transbordar. Medido: a tabela da Fila pede 623px, e num celular de
+     375px ela vazava pra fora da borda. Espremer não era saída — com
+     oito colunas cada célula viraria uma coluna de duas letras.
+     A largura mínima é o que garante a rolagem: sem ela o `width:100%`
+     de cima esmaga a tabela de volta pra dentro e não rola nada. */
+  .tabela-rola { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tabela-rola > table { min-width: 620px; }
   th { text-align: left; padding: 8px 10px; font-family: 'Space Grotesk', sans-serif; font-size: 11px; letter-spacing: .4px; text-transform: uppercase; color: var(--muted); border-bottom: 2px solid var(--border); vertical-align: middle; }
   td { text-align: left; padding: 12px 10px; border-bottom: 1px solid var(--border); vertical-align: middle; }
   tr:hover td { background: #f7f9fc; }
@@ -3698,7 +3706,8 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
       + 'As peças desta pessoa estão em <strong>impressoras diferentes</strong>. Tudo bem — só não dá pra mandar antes de todas ficarem prontas.</div>';
   }
 
-  html += '<table style="margin-top:10px;"><tr><th>Pedido</th><th>Peça</th><th>Quantas</th><th>Tempo</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
+  html += '<div class="tabela-rola" style="margin-top:10px;">';
+  html += '<table><tr><th>Pedido</th><th>Peça</th><th>Quantas</th><th>Tempo</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
   itens.forEach((it) => {
     const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
     html += '<tr>';
@@ -3735,7 +3744,7 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
     html += '</td>';
     html += '</tr>';
   });
-  html += '</table>';
+  html += '</table></div>';
   html += '</div>';
   // preenche a cor solicitada de forma assíncrona (usa a lista segura de cores)
   setTimeout(() => preencherCoresFila(itens), 0);
