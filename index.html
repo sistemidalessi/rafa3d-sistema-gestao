@@ -3350,9 +3350,16 @@ const FILA_STATUSES = ['recebido', 'orcamento_aprovado', 'fila_impressao', 'impr
 // de tempo: a conta é a mesma, e duas cópias dela sairiam do ar uma da
 // outra na primeira vez que alguém mexesse em uma só.
 function horasDeImpressao(it, receitasPorProduto) {
+  const daReceita = it.product_id && receitasPorProduto[it.product_id]
+    ? receitasPorProduto[it.product_id].estimated_print_hours : null;
+  // Item personalizado guarda o tempo na própria linha (patch-39), mas
+  // pode estar amarrado a um produto mesmo assim — é o caso de uma peça
+  // do catálogo que virou personalizada. Aí a receita serve de reserva:
+  // antes desse "ou", a Cesta Suspensa aparecia "sem tempo" na Fila com
+  // 18h45 guardadas na receita dela.
   const porPeca = it.line_type === 'catalog'
-    ? (it.product_id && receitasPorProduto[it.product_id] ? receitasPorProduto[it.product_id].estimated_print_hours : null)
-    : it.estimated_print_hours;
+    ? daReceita
+    : (it.estimated_print_hours || daReceita);
   const n = Number(porPeca);
   if (!n || isNaN(n)) return { porPeca: null, total: null };
   return { porPeca: n, total: n * (it.quantity || 1) };
@@ -3561,7 +3568,28 @@ async function renderFila() {
   let html = seletorDeOrdemFila();
   html += resumoImpressorasFila(items, impressoras);
   html += cartaoUrgentesFila(items);
-  grupos.forEach((g) => { html += renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido); });
+
+  // Quem não tem tempo estimado vai pro fim da lista — mas SEM uma
+  // divisória isso lê como ordem quebrada: com a maior parte da fila
+  // sem estimativa, a encomenda de 10 dias sobrava no meio, com peças
+  // "sem tempo" embaixo dela, e parecia que o sistema não tinha
+  // entendido o número. A divisória diz que dali pra baixo é outra
+  // lista, e o de cima volta a terminar no mais demorado.
+  // Só nas ordens por tempo: são as únicas em que "sem tempo" fica
+  // garantidamente no fim. Em "quem chegou primeiro" essas peças ficam
+  // espalhadas pela lista, e a linha apareceria no meio do nada.
+  const ordenadoPorTempo = _filaOrdem === 'rapidas' || _filaOrdem === 'demoradas';
+  let separou = false;
+  grupos.forEach((g) => {
+    if (ordenadoPorTempo && !g.horas && !separou) {
+      separou = true;
+      html += '<div style="display:flex; align-items:center; gap:10px; margin:18px 2px 10px; color:var(--muted); font-size:12px;">'
+        + '<span style="flex:1; height:1px; background:var(--border);"></span>'
+        + '<span>⏳ Ainda não sei quanto tempo estas levam</span>'
+        + '<span style="flex:1; height:1px; background:var(--border);"></span></div>';
+    }
+    html += renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido);
+  });
   el.innerHTML = grupos.length
     ? html
     : html + '<div class="card"><div class="empty">Não tem nada pra imprimir agora.</div></div>';
@@ -3722,7 +3750,17 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
     html += '<td>' + (it._horas.total
       ? '<strong>' + fmtHoras(it._horas.total) + '</strong>' +
         (it.quantity > 1 ? '<br><span style="color:var(--muted); font-size:10.5px;">' + fmtHoras(it._horas.porPeca) + ' cada</span>' : '')
-      : '<span style="color:var(--muted); font-size:11px;">ainda não sei<br>(sai da colinha ou do "Terminei")</span>') + '</td>';
+      // A colinha NÃO diz quanto tempo leva — ela só dá temperatura,
+      // camada, brim e suporte. O tempo só existe depois que a peça
+      // teve preço calculado (vai pra receita) ou que alguém clicou
+      // "Terminei" e digitou as horas de verdade. O texto antigo dizia
+      // "sai da colinha" e mandava o Rafa esperar por algo que nunca
+      // ia chegar.
+      : '<span style="color:var(--muted); font-size:11px;">ainda não sei<br>' +
+        (it.line_type === 'catalog'
+          ? 'dê preço nesta peça em <strong>Produtos</strong>'
+          : 'calcule o preço deste projeto') +
+        '</span>') + '</td>';
     html += '<td><span id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</span>' +
       (it.notes ? '<br><span style="font-size:10.5px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>' : '') + '</td>';
     html += '<td><select onchange="atribuirImpressora(\'' + it.id + '\', this.value)">';
