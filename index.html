@@ -2652,7 +2652,7 @@ function abrirOrcamentoPedido(orderId) {
 
 async function preencherOrcamentoPedidoCard(orderId, janela) {
   const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', orderId).maybeSingle());
-  const itens = await q(SUPA.from('order_line_items').select('*, products(name)').eq('order_id', orderId).order('created_at'));
+  const itens = await q(SUPA.from('order_line_items').select('*, products(name, image_path)').eq('order_id', orderId).order('created_at'));
 
   if (!itens.length) {
     janela.document.open();
@@ -2670,6 +2670,19 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
 
   const nomeItem = (it) => it.line_type === 'catalog' ? (it.products ? it.products.name : 'Item') : (it.custom_description || 'Item personalizado');
 
+  // Produto de catálogo já tem a foto no próprio registro; item
+  // personalizado guarda a foto no Storage, então precisa de uma URL
+  // assinada — por isso as duas em Promise.all antes de montar o HTML,
+  // em vez de buscar uma de cada vez.
+  const fotos = await Promise.all(itens.map(async (it) => {
+    if (it.line_type === 'catalog') return it.products && it.products.image_path ? produtoFotoSrc(it.products) : null;
+    if (it.custom_reference_image_path) {
+      const { data } = await SUPA.storage.from('projetos-fotos').createSignedUrl(it.custom_reference_image_path, 3600);
+      return data ? data.signedUrl : null;
+    }
+    return null;
+  }));
+
   const linhasTexto = itens.map((it) =>
     '- ' + nomeItem(it) + (it.quantity > 1 ? ' (' + it.quantity + 'x)' : '') + ': ' + fmtMoney(it.unit_price * it.quantity)).join('\n');
   const mensagemTexto = 'Olá' + (primeiroNome ? ' ' + primeiroNome : '') + '! Aqui está o orçamento do seu pedido' +
@@ -2677,9 +2690,12 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
     'Cada peça é desenhada, fatiada e impressa por mim (tenho só 10 anos!), com bastante carinho — fico muito feliz em fazer essas pra você 💙 Qualquer dúvida, é só chamar!';
   const linkWhats = numeroCompleto ? 'https://wa.me/' + numeroCompleto + '?text=' + encodeURIComponent(mensagemTexto) : null;
 
-  const linhasHtml = itens.map((it) => {
+  const linhasHtml = itens.map((it, i) => {
     const qtdTxt = it.quantity > 1 ? ' <span style="color:#8a93a8;">×' + it.quantity + '</span>' : '';
-    return '<div class="item-linha"><span class="nome">' + escapeHtml(nomeItem(it)) + qtdTxt + '</span>' +
+    const foto = fotos[i];
+    return '<div class="item-linha">' +
+      (foto ? '<img class="item-foto" src="' + escapeHtml(foto) + '" alt="" crossorigin="anonymous">' : '<div class="item-foto item-foto-vazia"></div>') +
+      '<span class="nome">' + escapeHtml(nomeItem(it)) + qtdTxt + '</span>' +
       '<span class="valor">' + fmtMoney(it.unit_price * it.quantity) + '</span></div>';
   }).join('');
 
@@ -2711,9 +2727,12 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
         ' background:rgba(255,255,255,.7); border-radius:10px; padding:8px 10px; }' +
       '.item-nome strong { color:#0b1733; }' +
       '.itens-lista { background:rgba(255,255,255,.7); border-radius:10px; padding:4px 10px; margin:0 0 12px; }' +
-      '.item-linha { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed #d8dce6; }' +
+      '.item-linha { display:flex; align-items:center; gap:9px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed #d8dce6; }' +
       '.item-linha:last-child { border-bottom:none; }' +
-      '.item-linha .nome { color:#2b3652; }' +
+      '.item-foto { width:36px; height:36px; border-radius:9px; object-fit:cover; flex:none;' +
+        ' border:1px solid #fff; box-shadow:0 1px 4px rgba(11,23,51,.18); background:#fff; }' +
+      '.item-foto-vazia { background:#eef0f4; }' +
+      '.item-linha .nome { flex:1; color:#2b3652; }' +
       '.item-linha .valor { color:#0b1733; font-weight:700; white-space:nowrap; }' +
       '.preco-bloco { text-align:center; background:linear-gradient(135deg,#0061f7,#3d84ff); border-radius:14px;' +
         ' padding:12px 10px; margin:0 0 12px; box-shadow:0 6px 16px -6px rgba(0,97,247,.5); }' +
