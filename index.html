@@ -978,6 +978,7 @@ window.repintarSelect = function (el) {
    ============================================================ */
 let _projetosPollTimer = null;
 let _projetoGerenciarAberto = null;
+let _gerenciarProjetoPollTimer = null;
 
 // Antes só reconhecia até "pos_processamento" — qualquer projeto que
 // já tivesse passado disso (embalado, enviado, entregue) caía no "falta
@@ -1292,6 +1293,28 @@ async function abrirGerenciarProjeto(lineItemId) {
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
+
+  // A modal dependia do poll da LISTA de trás (renderProjetos) pra se
+  // atualizar sozinha — bastava a lista já ter concluído "nada rodando"
+  // antes desse pedido específico começar (ex: pediu a colinha de novo
+  // com a modal já aberta) que o poll nunca era religado, e a tela
+  // ficava presa em "analisando…" mesmo com o trabalho pronto há
+  // minutos — só fechar e abrir de novo atualizava. Agora a própria
+  // modal se religa sozinha enquanto tiver algo dela rodando.
+  clearTimeout(_gerenciarProjetoPollTimer);
+  const partesRodando = partes.some((p) =>
+    p.meshy_status === 'queued' || p.meshy_status === 'processing' ||
+    p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing' ||
+    p.open_slicer_status === 'queued');
+  const projetoRodando = li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
+    li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
+    li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
+    li.open_slicer_status === 'queued';
+  if (projetoRodando || partesRodando) {
+    _gerenciarProjetoPollTimer = setTimeout(() => {
+      if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+    }, 4000);
+  }
 }
 
 function verProjetoComoPedido(orderId) {
