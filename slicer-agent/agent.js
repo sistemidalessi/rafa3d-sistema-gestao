@@ -267,6 +267,22 @@ function extrairMiniatura(fileBuf) {
   return null;
 }
 
+// image_path do produto vem de dois jeitos (mesma regra de produtoFotoSrc()
+// no index.html): URL pública completa do Storage (cadastrado pela tela) ou
+// caminho relativo dentro de catalogo/assets (produto antigo, importado por
+// SQL) — nesse segundo caso é arquivo local, lido do próprio checkout do
+// repositório, já que catalogo/ é pasta irmã de slicer-agent/.
+async function baixarFotoDoCatalogo(imagePath) {
+  if (/^https?:\/\//.test(imagePath)) {
+    const resp = await fetch(imagePath);
+    if (!resp.ok) throw new Error('a foto do catálogo respondeu ' + resp.status + '.');
+    return Buffer.from(await resp.arrayBuffer());
+  }
+  const caminhoLocal = path.join(__dirname, '..', 'catalogo', imagePath);
+  if (!fs.existsSync(caminhoLocal)) throw new Error('a foto do catálogo não foi encontrada em ' + caminhoLocal + '.');
+  return fs.readFileSync(caminhoLocal);
+}
+
 // Cada placa da Bambu tem a sua faixa de temperatura, e errar aqui não
 // é detalhe: PLA numa placa fria a 60°C gruda demais e leva pedaço da
 // peça (ou do revestimento) junto; PLA numa texturizada a 35°C solta no
@@ -452,12 +468,23 @@ async function analisarUm(product) {
     if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
     const fileBuf = Buffer.from(await fileData.arrayBuffer());
 
-    const miniatura = extrairMiniatura(fileBuf);
-    if (!miniatura) throw new Error('não achei nenhuma miniatura dentro do arquivo .3mf.');
+    // O .3mf só tem miniatura embutida se já foi ao menos ABERTO e
+    // fatiado no Bambu Studio uma vez — o Bambu é quem gera essas
+    // imagens ao fatiar. Arquivo que só passou por um divisor de peças
+    // (ex: Hi3D) sem nunca ter sido fatiado não tem nada pra extrair.
+    // Nesse caso cai pra foto do catálogo, do jeito que projeto já fazia.
+    let miniatura = extrairMiniatura(fileBuf);
+    let mediaType = 'image/png';
+    if (!miniatura && product.image_path) {
+      log('O .3mf de "' + product.name + '" não trazia miniatura — usando a foto do catálogo...');
+      miniatura = await baixarFotoDoCatalogo(product.image_path);
+      mediaType = mediaTypeFromPath(product.image_path);
+    }
+    if (!miniatura) throw new Error('não achei miniatura dentro do .3mf, e essa peça também não tem foto no catálogo pra usar no lugar.');
 
     log('Analisando "' + product.name + '" com IA...');
     const historico = await buscarHistoricoFeedback('product_id', product.id);
-    const respostaCompleta = await chamarClaude(miniatura, undefined, historico, product.bed_plate, product.material);
+    const respostaCompleta = await chamarClaude(miniatura, mediaType, historico, product.bed_plate, product.material);
     const ajustes = extrairAjustesEstruturados(respostaCompleta);
     const tips = removerBlocoJSON(respostaCompleta);
 
@@ -477,7 +504,7 @@ async function analisarUm(product) {
 async function tickAI() {
   const { data: queued, error } = await supabase
     .from('products')
-    .select('id, name, catalog_code, model_file_path, bed_plate, material')
+    .select('id, name, catalog_code, model_file_path, bed_plate, material, image_path')
     .eq('ai_analysis_status', 'queued')
     .order('ai_analysis_requested_at', { ascending: true })
     .limit(1);

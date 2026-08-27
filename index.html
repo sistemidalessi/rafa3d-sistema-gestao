@@ -1966,6 +1966,12 @@ function acoesDeImpressaoDoItem(it, orderId) {
   } else {
     html += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\', \'' + volta + '\')">🤖 Pedir a colinha</button>';
   }
+  // Sem isto o erro ficava só gravado no banco — o botão voltava a
+  // mostrar "Pedir a colinha" como se nada tivesse acontecido, e quem
+  // clicou não tinha como saber que já tinha tentado e falhado.
+  if (ia === 'error' && p.ai_analysis_error) {
+    html += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.ai_analysis_error) + '</div>';
+  }
   return html;
 }
 
@@ -1985,7 +1991,7 @@ async function renderPedidoDetalhe(id) {
   // imprimir precisava sair daqui, achar o produto no catálogo pelo
   // código e mandar de lá — que é o caminho que ninguém fazia.
   const items = await q(SUPA.from('order_line_items')
-    .select('*, products(id, name, catalog_code, model_file_path, open_slicer_status, open_slicer_error, ai_analysis_status, ai_slicing_tips), filament_colors(name)')
+    .select('*, products(id, name, catalog_code, model_file_path, open_slicer_status, open_slicer_error, ai_analysis_status, ai_analysis_error, ai_slicing_tips), filament_colors(name)')
     .eq('order_id', id).order('created_at'));
   const payments = await q(SUPA.from('payments').select('*').eq('order_id', id).order('created_at'));
   const ps = await q(SUPA.from('orders_payment_status').select('*').eq('order_id', id).maybeSingle());
@@ -3691,6 +3697,9 @@ function renderFatiamentoBtns(p) {
       (p.ai_analysis_status === 'error' ? '🔁 Tentar IA de novo' : '🤖 Analisar com IA') + '</button>';
   } else {
     out += '<span class="badge andando">' + (p.ai_analysis_status === 'queued' ? 'IA na fila' : 'IA analisando…') + '</span>';
+  }
+  if (p.ai_analysis_status === 'error' && p.ai_analysis_error) {
+    out += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.ai_analysis_error) + '</div>';
   }
   return out;
 }
