@@ -1186,6 +1186,12 @@ async function abrirGerenciarProjeto(lineItemId) {
   }
   html += '<button class="btn ghost" onclick="abrirAnexarModeloProjeto(\'' + li.id + '\')">+ Anexar</button>';
   html += '</span></div>';
+  // O badge "erro" só levava o motivo no title (tooltip) — invisível em
+  // celular, e um erro que ninguém vê parece um botão que só girou pra
+  // sempre. Repetido embaixo, sempre visível.
+  if (modeloErro) {
+    html += '<div style="font-size:11px; color:#c0392b; margin:-4px 0 6px;">' + escapeHtml(li.meshy_error || li.hi3d_error || '') + '</div>';
+  }
 
   if (li.model_file_path) {
     html += '<div style="padding:10px 0; border-top:1px solid var(--border);">';
@@ -1198,6 +1204,9 @@ async function abrirGerenciarProjeto(lineItemId) {
       html += '<button class="btn ghost" onclick="solicitarAnaliseIAProjeto(\'' + li.id + '\')">🤖 Analisar com IA</button>';
     }
     html += '</div>';
+    if (li.ai_analysis_status === 'error' && li.ai_analysis_error) {
+      html += '<div style="font-size:11px; color:#c0392b; margin-top:4px;">' + escapeHtml(li.ai_analysis_error) + '</div>';
+    }
     if (li.ai_analysis_status === 'done') {
       html += '<div class="card" style="background:#f7f9fc; margin-top:8px; font-size:13px; line-height:1.55;">' + formatarColinha(li.ai_slicing_tips) + '</div>';
       html += '<div style="margin-top:8px;">';
@@ -1213,6 +1222,9 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '<span>3. Fatiador — ' + (li.open_slicer_status === 'queued' ? '<span class="badge andando">abrindo…</span>' : li.open_slicer_status === 'error' ? '<span class="badge off" title="' + escapeHtml(li.open_slicer_error || '') + '">erro</span>' : '<span style="color:var(--muted); font-size:11px;">pronto pra abrir</span>') + '</span>';
     html += '<button class="btn ghost" onclick="solicitarAbrirFatiadorProjeto(\'' + li.id + '\')" ' + (li.open_slicer_status === 'queued' ? 'disabled' : '') + '>🖥️ Abrir no Fatiador</button>';
     html += '</div>';
+    if (li.open_slicer_status === 'error' && li.open_slicer_error) {
+      html += '<div style="font-size:11px; color:#c0392b; margin-top:-6px; padding-bottom:8px;">' + escapeHtml(li.open_slicer_error) + '</div>';
+    }
   }
 
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap; gap:8px;">';
