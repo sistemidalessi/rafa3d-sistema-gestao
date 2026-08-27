@@ -4,46 +4,6 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — 27/08/2026
-
-**Assim que a sessão começar, lembre o Anderson destas.** O detalhe está
-em [docs/continuar-daqui.md](docs/continuar-daqui.md).
-
-1. **Atualizar o agente no computador do Rafa** (`git pull` + reiniciar
-   `start-hidden.vbs`) — ele só é acessado à noite, então isso não dá pra
-   fazer remoto, alguém precisa lembrar de rodar quando estiver lá.
-   Motivo: 27/08, o agente daqui (do Anderson) recebeu **dois** consertos
-   e foi reiniciado duas vezes — (1) colinha de produto cai pra foto do
-   catálogo quando o `.3mf` não tem miniatura, (2) peça de várias cores
-   (Hi3D) tinha o índice de `different_settings_to_system` errado e a
-   colinha não valia ao abrir no fatiador. Nem "Pedir a colinha" nem
-   "Abrir no Fatiador" têm dono fixo — qualquer agente ligado pode pegar
-   a tarefa. Se o do Rafa pegar primeiro ainda com o código velho, os
-   mesmos erros voltam, só que lá.
-2. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
-   cancelado sem querer; existe o botão "Reabrir orçamento" pra desfazer.
-   É encomenda real, já vendida. Falta o entalhe do abridor, o bolso do
-   NFC de 23mm e a pausa — nada disso foi impresso, só validado em
-   arquivo.
-
-Também pendente, e é com o Anderson e não com o agente: **testar o fluxo
-completo do "Sugerir categoria e tamanho com a foto"** logado de verdade
-(a função foi testada por fora, o caminho navegador→função não),
-**testar o botão de copiar o PIX num celular** e **falar com os clientes
-de 23/08** — esses ficaram na regra antiga de 50% de propósito, e as
-mensagens escritas pra eles falam em metade, então estão coerentes.
-
-**Antes de julgar qualquer modelo 3D, rode `node ver-peca.js arquivo.3mf`.**
-Ele desenha a peça de quatro ângulos, sem abrir fatiador. Em 24/08 eu
-passei horas achando que a cereja estava ruim porque olhei ela achatada
-numa janela do Bambu, e cheguei a propor apagar a aba do abridor achando
-que era lixo de geração — a aba **é** o abridor. Ver a peça desfez tudo em
-trinta segundos.
-
-**Apague esta seção quando as duas de cima estiverem resolvidas** — nota
-de tarefa que fica pra trás vira ruído e mente sobre o estado do projeto.
-
-
 ## Primeira coisa numa máquina nova
 
 O Anderson trabalha em dois computadores, e o agente precisa ser instalado em
