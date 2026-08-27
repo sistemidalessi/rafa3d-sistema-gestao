@@ -4,15 +4,20 @@ Contexto, setup e convenções gerais estão no [README.md](README.md) — leia 
 primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 
-## ⏳ TAREFAS EM ABERTO — 26/08/2026
+## ⏳ TAREFAS EM ABERTO — 27/08/2026
 
 **Assim que a sessão começar, lembre o Anderson destas.** O detalhe está
 em [docs/continuar-daqui.md](docs/continuar-daqui.md).
 
-1. **Conferir a máquina.** Rodar `slicer-agent\conferir-maquina.ps1` antes
-   de tudo (veja a seção seguinte). Depois, subir o agente
-   (`start-hidden.vbs`) — sem ele, todo botão de colinha e de fatiador
-   fica girando pra sempre, sem erro nenhum na tela.
+1. **Atualizar o agente no computador do Rafa** (`git pull` + reiniciar
+   `start-hidden.vbs`) — ele só é acessado à noite, então isso não dá pra
+   fazer remoto, alguém precisa lembrar de rodar quando estiver lá.
+   Motivo: 27/08, o agente daqui (do Anderson) recebeu um conserto no
+   `agent.js` (colinha de produto cai pra foto do catálogo quando o
+   `.3mf` não tem miniatura) e foi reiniciado — mas "Pedir a colinha"
+   não tem dono fixo, qualquer agente ligado pode pegar a tarefa. Se o
+   do Rafa pegar primeiro ainda com o código velho, o mesmo erro volta,
+   só que lá.
 2. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
    cancelado sem querer; existe o botão "Reabrir orçamento" pra desfazer.
    É encomenda real, já vendida. Falta o entalhe do abridor, o bolso do

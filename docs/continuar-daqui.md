@@ -1,10 +1,34 @@
 # Continuar daqui
 
-Onde as coisas pararam em **26/08/2026**, à noite.
+Onde as coisas pararam em **27/08/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## ⚠️ Falta atualizar o agente no computador do Rafa — 27/08
+
+Ele só é usado à noite, então isso fica pendente até lá — **não deixe
+passar batido**. Rodar nele: `git pull`, depois fechar e abrir de novo
+`slicer-agent\start-hidden.vbs`.
+
+Por quê: hoje (27/08) o `agent.js` ganhou um conserto — a colinha de
+produto cai pra foto do catálogo quando o `.3mf` não tem miniatura
+embutida (achado com o Chaveiro do Pikachu, que vinha de um divisor de
+peças e nunca tinha sido fatiado no Bambu, então não tinha a imagem que
+o Bambu gera ao fatiar). Já reiniciei o agente do Anderson com o
+conserto, mas **"Pedir a colinha" não tem dono fixo** — qualquer agente
+ligado pode pegar a tarefa. Enquanto o do Rafa não atualizar, ele pode
+pegar uma tarefa dessas primeiro e recair no mesmo erro.
+
+Duas coisas menores do mesmo dia:
+- `NOTIFY_EMAILS` (secret do Supabase) estava com um e-mail que o Resend
+  sandbox (`onboarding@resend.dev`) não aceita mandar — ele só entrega
+  pro e-mail dono da conta Resend. Corrigido pra `afdalessi@gmail.com`.
+- Erro de Modelo 3D / Colinha / Fatiador (produto e projeto) só
+  aparecia no `title` (tooltip) do badge — invisível em celular, e por
+  isso um erro real parecia "não fez nada". Agora fica um texto sempre
+  visível embaixo do badge, nas duas telas.
 
 ## Antes de tudo, numa máquina nova
 
