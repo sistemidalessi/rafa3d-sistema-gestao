@@ -2133,73 +2133,220 @@ async function avisoAgenteParado() {
 // O que dá pra fazer com a peça de um item, direto da tela do pedido.
 // Item personalizado não entra: o caminho dele é a aba Projetos, que já
 // tem a cadeia inteira (gerar, dividir, colinha, fatiador).
-function acoesDeImpressaoDoItem(it, orderId) {
-  // Item personalizado é a MESMA linha que a aba Projetos gerencia
-  // (order_line_items com line_type='custom') — só que até aqui, quem
-  // adicionava um pelo "+ Adicionar item" do pedido não tinha nenhum
-  // caminho até anexar arquivo, pedir colinha ou abrir no fatiador: essas
-  // ações só existiam de dentro da aba Projetos, sem ponte nenhuma daqui
-  // pra lá. Achado testando o lançamento de um pedido antigo — o dono
-  // queria exatamente essa ponte, mais "virar produto do catálogo" (que
-  // já existe, é o botão "🎁 Transformar em Produto" lá dentro).
-  if (it.line_type !== 'catalog') {
-    return '<button class="btn" onclick="abrirGerenciarProjeto(\'' + it.id + '\')">🪄 Gerenciar (arquivo, colinha, fatiador...)</button>';
-  }
-  const p = it.products;
-  if (!p) return '';
-  const volta = 'pedido:' + orderId;
+/* ============================================================
+   PREPARAR PRA IMPRIMIR — os passos, em ordem, num lugar só
 
-  // Toda ação de arquivo/colinha/fatiador aqui mexe no PRODUTO — é o
-  // mesmo arquivo pra todo mundo que comprar essa peça do catálogo.
-  // Quando o cliente pede algo diferente ("bota meu nome"), não dá pra
-  // anexar a versão personalizada aqui: sairia pro catálogo inteiro.
-  // Esse botão desliga esse item do produto (vira line_type='custom',
-  // que já tem arquivo/colinha/fatiador PRÓPRIOS por item) sem precisar
-  // criar um projeto do zero — só esse pedido leva a versão nova.
-  const botaoPersonalizar = '<button class="btn ghost" onclick="personalizarItemDoPedido(\'' + it.id + '\', \'' + orderId + '\')" title="Vira um item só desse pedido, com arquivo e colinha próprios — não mexe no produto do catálogo pra mais ninguém">🎨 Personalizar esse item</button>';
+   O catálogo foi montado com fotos: de 166 produtos ativos, 11 têm
+   arquivo 3D e 10 têm colinha. Então quase toda venda chega sem nada
+   pronto, e o pedido virava uma fileira de cinco botões — anexar, pedir
+   colinha, abrir no fatiador, personalizar, editar — todos do mesmo
+   tamanho, sem dizer qual vem primeiro nem o que já foi feito.
 
-  // Sem arquivo 3D não há o que mandar pro fatiador. Em vez de esconder
-  // o botão e deixar a pessoa sem entender, diz o que falta e leva
-  // direto pro lugar de resolver.
-  // Hoje esse é o caso da maioria: o catálogo foi montado com fotos, e
-  // o arquivo de impressão nunca subiu pro sistema. Anexar os 161 de uma
-  // vez não faz sentido — anexar o da peça que acabou de ser vendida
-  // faz. Por isso o botão leva direto pra tela de anexar, e não pra
-  // ficha do produto (onde ainda haveria mais um clique).
-  if (!p.model_file_path) {
-    return '<button class="btn" onclick="openModelo3DForm(\'' + p.id + '\', \'' + volta + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>' + botaoPersonalizar;
-  }
+   Aqui os passos são numerados, mostram o que já está pronto, e o
+   último é o que faltava no sistema inteiro: MANDAR PRA FILA como um
+   ato explícito. Antes a peça caía na Fila só por ter um status, sem
+   ninguém garantir que dava pra imprimir — e a Fila enchia de peça sem
+   arquivo, sem tempo, sem nada.
 
-  let html = '';
-  const st = p.open_slicer_status;
-  if (st === 'queued' || st === 'processing') {
-    html += '<button class="btn ghost" disabled>🖨️ Abrindo...</button>';
-  } else {
-    html += '<button class="btn" onclick="solicitarAbrirFatiador(\'' + p.id + '\', \'' + volta + '\')">🖨️ Abrir no Fatiador</button>';
-  }
-  if (st === 'error') {
-    html += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.open_slicer_error || 'deu erro') + '</div>';
-  }
+   Item de catálogo e item personalizado guardam os mesmos campos
+   (model_file_path, ai_slicing_tips, open_slicer_status) — só que um no
+   produto e outro na própria linha. Por isso um passo a passo só serve
+   pros dois: muda a fonte e a função chamada, não o desenho.
+   ============================================================ */
 
-  // A colinha é o que diz COMO imprimir. Se já existe, o botão vira
-  // "ver" em vez de gerar de novo — refazer gasta IA à toa.
-  const ia = p.ai_analysis_status;
-  if (ia === 'queued' || ia === 'processing') {
-    html += '<button class="btn ghost" disabled>🤖 Analisando...</button>';
-  } else if (p.ai_slicing_tips) {
-    html += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">📋 Ver a colinha</button>';
-  } else {
-    html += '<button class="btn ghost" onclick="solicitarAnaliseIA(\'' + p.id + '\', \'' + volta + '\')">🤖 Pedir a colinha</button>';
-  }
-  // Sem isto o erro ficava só gravado no banco — o botão voltava a
-  // mostrar "Pedir a colinha" como se nada tivesse acontecido, e quem
-  // clicou não tinha como saber que já tinha tentado e falhado.
-  if (ia === 'error' && p.ai_analysis_error) {
-    html += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.ai_analysis_error) + '</div>';
-  }
-  html += botaoPersonalizar;
-  return html;
+// De onde ler o estado do preparo: do produto (catálogo, o arquivo é o
+// mesmo pra todo mundo) ou da própria linha (personalizado).
+// "a, b e c" — juntar tudo com " e " dava "falta o arquivo e a colinha
+// e o fatiador", que ninguém fala.
+function listaEmFrase(itens) {
+  if (itens.length <= 1) return itens[0] || '';
+  return itens.slice(0, -1).join(', ') + ' e ' + itens[itens.length - 1];
 }
+
+function fonteDoPreparo(it) {
+  return it.line_type === 'catalog' ? (it.products || {}) : it;
+}
+
+function passosDoPreparo(it) {
+  const f = fonteDoPreparo(it);
+  return [
+    { chave: 'arquivo', titulo: 'Ter o arquivo da peça',
+      ajuda: 'É o desenho 3D que a impressora entende.',
+      pronto: !!f.model_file_path,
+      fazendo: false, erro: null },
+    { chave: 'colinha', titulo: 'Pedir a colinha',
+      ajuda: 'A IA olha a peça e diz a temperatura, a camada e se precisa de suporte.',
+      pronto: !!f.ai_slicing_tips,
+      fazendo: f.ai_analysis_status === 'queued' || f.ai_analysis_status === 'processing',
+      erro: f.ai_analysis_status === 'error' ? f.ai_analysis_error : null },
+    { chave: 'fatiador', titulo: 'Abrir no fatiador',
+      ajuda: 'Abre a peça no Bambu Studio, já com a colinha aplicada.',
+      pronto: f.open_slicer_status === 'done',
+      fazendo: f.open_slicer_status === 'queued' || f.open_slicer_status === 'processing',
+      erro: f.open_slicer_status === 'error' ? f.open_slicer_error : null },
+  ];
+}
+
+let _prepararItemId = null;
+let _prepararOrderId = null;
+let _prepararTimer = null;
+
+async function abrirPreparar(itemId, orderId) {
+  _prepararItemId = itemId;
+  _prepararOrderId = orderId;
+  await desenharPreparar();
+}
+
+function fecharPreparar() {
+  clearTimeout(_prepararTimer);
+  _prepararItemId = null;
+  closeModal();
+  if (_prepararOrderId) abrirPedido(_prepararOrderId);
+}
+
+async function desenharPreparar() {
+  if (!_prepararItemId) return;
+  const it = await q(SUPA.from('order_line_items')
+    .select('*, products(*)').eq('id', _prepararItemId).maybeSingle());
+  if (!it) { closeModal(); return; }
+
+  const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+  const passos = passosDoPreparo(it);
+  const faltando = passos.filter((p) => !p.pronto);
+  const naFila = FILA_PRONTAS.includes(it.line_status);
+
+  let html = '<h3 style="margin:0 0 2px;">Preparar pra imprimir</h3>';
+  html += '<div style="color:var(--muted); font-size:13px; margin-bottom:14px;">' + escapeHtml(nome) + '</div>';
+
+  if (naFila) {
+    html += '<div style="background:#e9f7ef; border:1px solid #b7e4c7; border-radius:10px; padding:12px 14px; font-size:13px; color:#1f6b3b; line-height:1.6;">'
+      + '<strong>✅ Esta peça já está na fila de impressão.</strong><br>'
+      + 'Daqui pra frente ela aparece na aba <strong>Fila</strong>, e é lá que você diz quando começou e quando terminou.</div>';
+  }
+
+  passos.forEach((p, i) => {
+    const marca = p.pronto ? '✅' : (p.fazendo ? '⏳' : (i + 1) + '.');
+    const cor = p.pronto ? '#1f8a3b' : 'var(--fg)';
+    html += '<div style="display:flex; gap:12px; align-items:flex-start; padding:12px 0; border-top:1px solid var(--border);">';
+    html += '<div style="font-size:16px; min-width:24px; color:' + cor + ';">' + marca + '</div>';
+    html += '<div style="flex:1;">';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px; color:' + cor + ';">' + p.titulo + '</div>';
+    html += '<div style="color:var(--muted); font-size:12px; margin-top:2px;">' + p.ajuda + '</div>';
+    if (p.erro) html += '<div style="color:#c0392b; font-size:12px; margin-top:4px;">Deu erro: ' + escapeHtml(p.erro) + '</div>';
+    html += '</div>';
+    html += '<div>' + botaoDoPasso(it, p) + '</div>';
+    html += '</div>';
+  });
+
+  // O passo que faltava no sistema. Só libera com tudo pronto — é o que
+  // faz a Fila poder ser confiada. A saída pro dono existe porque
+  // travar de vez transformaria um aviso num beco sem saída.
+  if (!naFila) {
+    html += '<div style="border-top:1px solid var(--border); margin-top:6px; padding-top:14px;">';
+    if (!faltando.length) {
+      html += '<button class="btn full" onclick="mandarPraFila(\'' + it.id + '\')">🖨️ Mandar pra fila de impressão</button>';
+    } else {
+      html += '<button class="btn full" disabled style="opacity:.5;">🖨️ Mandar pra fila de impressão</button>';
+      html += '<div style="color:var(--muted); font-size:12px; margin-top:6px; line-height:1.5;">'
+        + 'Falta ' + listaEmFrase(faltando.map((p) => '<strong>' + p.titulo.toLowerCase() + '</strong>')) + '.';
+      if (currentProfile && currentProfile.role === 'owner') {
+        html += ' <a href="#" onclick="mandarPraFila(\'' + it.id + '\'); return false;" style="font-size:11.5px;">mandar assim mesmo</a>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="fecharPreparar()">Fechar</button></div>';
+  openModal(html);
+
+  // Enquanto uma fila está rodando, a janela se atualiza sozinha. Antes
+  // era preciso fechar, esperar, reabrir — e como nada dizia isso, dava
+  // a impressão de que o botão não tinha funcionado.
+  clearTimeout(_prepararTimer);
+  if (passos.some((p) => p.fazendo)) {
+    _prepararTimer = setTimeout(() => { if (_prepararItemId) desenharPreparar(); }, 4000);
+  }
+}
+
+function botaoDoPasso(it, p) {
+  const cat = it.line_type === 'catalog';
+  const alvo = cat ? (it.products ? it.products.id : '') : it.id;
+  if (p.fazendo) return '<button class="btn ghost" disabled>Fazendo...</button>';
+
+  if (p.chave === 'arquivo') {
+    if (p.pronto) return '<button class="btn ghost" onclick="' + (cat
+      ? 'openModelo3DForm(\'' + alvo + '\', \'preparar\')'
+      : 'abrirGerenciarProjeto(\'' + alvo + '\')') + '">Trocar</button>';
+    return '<button class="btn" onclick="' + (cat
+      ? 'openModelo3DForm(\'' + alvo + '\', \'preparar\')'
+      : 'abrirGerenciarProjeto(\'' + alvo + '\')') + '">Anexar</button>';
+  }
+  if (p.chave === 'colinha') {
+    if (p.pronto) return '<button class="btn ghost" onclick="' + (cat
+      ? 'verAnaliseIA(\'' + alvo + '\')'
+      : 'abrirGerenciarProjeto(\'' + alvo + '\')') + '">Ver</button>';
+    // Sem arquivo não há o que analisar — o botão fica apagado em vez de
+    // sumir, senão o passo pareceria opcional.
+    const p1 = passosDoPreparo(it)[0];
+    if (!p1.pronto) return '<button class="btn ghost" disabled style="opacity:.5;">Pedir</button>';
+    return '<button class="btn" onclick="' + (cat
+      ? 'solicitarAnaliseIA(\'' + alvo + '\', \'preparar\')'
+      : 'solicitarAnaliseIAProjeto(\'' + alvo + '\')') + '">Pedir</button>';
+  }
+  // fatiador
+  const p1 = passosDoPreparo(it)[0];
+  if (!p1.pronto) return '<button class="btn ghost" disabled style="opacity:.5;">Abrir</button>';
+  return '<button class="btn' + (p.pronto ? ' ghost' : '') + '" onclick="' + (cat
+    ? 'solicitarAbrirFatiador(\'' + alvo + '\', \'preparar\')'
+    : 'solicitarAbrirFatiadorProjeto(\'' + alvo + '\')') + '">' + (p.pronto ? 'Abrir de novo' : 'Abrir') + '</button>';
+}
+
+// As ações raras do item. Ficam atrás de um clique porque cada uma
+// delas era um botão do mesmo tamanho do "preparar", e a linha virava
+// uma parede de opções onde a frequente se perdia no meio.
+async function abrirMaisDoItem(itemId, orderId) {
+  const it = await q(SUPA.from('order_line_items')
+    .select('*, products(name)').eq('id', itemId).maybeSingle());
+  if (!it) return;
+  const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+
+  let html = '<h3 style="margin:0 0 14px;">' + escapeHtml(nome) + '</h3>';
+  const linha = (titulo, ajuda, botao) =>
+    '<div style="display:flex; justify-content:space-between; align-items:center; gap:12px; padding:12px 0; border-top:1px solid var(--border);">'
+    + '<div><div style="font-size:14px;">' + titulo + '</div>'
+    + '<div style="color:var(--muted); font-size:11.5px; margin-top:2px;">' + ajuda + '</div></div>'
+    + '<div>' + botao + '</div></div>';
+
+  html += linha('Mudar a quantidade, a cor ou o preço', 'Mexe só neste pedido.',
+    '<button class="btn ghost" onclick="fecharModalDOM(); abrirEditarItem(\'' + it.id + '\', \'' + orderId + '\')">✏️ Editar</button>');
+
+  if (it.line_type === 'catalog') {
+    html += linha('Fazer uma versão só pra este cliente',
+      'Pra quando ele pede algo diferente (um nome gravado, por exemplo). O produto do catálogo não muda pra mais ninguém.',
+      '<button class="btn ghost" onclick="personalizarItemDoPedido(\'' + it.id + '\', \'' + orderId + '\')">🎨 Personalizar</button>');
+  } else {
+    html += linha('Abrir o gerenciador completo do projeto',
+      'Partes, Hi3D, arquivo de referência — tudo o que um projeto sob medida tem.',
+      '<button class="btn ghost" onclick="fecharModalDOM(); abrirGerenciarProjeto(\'' + it.id + '\')">🪄 Gerenciar</button>');
+  }
+
+  html += linha('Tirar esta peça do pedido', 'Não dá pra desfazer.',
+    '<button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + orderId + '\')">🗑️ Remover</button>');
+
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
+  openModal(html);
+}
+
+async function mandarPraFila(itemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ line_status: 'fila_impressao', updated_at: new Date().toISOString() })
+    .eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Pronto! A peça entrou na fila de impressão.');
+  await desenharPreparar();
+}
+
 
 // order_line_items já tem as MESMAS colunas de arquivo/colinha/fatiador
 // que um projeto usa (model_file_path, ai_slicing_tips, open_slicer_
@@ -2361,13 +2508,20 @@ async function renderPedidoDetalhe(id) {
       if (isOwner && it.line_status === 'orcamento_pendente') {
         html += '<button class="btn" onclick="openAprovarOrcamento(\'' + it.id + '\', \'' + id + '\')">Definir preço e aprovar</button>';
       }
-      // A ponte que faltava: daqui dá pra mandar a peça pro fatiador,
-      // sem sair pra achar o produto no catálogo. As filas já eram do
-      // produto — o que faltava era oferecer elas onde o trabalho
-      // realmente começa, que é o pedido que chegou.
-      html += acoesDeImpressaoDoItem(it, id);
-      html += '<button class="btn ghost" onclick="abrirEditarItem(\'' + it.id + '\', \'' + id + '\')">✏️ Editar</button>';
-      html += '<button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + id + '\')">Remover</button>';
+      // UM botão, não cinco. Anexar arquivo, pedir colinha e abrir no
+      // fatiador são passos de uma coisa só — e ficavam soltos, do mesmo
+      // tamanho, sem dizer qual vinha primeiro. Editar, personalizar e
+      // remover são raros e competiam visualmente com o que é frequente:
+      // foram pro "⋯ Mais".
+      const passos = passosDoPreparo(it);
+      const prontos = passos.filter((p) => p.pronto).length;
+      if (FILA_PRONTAS.includes(it.line_status)) {
+        html += '<button class="btn ghost" onclick="abrirPreparar(\'' + it.id + '\', \'' + id + '\')">✅ Na fila de impressão</button>';
+      } else {
+        html += '<button class="btn" onclick="abrirPreparar(\'' + it.id + '\', \'' + id + '\')">🔧 Preparar pra imprimir'
+          + '<span style="opacity:.75; font-weight:400;"> (' + prontos + ' de 3)</span></button>';
+      }
+      html += '<button class="btn ghost" onclick="abrirMaisDoItem(\'' + it.id + '\', \'' + id + '\')">⋯ Mais</button>';
       html += '</td>';
       html += '</tr>';
     });
@@ -4770,6 +4924,14 @@ async function removerProduto(productId) {
 // redesenhar — sem ele, pedir o fatiador de dentro de um pedido jogava
 // a pessoa de volta pra lista de produtos, do nada.
 async function redesenharDepoisDaFila(voltarPara, productId) {
+  // A janela de "Preparar pra imprimir" fica aberta e se redesenha no
+  // lugar. Sem isto, pedir a colinha fechava a janela e voltava pra
+  // lista — e pra ver se tinha funcionado era preciso abrir tudo de
+  // novo, que é exatamente o vai-e-vem que esta tela veio acabar.
+  if (voltarPara === 'preparar' && _prepararItemId) {
+    await desenharPreparar();
+    return;
+  }
   if (voltarPara && voltarPara.indexOf('pedido:') === 0) {
     await renderPedidoDetalhe(voltarPara.slice(7));
     return;
