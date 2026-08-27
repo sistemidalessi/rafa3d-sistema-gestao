@@ -6,20 +6,14 @@ Onde as coisas pararam em **27/08/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ Falta atualizar o agente no computador do Rafa — 27/08
+## ✅ As duas máquinas estão com o código de 27/08
 
-Ele só é usado à noite, então isso fica pendente até lá — **não deixe
-passar batido**. Rodar nele, no PowerShell, dentro da pasta do projeto:
+Fechado em 27/08 à noite: o computador do Rafa foi atualizado com o
+`atualizar-agente.ps1` e os dois agentes apareceram ligados no banco.
 
-```
-git pull
-powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
-```
-
-(O `git pull` sozinho é só desta vez, pra trazer o próprio script. Da
-próxima, o script já faz tudo — veja a seção logo abaixo.)
-
-Por quê: hoje (27/08), com o Chaveiro do Pikachu (pedido de verdade),
+Fica aqui o registro do que estava em jogo, porque os dois defeitos são
+do tipo que volta calado. Em 27/08, com o Chaveiro do Pikachu (pedido de
+verdade),
 apareceram **dois** problemas seguidos no mesmo arquivo, e os dois
 foram corrigidos em `agent.js`/`gerar3mf.js`:
 
@@ -36,11 +30,11 @@ foram corrigidos em `agent.js`/`gerar3mf.js`:
    e a placa ia parar na posição da cor 2 — tudo em silêncio, sem erro.
    Testado de ponta a ponta com o arquivo de verdade depois do conserto.
 
-Já reiniciei o agente do Anderson com os dois consertos (precisou
-reiniciar duas vezes, uma pra cada), mas **nem "Pedir a colinha" nem
-"Abrir no Fatiador" têm dono fixo** — qualquer agente ligado pode
-pegar a tarefa. Enquanto o do Rafa não atualizar, ele pode pegar uma
-tarefa dessas primeiro e recair nos mesmos erros.
+A lição que fica: **nem "Pedir a colinha" nem "Abrir no Fatiador" têm
+dono fixo** — qualquer agente ligado pega a tarefa. Uma máquina com o
+código velho não é só "uma máquina desatualizada": ela **rouba** a
+tarefa da que está certa e refaz o defeito. Consertou o `agent.js`?
+Atualize as duas no mesmo dia.
 
 Coisas menores do mesmo dia:
 - `NOTIFY_EMAILS` (secret do Supabase) estava com um e-mail que o Resend
