@@ -12,12 +12,14 @@ em [docs/continuar-daqui.md](docs/continuar-daqui.md).
 1. **Atualizar o agente no computador do Rafa** (`git pull` + reiniciar
    `start-hidden.vbs`) — ele só é acessado à noite, então isso não dá pra
    fazer remoto, alguém precisa lembrar de rodar quando estiver lá.
-   Motivo: 27/08, o agente daqui (do Anderson) recebeu um conserto no
-   `agent.js` (colinha de produto cai pra foto do catálogo quando o
-   `.3mf` não tem miniatura) e foi reiniciado — mas "Pedir a colinha"
-   não tem dono fixo, qualquer agente ligado pode pegar a tarefa. Se o
-   do Rafa pegar primeiro ainda com o código velho, o mesmo erro volta,
-   só que lá.
+   Motivo: 27/08, o agente daqui (do Anderson) recebeu **dois** consertos
+   e foi reiniciado duas vezes — (1) colinha de produto cai pra foto do
+   catálogo quando o `.3mf` não tem miniatura, (2) peça de várias cores
+   (Hi3D) tinha o índice de `different_settings_to_system` errado e a
+   colinha não valia ao abrir no fatiador. Nem "Pedir a colinha" nem
+   "Abrir no Fatiador" têm dono fixo — qualquer agente ligado pode pegar
+   a tarefa. Se o do Rafa pegar primeiro ainda com o código velho, os
+   mesmos erros voltam, só que lá.
 2. **O chaveiro de cereja está CANCELADO** e continua sem imprimir. Foi
    cancelado sem querer; existe o botão "Reabrir orçamento" pra desfazer.
    É encomenda real, já vendida. Falta o entalhe do abridor, o bolso do
@@ -279,9 +281,18 @@ escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelment
 3. **`different_settings_to_system` é o que faz os valores valerem.** O Bambu
    não lê os valores soltos: ele carrega o perfil nomeado em
    `print_settings_id` e aplica por cima **só** os campos listados nesse
-   vetor de três posições (processo, filamento, impressora). Campo alterado
-   que não entra na lista é descartado — o sintoma é abrir limpo, sem erro
-   nenhum, e mesmo assim vir tudo com os valores do perfil.
+   vetor (processo, filamento, impressora). Campo alterado que não entra na
+   lista é descartado — o sintoma é abrir limpo, sem erro nenhum, e mesmo
+   assim vir tudo com os valores do perfil.
+   **O vetor nem sempre tem três posições.** Só tem quando é um filamento
+   só (arquivo gerado do zero). Peça dividida por cor no Hi3D tem um slot
+   de filamento PRA CADA cor — 4 cores vira vetor de 6 posições (processo,
+   filamento 1, 2, 3, 4, impressora), e a impressora deixa de ser a
+   posição 2 pra virar a última. `aplicarAjustesColinha()` calcula os
+   índices pelo tamanho real do vetor (achado com o Chaveiro do Pikachu,
+   27/08: índice fixo marcava só a cor 1 como "mexida" e gravava a placa
+   na posição da cor 2) — se voltar a escrever índice fixo, o mesmo bug
+   volta, só que silencioso de novo.
 
 Além disso, os campos de lista só aceitam as palavras exatas do Bambu, e
 **valor inválido derruba o arquivo de configuração inteiro**, não só aquele

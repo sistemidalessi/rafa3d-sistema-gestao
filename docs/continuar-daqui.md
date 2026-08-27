@@ -12,16 +12,30 @@ Ele só é usado à noite, então isso fica pendente até lá — **não deixe
 passar batido**. Rodar nele: `git pull`, depois fechar e abrir de novo
 `slicer-agent\start-hidden.vbs`.
 
-Por quê: hoje (27/08) o `agent.js` ganhou um conserto — a colinha de
-produto cai pra foto do catálogo quando o `.3mf` não tem miniatura
-embutida (achado com o Chaveiro do Pikachu, que vinha de um divisor de
-peças e nunca tinha sido fatiado no Bambu, então não tinha a imagem que
-o Bambu gera ao fatiar). Já reiniciei o agente do Anderson com o
-conserto, mas **"Pedir a colinha" não tem dono fixo** — qualquer agente
-ligado pode pegar a tarefa. Enquanto o do Rafa não atualizar, ele pode
-pegar uma tarefa dessas primeiro e recair no mesmo erro.
+Por quê: hoje (27/08), com o Chaveiro do Pikachu (pedido de verdade),
+apareceram **dois** problemas seguidos no mesmo arquivo, e os dois
+foram corrigidos em `agent.js`/`gerar3mf.js`:
 
-Duas coisas menores do mesmo dia:
+1. **Colinha de produto caía pra erro** quando o `.3mf` não tinha
+   miniatura embutida (esse veio de um divisor de peças e nunca tinha
+   sido fatiado no Bambu, então não tinha a imagem que o Bambu gera ao
+   fatiar). Agora cai pra foto do catálogo no lugar.
+2. **Colinha gerada, mas "Abrir no Fatiador" abria sem aplicar nada.**
+   O vetor `different_settings_to_system` só tem três posições
+   (processo/filamento/impressora) quando é um filamento só — peça de
+   várias cores (Hi3D) tem um slot de filamento PRA CADA cor, e a
+   impressora deixa de ser a posição 2 pra virar a última. O código
+   escrevia em índice fixo, então só a cor 1 saía marcada como "mexida"
+   e a placa ia parar na posição da cor 2 — tudo em silêncio, sem erro.
+   Testado de ponta a ponta com o arquivo de verdade depois do conserto.
+
+Já reiniciei o agente do Anderson com os dois consertos (precisou
+reiniciar duas vezes, uma pra cada), mas **nem "Pedir a colinha" nem
+"Abrir no Fatiador" têm dono fixo** — qualquer agente ligado pode
+pegar a tarefa. Enquanto o do Rafa não atualizar, ele pode pegar uma
+tarefa dessas primeiro e recair nos mesmos erros.
+
+Coisas menores do mesmo dia:
 - `NOTIFY_EMAILS` (secret do Supabase) estava com um e-mail que o Resend
   sandbox (`onboarding@resend.dev`) não aceita mandar — ele só entrega
   pro e-mail dono da conta Resend. Corrigido pra `afdalessi@gmail.com`.
