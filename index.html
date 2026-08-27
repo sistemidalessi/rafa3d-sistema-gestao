@@ -2050,6 +2050,15 @@ function acoesDeImpressaoDoItem(it, orderId) {
   if (!p) return '';
   const volta = 'pedido:' + orderId;
 
+  // Toda ação de arquivo/colinha/fatiador aqui mexe no PRODUTO — é o
+  // mesmo arquivo pra todo mundo que comprar essa peça do catálogo.
+  // Quando o cliente pede algo diferente ("bota meu nome"), não dá pra
+  // anexar a versão personalizada aqui: sairia pro catálogo inteiro.
+  // Esse botão desliga esse item do produto (vira line_type='custom',
+  // que já tem arquivo/colinha/fatiador PRÓPRIOS por item) sem precisar
+  // criar um projeto do zero — só esse pedido leva a versão nova.
+  const botaoPersonalizar = '<button class="btn ghost" onclick="personalizarItemDoPedido(\'' + it.id + '\', \'' + orderId + '\')" title="Vira um item só desse pedido, com arquivo e colinha próprios — não mexe no produto do catálogo pra mais ninguém">🎨 Personalizar esse item</button>';
+
   // Sem arquivo 3D não há o que mandar pro fatiador. Em vez de esconder
   // o botão e deixar a pessoa sem entender, diz o que falta e leva
   // direto pro lugar de resolver.
@@ -2059,7 +2068,7 @@ function acoesDeImpressaoDoItem(it, orderId) {
   // faz. Por isso o botão leva direto pra tela de anexar, e não pra
   // ficha do produto (onde ainda haveria mais um clique).
   if (!p.model_file_path) {
-    return '<button class="btn" onclick="openModelo3DForm(\'' + p.id + '\', \'' + volta + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>';
+    return '<button class="btn" onclick="openModelo3DForm(\'' + p.id + '\', \'' + volta + '\')" title="Sem o arquivo não há o que mandar pro fatiador">📎 Anexar o arquivo 3D</button>' + botaoPersonalizar;
   }
 
   let html = '';
@@ -2089,7 +2098,27 @@ function acoesDeImpressaoDoItem(it, orderId) {
   if (ia === 'error' && p.ai_analysis_error) {
     html += '<div style="font-size:11px; color:#c0392b; max-width:200px;">' + escapeHtml(p.ai_analysis_error) + '</div>';
   }
+  html += botaoPersonalizar;
   return html;
+}
+
+// order_line_items já tem as MESMAS colunas de arquivo/colinha/fatiador
+// que um projeto usa (model_file_path, ai_slicing_tips, open_slicer_
+// status...) — só que num item de catálogo elas ficam sempre vazias,
+// porque as ações leem do PRODUTO, não da linha. Virar 'custom' faz
+// essas ações passarem a ler/gravar na linha (via "🪄 Gerenciar" —
+// abrirGerenciarProjeto), isolando o arquivo novo só nesse pedido, sem
+// precisar criar um projeto do zero nem tocar no produto do catálogo.
+async function personalizarItemDoPedido(itemId, orderId) {
+  const it = await q(SUPA.from('order_line_items').select('product_id, products(name)').eq('id', itemId).maybeSingle());
+  const nomeProduto = it.products ? it.products.name : 'esse item';
+  if (!confirm('Isso vira um item personalizado só desse pedido — arquivo, colinha e fatiador próprios, sem mexer no produto "' + nomeProduto + '" do catálogo pra mais ninguém. Continuar?')) return;
+  const { error } = await SUPA.from('order_line_items').update({
+    line_type: 'custom', custom_description: nomeProduto + ' (personalizado)', updated_at: new Date().toISOString(),
+  }).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Virou personalizado — agora tem arquivo, colinha e fatiador só desse pedido.');
+  await renderPedidoDetalhe(orderId);
 }
 
 // Leva pra aba Produtos já com a ficha daquele produto aberta, pra não
