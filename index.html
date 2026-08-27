@@ -1268,11 +1268,24 @@ async function abrirGerenciarProjeto(lineItemId) {
     html += '</div>';
   }
 
+  // Todo projeto já É um pedido por baixo (criarProjeto cria a orders
+  // junto) — só que só existia ponte num sentido (Pedidos → aqui). Sem
+  // isso, quem queria anotar pagamento, mandar a cartinha ou o
+  // agradecimento de um projeto tinha que ir procurar o pedido pelo
+  // número na aba Pedidos, sem saber nem qual é.
   html += '</div><div class="modal-actions">' +
+    '<button class="btn ghost" onclick="verProjetoComoPedido(\'' + (li.order_id || '') + '\')">🧾 Ver como pedido (pagamento, cartinha...)</button>' +
     '<button class="btn ghost" style="color:var(--text-danger, #c0392b); border-color:#f0c9c9;" onclick="excluirProjeto(\'' + li.id + '\', \'' + (li.order_id || '') + '\')">🗑️ Excluir Projeto</button>' +
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
+}
+
+function verProjetoComoPedido(orderId) {
+  if (!orderId) { toast('Esse projeto não está ligado a nenhum pedido.'); return; }
+  pedidoDetalheId = orderId;
+  closeModal();
+  showTab('pedidos');
 }
 
 async function abrirEditarProjeto(lineItemId) {
@@ -2120,6 +2133,7 @@ async function renderPedidoDetalhe(id) {
     html += '<button class="btn ghost" onclick="abrirCartinha(\'' + id + '\')">💌 Imprimir a cartinha</button>';
     html += '<button class="btn ghost" onclick="abrirAgradecimento(\'' + id + '\')">🙏 Mandar agradecimento pelo WhatsApp</button>';
   }
+  html += '<button class="btn ghost" onclick="abrirOrcamentoPedido(\'' + id + '\')">📤 Gerar orçamento pra mandar</button>';
   html += '<button class="btn" onclick="abrirPedidoPronto(\'' + id + '\')">✅ Pedido pronto</button>';
   html += '<button class="btn ghost" onclick="excluirPedido(\'' + id + '\')">🗑️ Excluir pedido</button>';
   html += '</div>';
@@ -2598,6 +2612,159 @@ async function preencherOrcamentoCard(lineItemId, janela) {
             // Só o arquivo — a arte já leva nome, preço e mensagem
             // dentro dela. Título ou texto junto duplicava tudo isso
             // como legenda, saindo repetido no WhatsApp.
+            'await navigator.share({ files: [arquivo] });' +
+          '} else {' +
+            'var url = URL.createObjectURL(blob);' +
+            'var a = document.createElement("a");' +
+            'a.href = url; a.download = "orcamento.png";' +
+            'document.body.appendChild(a); a.click(); a.remove();' +
+            'setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);' +
+            'document.getElementById("instrucaoTxt").textContent = "📥 Baixei a imagem pra você (esse aparelho não deixa mandar direto) — agora é só abrir o WhatsApp e anexar o arquivo orcamento.png na conversa.";' +
+          '}' +
+        '} catch (e) {' +
+          'if (e && e.name !== "AbortError") alert("Não consegui gerar a imagem: " + e.message);' +
+        '}' +
+        'btn.disabled = false; btn.textContent = textoOriginal;' +
+      '});' +
+    '<\/script>' +
+
+    '</body></html>';
+
+  janela.document.open();
+  janela.document.write(html);
+  janela.document.close();
+}
+
+/* ====== ORÇAMENTO PRA MANDAR (PEDIDOS) ======
+   Mesma arte, mesma mecânica (html2canvas + Web Share API) do orçamento
+   de projeto — só que aqui é pro PEDIDO inteiro, não uma peça só. Existe
+   porque muita coisa já nasce direto como pedido (cliente já disse "pode
+   fazer", não é mais uma cotação em aberto) e mesmo assim precisa
+   mandar o valor pro cliente. Pedido de vários itens vem tudo junto,
+   numa lista, com o total no fim — não faz sentido gerar um orçamento
+   por peça quando é tudo a mesma encomenda. */
+function abrirOrcamentoPedido(orderId) {
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra ver o orçamento.'); return; }
+  janela.document.write('<p style="font-family:sans-serif;padding:20px;color:#666;">Montando o orçamento…</p>');
+  preencherOrcamentoPedidoCard(orderId, janela);
+}
+
+async function preencherOrcamentoPedidoCard(orderId, janela) {
+  const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', orderId).maybeSingle());
+  const itens = await q(SUPA.from('order_line_items').select('*, products(name)').eq('order_id', orderId).order('created_at'));
+
+  if (!itens.length) {
+    janela.document.open();
+    janela.document.write('<p style="font-family:sans-serif;padding:20px;">Esse pedido ainda não tem item nenhum — adiciona um item antes de gerar o orçamento.</p>');
+    janela.document.close();
+    return;
+  }
+
+  const nomeCliente = order.customers ? order.customers.name : order.customer_name;
+  const contato = order.customers ? order.customers.phone : order.customer_contact;
+  const primeiroNome = (nomeCliente || '').trim().split(' ')[0];
+  const digitos = (contato || '').replace(/\D/g, '');
+  const numeroCompleto = digitos ? (digitos.length <= 11 ? '55' + digitos : digitos) : null;
+  const total = itens.reduce((s, it) => s + Number(it.unit_price || 0) * Number(it.quantity || 1), 0);
+
+  const nomeItem = (it) => it.line_type === 'catalog' ? (it.products ? it.products.name : 'Item') : (it.custom_description || 'Item personalizado');
+
+  const linhasTexto = itens.map((it) =>
+    '- ' + nomeItem(it) + (it.quantity > 1 ? ' (' + it.quantity + 'x)' : '') + ': ' + fmtMoney(it.unit_price * it.quantity)).join('\n');
+  const mensagemTexto = 'Olá' + (primeiroNome ? ' ' + primeiroNome : '') + '! Aqui está o orçamento do seu pedido' +
+    (order.order_number ? ' ' + order.order_number : '') + ':\n' + linhasTexto + '\nTotal: ' + fmtMoney(total) + '. ' +
+    'Cada peça é desenhada, fatiada e impressa por mim (tenho só 10 anos!), com bastante carinho — fico muito feliz em fazer essas pra você 💙 Qualquer dúvida, é só chamar!';
+  const linkWhats = numeroCompleto ? 'https://wa.me/' + numeroCompleto + '?text=' + encodeURIComponent(mensagemTexto) : null;
+
+  const linhasHtml = itens.map((it) => {
+    const qtdTxt = it.quantity > 1 ? ' <span style="color:#8a93a8;">×' + it.quantity + '</span>' : '';
+    return '<div class="item-linha"><span class="nome">' + escapeHtml(nomeItem(it)) + qtdTxt + '</span>' +
+      '<span class="valor">' + fmtMoney(it.unit_price * it.quantity) + '</span></div>';
+  }).join('');
+
+  const html =
+    '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
+    '<title>Orçamento do pedido ' + escapeHtml(order.order_number || '') + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;700&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet">' +
+    '<style>' +
+      'body { margin:0; font-family:Manrope,sans-serif; background:#eef0f4; min-height:100vh;' +
+        ' display:flex; flex-direction:column; align-items:center; gap:14px; padding:24px 14px 40px; }' +
+      '* { box-sizing:border-box; }' +
+      '.instrucao { max-width:380px; text-align:center; font-size:13px; color:#5b6a85; line-height:1.5; }' +
+      '.acoes { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }' +
+      '.botao { font-family:Manrope,sans-serif; font-weight:700; font-size:13.5px; text-decoration:none;' +
+        ' padding:10px 16px; border-radius:10px; border:1.5px solid #0061f7; color:#0061f7; background:#fff; cursor:pointer; }' +
+      '.botao.cheio { background:#0061f7; color:#fff; }' +
+      '.botao:disabled { opacity:.6; cursor:default; }' +
+      '.cartao { width:380px; max-width:100%; border-radius:22px; overflow:hidden; position:relative;' +
+        ' background:linear-gradient(160deg, #fef2d4 0%, #fdf9f2 40%, #dfeaff 100%);' +
+        ' box-shadow:0 16px 40px -12px rgba(11,23,51,.28); }' +
+      '.decor-layer { position:absolute; inset:0; z-index:1; }' +
+      '.topo { display:flex; justify-content:space-between; align-items:center; padding:16px 18px 0; position:relative; z-index:2; }' +
+      '.eyebrow { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:11px; letter-spacing:.08em;' +
+        ' text-transform:uppercase; color:#0061f7; background:rgba(255,255,255,.75); padding:4px 10px; border-radius:20px; }' +
+      '.topo img { height:20px; width:auto; }' +
+      '.corpo { padding:18px 18px; position:relative; z-index:2; }' +
+      '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:19px; color:#0b1733; margin:0 0 6px; }' +
+      '.item-nome { font-size:13.5px; color:#2b3652; margin:0 0 10px; line-height:1.4;' +
+        ' background:rgba(255,255,255,.7); border-radius:10px; padding:8px 10px; }' +
+      '.item-nome strong { color:#0b1733; }' +
+      '.itens-lista { background:rgba(255,255,255,.7); border-radius:10px; padding:4px 10px; margin:0 0 12px; }' +
+      '.item-linha { display:flex; justify-content:space-between; gap:8px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed #d8dce6; }' +
+      '.item-linha:last-child { border-bottom:none; }' +
+      '.item-linha .nome { color:#2b3652; }' +
+      '.item-linha .valor { color:#0b1733; font-weight:700; white-space:nowrap; }' +
+      '.preco-bloco { text-align:center; background:linear-gradient(135deg,#0061f7,#3d84ff); border-radius:14px;' +
+        ' padding:12px 10px; margin:0 0 12px; box-shadow:0 6px 16px -6px rgba(0,97,247,.5); }' +
+      '.preco-rotulo { font-size:11px; color:#dce8ff; text-transform:uppercase; letter-spacing:.08em; font-weight:700; }' +
+      '.preco-valor { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:30px; color:#fff; line-height:1.3; }' +
+      '.texto { font-size:12.5px; line-height:1.55; color:#2b3652; margin:0 0 14px;' +
+        ' background:rgba(255,255,255,.66); border-radius:10px; padding:9px 10px; }' +
+      '.rodape { display:flex; align-items:center; gap:9px; padding-top:12px; border-top:1px dashed #c9b077; }' +
+      '.rodape img { width:34px; height:34px; border-radius:50%; object-fit:cover; border:1.5px solid #fff;' +
+        ' box-shadow:0 2px 5px rgba(11,23,51,.25); flex:none; }' +
+      '.rodape-txt { font-size:11px; line-height:1.45; color:#5b6b87; }' +
+      '.rodape-txt strong { color:#0b1733; display:block; font-size:11.5px; font-family:"Space Grotesk",sans-serif; }' +
+    '</style></head><body>' +
+
+    '<div class="instrucao" id="instrucaoTxt">📲 "Mandar a arte" já abre o WhatsApp com essa imagem pronta pra enviar — só escolher a conversa. Se o aparelho não deixar, baixa a imagem sozinha pra você anexar na mão.</div>' +
+    '<div class="acoes">' +
+      '<button class="botao cheio" id="btnMandarArte">📲 Mandar a arte</button>' +
+      (linkWhats ? '<a class="botao" href="' + linkWhats + '" target="_blank" rel="noopener">💬 Só o texto</a>'
+        : '<span class="botao" style="opacity:.5; cursor:default;" title="Cadastra o WhatsApp do cliente nesse pedido">💬 Sem WhatsApp cadastrado</span>') +
+    '</div>' +
+
+    '<div class="cartao" id="cartaoOrcamento">' +
+      '<div class="decor-layer">' + cartinhaCamadaDecorativa() + '</div>' +
+      '<div class="topo"><span class="eyebrow">Orçamento</span><img src="catalogo/assets/logo_clean.png" alt="RAFA 3D" crossorigin="anonymous"></div>' +
+      '<div class="corpo">' +
+        '<p class="oi">Oi' + (primeiroNome ? ', ' + escapeHtml(primeiroNome) : '') + '!</p>' +
+        '<p class="item-nome">Segue o orçamento do seu pedido' + (order.order_number ? ' <strong>' + escapeHtml(order.order_number) + '</strong>' : '') + ':</p>' +
+        '<div class="itens-lista">' + linhasHtml + '</div>' +
+        '<div class="preco-bloco"><div class="preco-rotulo">Total</div><div class="preco-valor">' + fmtMoney(total) + '</div></div>' +
+        '<p class="texto">Cada peça eu desenho, fatio e imprimo com as minhas próprias mãos — tenho só <strong>10 anos</strong>, mas cada encomenda é trabalho de verdade pra mim. Fico muito feliz em fazer essas pra você! 💙</p>' +
+        '<div class="rodape">' +
+          '<img src="catalogo/assets/rafa_cartinha.png" alt="Rafa" crossorigin="anonymous">' +
+          '<div class="rodape-txt"><strong>Rafael Dalessi · 10 anos</strong>WhatsApp (11) 98719-0466</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>' +
+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script>' +
+      'async function gerarImagemCartao() {' +
+        'var canvas = await html2canvas(document.getElementById("cartaoOrcamento"), { useCORS: true, scale: 2, backgroundColor: null });' +
+        'return new Promise(function(resolve){ canvas.toBlob(resolve, "image/png"); });' +
+      '}' +
+      'document.getElementById("btnMandarArte").addEventListener("click", async function() {' +
+        'var btn = this;' +
+        'var textoOriginal = btn.textContent;' +
+        'btn.disabled = true; btn.textContent = "Preparando a imagem...";' +
+        'try {' +
+          'var blob = await gerarImagemCartao();' +
+          'var arquivo = new File([blob], "orcamento.png", { type: "image/png" });' +
+          'if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {' +
             'await navigator.share({ files: [arquivo] });' +
           '} else {' +
             'var url = URL.createObjectURL(blob);' +
