@@ -2200,6 +2200,7 @@ async function renderPedidoDetalhe(id) {
       // não ter que ir buscar cor por cor.
       const corPedida = it.filament_colors ? it.filament_colors.name : null;
       if (corPedida) html += '<br><span style="font-size:11px;">🎨 quer na cor <strong>' + escapeHtml(corPedida) + '</strong></span>';
+      if (it.notes) html += '<br><span style="font-size:11px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>';
       // O código vem junto porque é por ele que a peça é achada no
       // catálogo e na prateleira — o nome sozinho não basta quando há
       // seis vasos parecidos.
@@ -2660,8 +2661,11 @@ async function recalcularTotalPedido(orderId) {
 
 async function openItemForm(orderId) {
   const produtos = await getProdutos();
+  const cores = await getFilamentosSafe();
   let options = '<option value="">— selecione —</option>';
   produtos.forEach((p) => { options += '<option value="' + p.id + '" data-price="' + p.sale_price + '">' + escapeHtml(p.catalog_code) + ' — ' + escapeHtml(p.name) + '</option>'; });
+  let coresOptions = '<option value="">— sem cor combinada ainda —</option>';
+  cores.forEach((c) => { coresOptions += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; });
   // O <label> padrão do modal é bloco, maiúsculo, 11px (serve pra nome de
   // campo) — encaixar um rádio dentro dele deixava a bolinha desalinhada
   // do texto. Aqui o rótulo é a própria opção clicável, então o estilo
@@ -2675,11 +2679,17 @@ async function openItemForm(orderId) {
     '<div id="itCatalogFields">' +
       '<label>Produto</label>' +
       '<select id="itProduto" onchange="preencherPrecoItem()">' + options + '</select>' +
+      '<label class="pergunta">De qual cor o cliente quer?</label>' +
+      dicaCampo('Pra não ter que ir catar essa informação de novo no WhatsApp na hora de imprimir.') +
+      '<select id="itCor">' + coresOptions + '</select>' +
     '</div>' +
     '<div id="itCustomFields" class="hidden">' +
       '<label>Descrição</label><input id="itDescricao" placeholder="Ex: Suporte personalizado com logo">' +
       '<label>Referência (link, se houver)</label><input id="itLink" placeholder="Link do Pinterest, foto etc.">' +
     '</div>' +
+    '<label class="pergunta">Peça tem mais de uma cor, ou algum outro detalhe combinado?</label>' +
+    dicaCampo('Opcional — só preenche se tiver algo além da cor de cima. Ex: "base marrom, resto cinza".') +
+    '<input id="itNotas" placeholder="Ex: base marrom, resto cinza">' +
     '<label class="pergunta">Quantas peças?</label>' +
     dicaCampo('Pode ser uma encomenda de várias — o preço e o custo se multiplicam sozinhos.') +
     '<input id="itQtd" type="number" value="1" min="1">' +
@@ -2711,12 +2721,14 @@ async function salvarItem(orderId) {
 
   const payload = {
     order_id: orderId, line_type: tipo, quantity, unit_price,
+    notes: document.getElementById('itNotas').value.trim() || null,
   };
   if (tipo === 'catalog') {
     const productId = document.getElementById('itProduto').value;
     if (!productId) { toast('Seleciona um produto.'); return; }
     payload.product_id = productId;
     payload.line_status = 'recebido';
+    payload.requested_filament_color_id = document.getElementById('itCor').value || null;
   } else {
     const desc = document.getElementById('itDescricao').value.trim();
     if (!desc) { toast('Descreve o item personalizado.'); return; }
@@ -3073,7 +3085,8 @@ function renderGrupoFila(titulo, printerId, itens, impressoras) {
         badgePrazoFila(it._prazo) + '</td>';
       html += '<td>' + escapeHtml(nome) + '</td>';
       html += '<td>' + it.quantity + '</td>';
-      html += '<td id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</td>';
+      html += '<td><span id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</span>' +
+        (it.notes ? '<br><span style="font-size:10.5px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>' : '') + '</td>';
       html += '<td><select onchange="atribuirImpressora(\'' + it.id + '\', this.value)">';
       html += '<option value="">— nenhuma —</option>';
       impressoras.forEach((p) => { html += '<option value="' + p.id + '"' + (p.id === printerId ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>'; });
