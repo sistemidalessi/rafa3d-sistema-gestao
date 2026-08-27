@@ -3333,7 +3333,18 @@ async function salvarPagamento(orderId) {
 /* ============================================================
    FILA DE IMPRESSÃO
    ============================================================ */
+// Tudo que ainda dá trabalho — usado pra contar quantas peças de um
+// pedido já saíram da fila.
 const FILA_STATUSES = ['recebido', 'orcamento_aprovado', 'fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir'];
+
+// O que a FILA mostra: só o que já foi mandado pra imprimir.
+//
+// "Recebido" e "preço combinado" são peças que ainda estão sendo
+// preparadas — pode faltar arquivo, colinha, tudo. Elas apareciam aqui
+// misturadas com as prontas, sem tempo e sem nada, e a Fila virava uma
+// lista de pendências em vez de uma lista de trabalho. Quem prepara faz
+// isso em Pedidos; aqui é só imprimir.
+const FILA_PRONTAS = ['fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir'];
 
 // Nem todo pedido tem prazo (needed_by, patch-40), e sem tempo de
 // impressão estimado não dá pra calcular nada — os dois casos ficam
@@ -3490,8 +3501,15 @@ async function renderFila() {
 
   const items = await q(SUPA.from('order_line_items')
     .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name)')
-    .in('line_status', FILA_STATUSES)
+    .in('line_status', FILA_PRONTAS)
     .order('created_at'));
+
+  // As que ficaram de fora não somem de vista: viram uma linha só,
+  // dizendo onde elas estão. Sem isso, tirar as não-preparadas da Fila
+  // seria trocar "lista confusa" por "peça esquecida".
+  const esperando = await q(SUPA.from('order_line_items')
+    .select('id')
+    .in('line_status', ['recebido', 'orcamento_aprovado'])) || [];
   const impressoras = await getImpressorasSafe();
   const receitas = await getReceitas();
   const receitasPorProduto = {};
@@ -3590,9 +3608,16 @@ async function renderFila() {
     }
     html += renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido);
   });
-  el.innerHTML = grupos.length
-    ? html
-    : html + '<div class="card"><div class="empty">Não tem nada pra imprimir agora.</div></div>';
+  if (!grupos.length) {
+    html += '<div class="card"><div class="empty">Não tem nada pra imprimir agora.</div></div>';
+  }
+  if (esperando.length) {
+    html += '<div class="card" style="background:#f7f9fc;"><div style="font-size:13px; color:var(--muted); line-height:1.6;">'
+      + '📋 <strong>' + pecas(esperando.length) + '</strong> ainda estão sendo preparadas e não entraram na fila. '
+      + 'Elas ficam na aba <strong>Pedidos</strong> até estarem prontas pra imprimir.'
+      + '</div></div>';
+  }
+  el.innerHTML = html;
 }
 
 // A mesma regra vale pro bloco do cliente e pras peças dentro dele —
@@ -3734,46 +3759,51 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
       + 'As peças desta pessoa estão em <strong>impressoras diferentes</strong>. Tudo bem — só não dá pra mandar antes de todas ficarem prontas.</div>';
   }
 
+  // Quatro colunas, e só. A Fila antes trazia código do pedido, data de
+  // chegada, quantidade, cor, impressora, um select de status com onze
+  // opções e quatro botões — informação de preparo, que é assunto da
+  // aba Pedidos. Aqui interessa: que peça é, de que cor, quanto tempo
+  // leva, em qual máquina. O resto atrapalha quem tem 10 anos.
   html += '<div class="tabela-rola" style="margin-top:10px;">';
-  html += '<table><tr><th>Pedido</th><th>Peça</th><th>Quantas</th><th>Tempo</th><th>Cor</th><th>Impressora</th><th>Status</th><th></th></tr>';
+  html += '<table><tr><th>Peça</th><th>Tempo</th><th>Impressora</th><th>Como está</th><th></th></tr>';
   itens.forEach((it) => {
     const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
     html += '<tr>';
-    html += '<td>' + escapeHtml(it.orders ? (it.orders.order_number || '') : '') +
-      '<br><span style="color:var(--muted);font-size:10.5px;">chegou ' + fmtDate(it.created_at) + '</span>' +
+    // Nome, quantidade e cor juntos: são a mesma pergunta ("o que eu
+    // ponho na máquina?"), e separados em três colunas obrigavam a ler
+    // a linha de ponta a ponta pra montar a resposta.
+    html += '<td><strong>' + (it.quantity > 1 ? it.quantity + '× ' : '') + escapeHtml(nome) + '</strong>' +
+      '<br><span id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</span>' +
+      (pedidosLista.length > 1 && it.orders ? '<br><span style="color:var(--muted); font-size:10.5px;">' + escapeHtml(it.orders.order_number || '') + '</span>' : '') +
+      (it.notes ? '<br><span style="font-size:10.5px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>' : '') +
       badgePrazoFila(it._prazo) + '</td>';
-    html += '<td>' + escapeHtml(nome) + '</td>';
-    html += '<td>' + it.quantity + '</td>';
     // O total vem primeiro porque é ele que ocupa a impressora; o "cada
     // uma" só aparece quando há mais de uma peça, senão repetiria o
     // mesmo número duas vezes.
     html += '<td>' + (it._horas.total
       ? '<strong>' + fmtHoras(it._horas.total) + '</strong>' +
         (it.quantity > 1 ? '<br><span style="color:var(--muted); font-size:10.5px;">' + fmtHoras(it._horas.porPeca) + ' cada</span>' : '')
-      // A colinha NÃO diz quanto tempo leva — ela só dá temperatura,
-      // camada, brim e suporte. O tempo só existe depois que a peça
-      // teve preço calculado (vai pra receita) ou que alguém clicou
-      // "Terminei" e digitou as horas de verdade. O texto antigo dizia
-      // "sai da colinha" e mandava o Rafa esperar por algo que nunca
-      // ia chegar.
-      : '<span style="color:var(--muted); font-size:11px;">ainda não sei<br>' +
-        (it.line_type === 'catalog'
-          ? 'dê preço nesta peça em <strong>Produtos</strong>'
-          : 'calcule o preço deste projeto') +
-        '</span>') + '</td>';
-    html += '<td><span id="cor-' + it.id + '" style="color:var(--muted); font-size:12px;">carregando...</span>' +
-      (it.notes ? '<br><span style="font-size:10.5px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>' : '') + '</td>';
+      // A primeira impressão é que ensina o tempo. Com 157 dos 166
+      // produtos sem ficha de custo, mandar preencher ficha é mandar
+      // fazer um trabalho que ninguém vai fazer — mas o "Terminei" já
+      // grava as horas de verdade na receita, então basta imprimir uma
+      // vez. O texto antigo dizia "sai da colinha", e a colinha não
+      // produz tempo nenhum: mandava esperar o que nunca ia chegar.
+      : '<span style="color:var(--muted); font-size:11px;">primeira vez<br>fica sabido no "Terminei"</span>') + '</td>';
     html += '<td><select onchange="atribuirImpressora(\'' + it.id + '\', this.value)">';
-    html += '<option value="">— nenhuma —</option>';
+    html += '<option value="">— escolher —</option>';
     impressoras.forEach((p) => { html += '<option value="' + p.id + '"' + (p.id === it.printer_id ? ' selected' : '') + '>' + escapeHtml(p.name) + '</option>'; });
     html += '</select></td>';
-    html += '<td><select style="' + estiloDoSelect(it.line_status) + '" onchange="repintarSelect(this); mudarStatusFilaItem(\'' + it.id + '\', this.value)">';
-    Object.keys(LINE_STATUS_LABELS).forEach((k) => {
-      html += '<option value="' + k + '"' + (k === it.line_status ? ' selected' : '') + '>' + LINE_STATUS_LABELS[k] + '</option>';
-    });
-    html += '</select></td>';
+    // Selo no lugar do select de onze opções. Na Fila só existem quatro
+    // estados possíveis, e os três caminhos pra sair deles já são os
+    // botões ao lado — o select oferecia "Cancelado", "Entregue",
+    // "Falta dar o preço" pra quem só queria dizer que acabou.
+    html += '<td>' + selo(it.line_status, LINE_STATUS_LABELS[it.line_status]) + '</td>';
     html += '<td class="row-actions">';
-    html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">Terminei</button>';
+    if (it.line_status === 'fila_impressao') {
+      html += '<button class="btn" onclick="mudarStatusFilaItem(\'' + it.id + '\', \'imprimindo\')">▶️ Comecei</button>';
+    }
+    html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">✅ Terminei</button>';
     if (it.line_status === 'falhou_reimprimir') {
       html += '<button class="btn ghost" onclick="reimprimirItem(\'' + it.id + '\')">Imprimir de novo</button>';
     } else {
