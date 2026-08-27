@@ -1784,6 +1784,31 @@ function alternarPedidosFinalizados() {
   renderPedidos();
 }
 
+// orders.status é campo morto (nunca sai de "Vendo o preço" — ver nota
+// em LINE_STATUS_ENCERRADO). O status de verdade do pedido é o da peça
+// que está mais atrasada: se tem uma peça ainda "Recebido" e outra já
+// "Entregue", o pedido como um todo ainda não terminou, então mostra a
+// mais pra trás — é ela que precisa de atenção.
+function statusResumoPedido(itensDoPedido) {
+  if (!itensDoPedido.length) return null;
+  const ordem = Object.keys(LINE_STATUS_LABELS);
+  let pior = itensDoPedido[0];
+  itensDoPedido.forEach((it) => {
+    if (ordem.indexOf(it.line_status) < ordem.indexOf(pior.line_status)) pior = it;
+  });
+  return pior.line_status;
+}
+
+// O nome da primeira peça, com "+N" se o pedido tiver mais — não cabe
+// (nem ajuda) listar tudo numa lista de pedidos.
+function resumoItensPedido(itensDoPedido) {
+  if (!itensDoPedido.length) return '<span style="color:var(--muted); font-size:11px;">sem item</span>';
+  const primeiro = itensDoPedido[0];
+  const nome = primeiro.line_type === 'catalog' ? (primeiro.products ? primeiro.products.name : '—') : (primeiro.custom_description || 'Personalizado');
+  const resto = itensDoPedido.length - 1;
+  return escapeHtml(nome) + (resto > 0 ? ' <span style="color:var(--muted); font-size:11px;">+' + resto + '</span>' : '');
+}
+
 async function renderPedidos() {
   if (pedidoDetalheId) return renderPedidoDetalhe(pedidoDetalheId);
 
@@ -1793,7 +1818,8 @@ async function renderPedidos() {
   const statuses = await q(SUPA.from('orders_payment_status').select('*'));
   const statusById = {};
   statuses.forEach((s) => { statusById[s.order_id] = s; });
-  const itens = await q(SUPA.from('order_line_items').select('order_id, line_status'));
+  const itens = await q(SUPA.from('order_line_items')
+    .select('order_id, line_status, line_type, custom_description, products(name)').order('created_at'));
   const itensPorPedido = {};
   itens.forEach((it) => {
     if (!itensPorPedido[it.order_id]) itensPorPedido[it.order_id] = [];
@@ -1817,14 +1843,17 @@ async function renderPedidos() {
   if (listaExibida.length === 0) {
     html += '<div class="empty">' + (orders.length === 0 ? 'Nenhum pedido ainda.' : 'Nenhum pedido em andamento — todos já foram entregues.') + '</div>';
   } else {
-    html += '<table><tr><th>Pedido</th><th>Cliente</th><th>Tipo</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
+    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>Tipo</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
     listaExibida.forEach((o) => {
       const ps = statusById[o.id];
+      const itensDoPedido = itensPorPedido[o.id] || [];
+      const statusPedido = statusResumoPedido(itensDoPedido);
       html += '<tr>';
-      html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
       html += '<td>' + escapeHtml(o.customers ? o.customers.name : (o.customer_name || '—')) + '</td>';
+      html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
+      html += '<td>' + resumoItensPedido(itensDoPedido) + '</td>';
       html += '<td>' + escapeHtml(ORDER_TYPE_LABELS[o.order_type] || o.order_type) + '</td>';
-      html += '<td>' + selo(o.status, ORDER_STATUS_LABELS[o.status] || o.status) + '</td>';
+      html += '<td>' + (statusPedido ? selo(statusPedido, LINE_STATUS_LABELS[statusPedido]) : '<span style="color:var(--muted); font-size:11px;">sem peça</span>') + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td>' + (ps ? selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) : '—') + '</td>';
       html += '<td class="row-actions"><button class="btn ghost" onclick="abrirPedido(\'' + o.id + '\')">Abrir</button>' +
@@ -1846,15 +1875,15 @@ async function excluirPedido(orderId) {
   await renderPedidos();
 }
 
-async function openPedidoForm() {
+async function openPedidoForm(preSelecionarId) {
   const clientes = await getClientes();
   let options = '<option value="">— selecione —</option>';
-  clientes.forEach((c) => { options += '<option value="' + c.id + '">' + escapeHtml(c.name) + '</option>'; });
+  clientes.forEach((c) => { options += '<option value="' + c.id + '"' + (c.id === preSelecionarId ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>'; });
   openModal(
     '<h3>Novo pedido</h3>' +
     '<label>Cliente</label>' +
     '<select id="pdCliente">' + options + '</select>' +
-    '<div style="margin-top:6px;"><button class="btn ghost" onclick="openClienteFormInline()">+ cadastrar cliente novo</button></div>' +
+    '<div style="margin-top:6px;"><button class="btn ghost" onclick="openClienteFormInline(function(novoId) { openPedidoForm(novoId); })">+ cadastrar cliente novo</button></div>' +
     '<label>Canal</label>' +
     '<select id="pdCanal"><option value="whatsapp">WhatsApp</option><option value="google_form">Google Form</option><option value="presencial">Presencial</option><option value="app">App</option></select>' +
     '<div class="modal-actions">' +
@@ -1864,8 +1893,59 @@ async function openPedidoForm() {
   );
 }
 
-function openClienteFormInline() {
+// Cadastrar cliente novo no meio de outra tela (Novo pedido, escolher
+// cliente do pedido...) sempre te jogava pra aba Clientes depois de
+// salvar — a tela de onde você veio sumia, e tinha que começar tudo de
+// novo. callback recebe o id do cliente recém-criado e decide pra onde
+// voltar; prefill pré-preenche nome/telefone (útil quando o pedido já
+// tem esses dados soltos em outro lugar, tipo o nome de quem pediu um
+// projeto).
+let _clienteRetornoCallback = null;
+let _clientePrefill = null;
+function openClienteFormInline(callback, prefill) {
+  _clienteRetornoCallback = callback || null;
+  _clientePrefill = prefill || null;
   openClienteForm();
+}
+
+// Projeto (order_line_items com line_type='custom') nasce com o nome de
+// quem pediu solto em requester_name/requester_contact, sem NUNCA virar
+// um cliente cadastrado — orders.customer_id fica vazio pra sempre.
+// Era por isso que esses pedidos apareciam com "—" na coluna Cliente e
+// não tinham jeito de trocar. Deixa escolher um cliente já cadastrado ou
+// criar um novo (já sugerindo o nome/telefone que o projeto já tem).
+async function abrirEditarClienteDoPedido(orderId, preSelecionarId) {
+  const clientes = await getClientes();
+  const order = await q(SUPA.from('orders').select('customer_id').eq('id', orderId).maybeSingle());
+  const selecionado = preSelecionarId !== undefined ? preSelecionarId : order.customer_id;
+  let options = '<option value="">— nenhum —</option>';
+  clientes.forEach((c) => { options += '<option value="' + c.id + '"' + (c.id === selecionado ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>'; });
+  openModal(
+    '<h3>Cliente desse pedido</h3>' +
+    '<label>Cliente</label>' +
+    '<select id="pedCliente">' + options + '</select>' +
+    '<div style="margin-top:6px;"><button class="btn ghost" onclick="prepararNovoClienteDoPedido(\'' + orderId + '\')">+ cadastrar cliente novo</button></div>' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="salvarClienteDoPedido(\'' + orderId + '\')">Salvar</button>' +
+    '</div>'
+  );
+}
+
+async function prepararNovoClienteDoPedido(orderId) {
+  const itens = await q(SUPA.from('order_line_items').select('requester_name, requester_contact').eq('order_id', orderId).limit(1));
+  const primeiro = itens && itens[0];
+  const sugestao = primeiro && primeiro.requester_name ? { name: primeiro.requester_name, phone: primeiro.requester_contact } : null;
+  openClienteFormInline((novoId) => abrirEditarClienteDoPedido(orderId, novoId), sugestao);
+}
+
+async function salvarClienteDoPedido(orderId) {
+  const customerId = document.getElementById('pedCliente').value || null;
+  const { error } = await SUPA.from('orders').update({ customer_id: customerId, updated_at: new Date().toISOString() }).eq('id', orderId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Cliente atualizado.');
+  await renderPedidoDetalhe(orderId);
 }
 
 async function criarPedido() {
@@ -2027,7 +2107,8 @@ async function renderPedidoDetalhe(id) {
   html += '<div class="card" style="margin-top:12px;">';
   html += '<div style="display:flex; justify-content:space-between;">';
   html += '<div><strong>' + escapeHtml(order.order_number || order.id.slice(0, 8)) + '</strong><br>';
-  html += '<span style="color:var(--muted);">' + escapeHtml(nomeCliente) + (contatoCliente ? ' · ' + escapeHtml(contatoCliente) : '') + '</span></div>';
+  html += '<span style="color:var(--muted);">' + escapeHtml(nomeCliente) + (contatoCliente ? ' · ' + escapeHtml(contatoCliente) : '') + '</span> ' +
+    '<button class="btn ghost" style="padding:2px 8px; font-size:10.5px;" onclick="abrirEditarClienteDoPedido(\'' + id + '\')">✏️ trocar</button></div>';
   html += '<div style="text-align:right;"><div>' + fmtMoney(order.total_amount) + '</div>';
   html += (ps ? selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) : '—') + '</div>';
   html += '</div>';
@@ -5033,10 +5114,12 @@ async function renderClientes() {
 
 function openClienteForm(id) {
   const c = id ? clientesCache.find((x) => x.id === id) : null;
+  const prefill = c ? null : _clientePrefill;
+  _clientePrefill = null; // vale só pra próxima abertura, não fica preso
   openModal(
     '<h3>' + (c ? 'Editar cliente' : 'Novo cliente') + '</h3>' +
-    '<label>Nome</label><input id="clNome" value="' + (c ? escapeHtml(c.name) : '') + '">' +
-    '<label>WhatsApp</label><input id="clFone" value="' + (c ? escapeHtml(c.phone || '') : '') + '">' +
+    '<label>Nome</label><input id="clNome" value="' + (c ? escapeHtml(c.name) : escapeHtml((prefill && prefill.name) || '')) + '">' +
+    '<label>WhatsApp</label><input id="clFone" value="' + (c ? escapeHtml(c.phone || '') : escapeHtml((prefill && prefill.phone) || '')) + '">' +
     '<label>E-mail</label><input id="clEmail" value="' + (c ? escapeHtml(c.email || '') : '') + '">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
@@ -5051,13 +5134,23 @@ async function saveCliente(id) {
   const email = document.getElementById('clEmail').value.trim();
   if (!name) { toast('Preenche o nome do cliente.'); return; }
   const payload = { name, phone: phone || null, email: email || null };
-  const { error } = id
-    ? await SUPA.from('customers').update(payload).eq('id', id)
-    : await SUPA.from('customers').insert([payload]);
+  const { data, error } = id
+    ? await SUPA.from('customers').update(payload).eq('id', id).select().maybeSingle()
+    : await SUPA.from('customers').insert([payload]).select().maybeSingle();
   if (error) { toast('Erro: ' + error.message); return; }
   closeModal();
   toast('Cliente salvo.');
-  await renderClientes();
+  await getClientes(true);
+  // Quem abriu pra cadastrar no meio de outra tela (Novo pedido, cliente
+  // do pedido...) volta pra lá com o cliente novo já selecionado, em vez
+  // de sempre cair na aba Clientes e perder o que estava fazendo.
+  if (_clienteRetornoCallback) {
+    const cb = _clienteRetornoCallback;
+    _clienteRetornoCallback = null;
+    await cb(data ? data.id : id);
+  } else {
+    await renderClientes();
+  }
 }
 
 /* ============================================================
