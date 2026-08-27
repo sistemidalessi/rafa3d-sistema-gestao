@@ -695,10 +695,30 @@ function guardarComputador(nome) {
 async function listarComputadores() {
   const lista = await q(SUPA.from('slicer_agents').select('*').order('name'));
   const agora = Date.now();
-  return (lista || []).map((c) => ({
+  const computadores = (lista || []).map((c) => ({
     nome: c.name,
     ligado: (agora - new Date(c.last_seen_at).getTime()) / 1000 < SEGUNDOS_PRA_CONSIDERAR_LIGADO,
+    // patch-42: em qual versão do código aquele agente está. Null nos
+    // registros antigos, e enquanto o agente daquela máquina não for
+    // reiniciado depois deste patch.
+    dataDoCodigo: c.code_date ? new Date(c.code_date).getTime() : null,
   }));
+
+  // Quem está atrasado é decidido comparando os computadores ENTRE SI,
+  // não com o GitHub: o navegador não sabe qual é o último commit, e
+  // não vamos fazer ele perguntar pra fora. Com duas máquinas, se uma
+  // está com código mais velho que a outra, é ela que precisa atualizar
+  // — que é exatamente a pergunta que se quer responder aqui.
+  //
+  // Um dia de folga de propósito: quem atualizou hoje de manhã e quem
+  // atualizou ontem à noite estão na prática juntos, e marcar isso como
+  // problema faria o aviso virar barulho e ninguém mais olhar.
+  const FOLGA_MS = 24 * 60 * 60 * 1000;
+  const maisNovo = computadores.reduce((m, c) => (c.dataDoCodigo > m ? c.dataDoCodigo : m), 0);
+  computadores.forEach((c) => {
+    c.atrasado = !!(maisNovo && c.dataDoCodigo && maisNovo - c.dataDoCodigo > FOLGA_MS);
+  });
+  return computadores;
 }
 
 // Devolve o computador que deve abrir o arquivo. Se ninguém escolheu
@@ -731,9 +751,20 @@ async function perguntarComputador() {
       html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:12.5px; color:#8a5b00; line-height:1.55;">'
         + '<strong>Nenhum deles está ligado agora.</strong> Escolher um desligado deixa a peça esperando na fila até ele ligar — não vai abrir nada.</div>';
     }
+    // patch-42: computador com código velho continua escolhível de
+    // propósito — ele funciona, só pode refazer defeito já consertado.
+    // Esconder a opção deixaria alguém sem nenhum computador; avisar
+    // resolve sem tirar a saída.
+    const algumAtrasado = _computadoresListados.some((c) => c.atrasado);
+    if (algumAtrasado) {
+      html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:10px 12px; margin-bottom:10px; font-size:12.5px; color:#8a5b00; line-height:1.55;">'
+        + '<strong>Um computador está com o programa antigo.</strong> Ele abre o arquivo do mesmo jeito, mas pode errar coisas que já foram consertadas. '
+        + 'Peça pro Anderson atualizar aquela máquina.</div>';
+    }
     _computadoresListados.forEach((c, i) => {
       html += '<button class="btn full" style="margin-bottom:8px;' + (c.ligado ? '' : ' opacity:.65;') + '" onclick="escolherComputador(' + i + ')">' +
-        escapeHtml(c.nome) + (c.ligado ? ' ✅ ligado agora' : ' 💤 desligado') + '</button>';
+        escapeHtml(c.nome) + (c.ligado ? ' ✅ ligado agora' : ' 💤 desligado') +
+        (c.atrasado ? ' ⚠️ programa antigo' : '') + '</button>';
     });
     html += '<div style="font-size:11.5px; color:var(--muted); line-height:1.5; margin-top:2px;">'
       + '<strong>Não achou o seu computador na lista?</strong> É porque o programa do fatiador nunca foi ligado nele. '
@@ -2034,10 +2065,34 @@ async function avisoAgenteParado() {
   // numa tarja pra quem está usando, e uma falha ao CONFERIR o agente
   // não é assunto do Rafa — se não deu pra saber, é melhor não dizer
   // nada do que assustar com um erro que ele não pode resolver.
-  const { data: agentes, error } = await SUPA.from('slicer_agents').select('name, last_seen_at');
+  const { data: agentes, error } = await SUPA.from('slicer_agents').select('name, last_seen_at, code_date');
   if (error || !agentes) return '';
   const agora = Date.now();
   const estaVivo = (a) => (agora - new Date(a.last_seen_at)) / 1000 < SEGUNDOS_PRA_CONSIDERAR_PARADO;
+
+  // patch-42: computador ligado, porém com código velho. Vem DEPOIS de
+  // "está desligado" em toda saída daqui de baixo, de propósito —
+  // desligado impede de trabalhar, código velho só arrisca. Duas tarjas
+  // laranjas ao mesmo tempo não seriam lidas por ninguém.
+  //
+  // Só avisa quando a máquina atrasada está LIGADA: uma desligada não
+  // vai pegar tarefa nenhuma, e cobrar atualização de um computador que
+  // ninguém está usando é barulho.
+  const FOLGA_MS = 24 * 60 * 60 * 1000;
+  const datas = agentes.map((a) => (a.code_date ? new Date(a.code_date).getTime() : null));
+  const maisNovo = datas.reduce((m, d) => (d > m ? d : m), 0);
+  const avisoDeCodigoVelho = () => {
+    const atrasados = agentes.filter((a, i) =>
+      estaVivo(a) && datas[i] && maisNovo - datas[i] > FOLGA_MS);
+    if (!atrasados.length) return '';
+    const nomes = atrasados.map((a) => escapeHtml(a.name)).join(', ');
+    return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'
+      + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; color:#8a5b00;">⚠️ O computador <em>' + nomes + '</em> está com o programa antigo</div>'
+      + '<div style="font-size:13px; color:#8a5b00; line-height:1.6; margin-top:6px;">'
+      + 'Ele trabalha normal, mas pode errar coisas que já foram consertadas — e como qualquer computador ligado pode pegar a tarefa, o erro volta sem avisar.'
+      + '<br>Pra atualizar, naquela máquina: <strong>powershell -ExecutionPolicy Bypass -File slicer-agent\\atualizar-agente.ps1</strong></div>'
+      + '</div>';
+  };
 
   // Quando um computador já foi escolhido, é ELE que importa — não
   // adianta ter outro ligado, porque a peça foi endereçada pra este.
@@ -2046,7 +2101,7 @@ async function avisoAgenteParado() {
   const escolhido = computadorEscolhido();
   if (escolhido) {
     const alvo = agentes.find((a) => a.name === escolhido);
-    if (alvo && estaVivo(alvo)) return '';
+    if (alvo && estaVivo(alvo)) return avisoDeCodigoVelho();
     return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'
       + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; color:#8a5b00;">⏸️ O computador <em>' + escapeHtml(escolhido) + '</em> está desligado</div>'
       + '<div style="font-size:13px; color:#8a5b00; line-height:1.6; margin-top:6px;">'
@@ -2056,7 +2111,7 @@ async function avisoAgenteParado() {
       + '</div>';
   }
 
-  if (agentes.some(estaVivo)) return '';
+  if (agentes.some(estaVivo)) return avisoDeCodigoVelho();
   const ultimo = agentes.map((a) => new Date(a.last_seen_at)).sort((a, b) => b - a)[0];
   const quando = ultimo ? ' (visto pela última vez ' + fmtDate(ultimo) + ')' : '';
   return '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">'

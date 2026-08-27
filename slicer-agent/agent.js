@@ -115,13 +115,57 @@ async function destravarPresos() {
   }
 }
 
+// Em qual versão do código este agente está (patch-42).
+//
+// Descoberto UMA vez, ao iniciar — de propósito, porque é exatamente
+// isso que o número precisa refletir: o agente lê o código uma vez e
+// segue com ele até reiniciar. Ler a cada volta do laço mostraria o
+// código do disco, não o que está rodando, e mentiria justamente no
+// caso que este patch veio resolver (arquivo já atualizado, agente
+// ainda no velho).
+const VERSAO_DO_CODIGO = (() => {
+  const { execFileSync } = require('child_process');
+  try {
+    const commit = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
+      cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    const quando = execFileSync('git', ['log', '-1', '--format=%cI'], {
+      cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+    return { code_commit: commit, code_date: quando };
+  } catch (e) {
+    // Sem git — máquina que baixou o ZIP em vez de clonar. A data de
+    // modificação do próprio arquivo é grosseira, mas ainda responde a
+    // pergunta que importa: "esse computador está atrás do outro?".
+    try {
+      return { code_commit: null, code_date: fs.statSync(__filename).mtime.toISOString() };
+    } catch (e2) {
+      return { code_commit: null, code_date: null };
+    }
+  }
+})();
+
 // Diz pro sistema que este computador está ligado e com o agente
 // rodando. A tela usa isso pra oferecer a lista de computadores na hora
 // de escolher onde abrir o arquivo — sem ninguém ter que cadastrar nada
 // à mão, e mostrando quais estão desligados agora.
+// Quando o patch-42 ainda não rodou, as colunas de versão não existem e
+// o upsert inteiro falha — o computador SUMIRIA da lista, que é bem pior
+// do que não saber a versão dele. Então na primeira falha ele desiste da
+// versão e segue mandando só o sinal de vida, pra sempre.
+let mandarVersao = true;
+
 async function darSinalDeVida() {
-  const { error } = await supabase.from('slicer_agents')
-    .upsert({ name: AGENT_NAME, last_seen_at: new Date().toISOString() }, { onConflict: 'name' });
+  const base = { name: AGENT_NAME, last_seen_at: new Date().toISOString() };
+  if (mandarVersao) {
+    const { error } = await supabase.from('slicer_agents')
+      .upsert({ ...base, ...VERSAO_DO_CODIGO }, { onConflict: 'name' });
+    if (!error) return;
+    mandarVersao = false;
+    log('AVISO: o banco não tem as colunas de versão do agente (patch-42 ainda não rodou). ' +
+      'Sigo avisando que estou ligado, mas a tela não vai saber em qual versão eu estou.');
+  }
+  const { error } = await supabase.from('slicer_agents').upsert(base, { onConflict: 'name' });
   if (error) log('AVISO: não consegui avisar que este computador está ligado: ' + error.message);
 }
 
@@ -1257,6 +1301,11 @@ async function tickAbrirFatiadorPartes() {
 
 async function main() {
   log('Agente de fatiamento iniciado neste computador: ' + AGENT_NAME);
+  log('Rodando o código de ' +
+    (VERSAO_DO_CODIGO.code_date
+      ? new Date(VERSAO_DO_CODIGO.code_date).toLocaleString('pt-BR')
+      : 'data desconhecida') +
+    (VERSAO_DO_CODIGO.code_commit ? ' (commit ' + VERSAO_DO_CODIGO.code_commit + ')' : ' (sem git nesta máquina)'));
   log('OrcaSlicer: ' + ORCA_PATH);
   log('Verificando a fila a cada ' + (POLL_INTERVAL_MS / 1000) + 's. Ctrl+C para parar.');
   await darSinalDeVida();
