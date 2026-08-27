@@ -89,6 +89,37 @@ código uma vez só, ao iniciar** — depois de um `git pull` ele segue
 rodando a versão velha sem avisar nada, e o sintoma é um defeito já
 consertado voltando do túmulo.
 
+## A Fila agora agrupa por cliente — 27/08
+
+Antes a Fila era organizada por impressora, e uma encomenda de três
+peças aparecia espalhada em três lugares. Agora cada pessoa é um bloco:
+imprimir uma peça e deixar a outra pra depois não adianta nada, porque
+**quem comprou junto recebe junto**.
+
+O bloco soma o tempo de impressão da encomenda inteira e avisa nos dois
+jeitos de furar isso: quando são **duas compras da mesma pessoa** (dá
+pra mandar num frete só) e quando as peças estão em **impressoras
+diferentes**. Também mostra `✅ 2 de 3 já saíram da fila` — as peças
+prontas somem da consulta (o filtro é por `line_status`), e sem buscar
+as irmãs o bloco diria "1 peça" pra um pedido de três.
+
+"O que cada impressora tem pela frente" virou um resumo de uma linha por
+máquina, no topo.
+
+Colunas e ordem: entrou **Tempo** (total, e "cada uma" quando a
+quantidade passa de 1), e um seletor de ordem — prazo, mais rápidas,
+mais demoradas, chegada. **Peça sem tempo estimado vai pro fim nas duas
+direções**: não é rápida nem demorada, é desconhecida, e no topo de "as
+mais rápidas" faria o Rafa começar pela que ninguém sabe quanto demora.
+
+⚠️ **Venda pelo catálogo não cria ficha de cliente** — o nome fica solto
+em `orders.customer_name` e o `customer_id` vem vazio. Por isso a chave
+de agrupamento tem três degraus (ficha → nome → pedido), e o terceiro é
+o que importa: sem nome, cada pedido vira seu próprio bloco. Sem esse
+degrau, todo mundo sem ficha viraria um bloco "Sem cliente" só —
+aconteceu no teste com os dados reais, duas compras de pessoas
+diferentes juntas.
+
 ## Antes de tudo, numa máquina nova
 
 ```
