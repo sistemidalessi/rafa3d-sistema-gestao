@@ -13,9 +13,8 @@ Fechado em 27/08 à noite: o computador do Rafa foi atualizado com o
 
 Fica aqui o registro do que estava em jogo, porque os dois defeitos são
 do tipo que volta calado. Em 27/08, com o Chaveiro do Pikachu (pedido de
-verdade),
-apareceram **dois** problemas seguidos no mesmo arquivo, e os dois
-foram corrigidos em `agent.js`/`gerar3mf.js`:
+verdade), apareceram **dois** problemas seguidos no mesmo arquivo, e os
+dois foram corrigidos em `agent.js`/`gerar3mf.js`:
 
 1. **Colinha de produto caía pra erro** quando o `.3mf` não tinha
    miniatura embutida (esse veio de um divisor de peças e nunca tinha
