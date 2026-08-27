@@ -2224,6 +2224,7 @@ async function renderPedidoDetalhe(id) {
       // produto — o que faltava era oferecer elas onde o trabalho
       // realmente começa, que é o pedido que chegou.
       html += acoesDeImpressaoDoItem(it, id);
+      html += '<button class="btn ghost" onclick="abrirEditarItem(\'' + it.id + '\', \'' + id + '\')">✏️ Editar</button>';
       html += '<button class="btn ghost" onclick="removerItem(\'' + it.id + '\', \'' + id + '\')">Remover</button>';
       html += '</td>';
       html += '</tr>';
@@ -2741,6 +2742,66 @@ async function salvarItem(orderId) {
   closeModal();
   await recalcularTotalPedido(orderId);
   toast('Item adicionado.');
+  await renderPedidoDetalhe(orderId);
+}
+
+// Depois de adicionado, um item só tinha "Remover" ou seguir direto pro
+// fatiador — sem jeito de corrigir quantidade, preço, cor ou o detalhe
+// combinado com o cliente, mesmo pra peça que nem começou a imprimir
+// ainda. Reaproveita os mesmos campos de "Adicionar item", só que
+// pré-preenchidos, e grava em cima do item existente em vez de criar
+// outro.
+async function abrirEditarItem(itemId, orderId) {
+  const it = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
+  let camposTipo;
+  if (it.line_type === 'catalog') {
+    const cores = await getFilamentosSafe();
+    let coresOptions = '<option value="">— sem cor combinada ainda —</option>';
+    cores.forEach((c) => { coresOptions += '<option value="' + c.id + '"' + (c.id === it.requested_filament_color_id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>'; });
+    camposTipo = '<label class="pergunta">De qual cor o cliente quer?</label>' +
+      dicaCampo('Pra não ter que ir catar essa informação de novo no WhatsApp na hora de imprimir.') +
+      '<select id="itEditCor">' + coresOptions + '</select>';
+  } else {
+    camposTipo = '<label>Descrição</label><input id="itEditDescricao" value="' + escapeHtml(it.custom_description || '') + '">' +
+      '<label>Referência (link, se houver)</label><input id="itEditLink" value="' + escapeHtml(it.custom_reference_link || '') + '">';
+  }
+  openModal(
+    '<h3>Editar item</h3>' +
+    camposTipo +
+    '<label class="pergunta">Peça tem mais de uma cor, ou algum outro detalhe combinado?</label>' +
+    dicaCampo('Opcional — só preenche se tiver algo além da cor de cima. Ex: "base marrom, resto cinza".') +
+    '<input id="itEditNotas" value="' + escapeHtml(it.notes || '') + '" placeholder="Ex: base marrom, resto cinza">' +
+    '<label class="pergunta">Quantas peças?</label>' +
+    '<input id="itEditQtd" type="number" value="' + it.quantity + '" min="1">' +
+    '<label>Preço unitário (R$)</label><input id="itEditPreco" type="number" step="0.01" value="' + it.unit_price + '">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="salvarEdicaoItem(\'' + itemId + '\', \'' + orderId + '\', \'' + it.line_type + '\')">Salvar</button>' +
+    '</div>'
+  );
+}
+
+async function salvarEdicaoItem(itemId, orderId, tipo) {
+  const quantity = parseInt(document.getElementById('itEditQtd').value, 10) || 1;
+  const unit_price = parseFloat(document.getElementById('itEditPreco').value);
+  if (isNaN(unit_price)) { toast('Preenche o preço.'); return; }
+  const payload = {
+    quantity, unit_price, updated_at: new Date().toISOString(),
+    notes: document.getElementById('itEditNotas').value.trim() || null,
+  };
+  if (tipo === 'catalog') {
+    payload.requested_filament_color_id = document.getElementById('itEditCor').value || null;
+  } else {
+    const desc = document.getElementById('itEditDescricao').value.trim();
+    if (!desc) { toast('Descreve o item personalizado.'); return; }
+    payload.custom_description = desc;
+    payload.custom_reference_link = document.getElementById('itEditLink').value.trim() || null;
+  }
+  const { error } = await SUPA.from('order_line_items').update(payload).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  await recalcularTotalPedido(orderId);
+  toast('Item atualizado.');
   await renderPedidoDetalhe(orderId);
 }
 
