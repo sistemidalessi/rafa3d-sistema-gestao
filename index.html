@@ -2960,6 +2960,9 @@ async function abrirEditarItem(itemId, orderId) {
     '<label class="pergunta">Quantas peças?</label>' +
     '<input id="itEditQtd" type="number" value="' + it.quantity + '" min="1">' +
     '<label>Preço unitário (R$)</label><input id="itEditPreco" type="number" step="0.01" value="' + it.unit_price + '">' +
+    '<label class="pergunta">Teve algum gasto a mais depois, que você não tinha contado?</label>' +
+    dicaCampo('Ex: uma argola e corrente que faltou no chaveiro, uma embalagem de cortesia que o cliente pediu depois de já ter pago. Não muda o preço que já foi combinado, mas conta pra você saber o quanto sobrou de verdade.') +
+    '<input id="itEditCustoExtra" type="number" step="0.01" min="0" value="' + (it.post_sale_extra_cost || 0) + '">' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="salvarEdicaoItem(\'' + itemId + '\', \'' + orderId + '\', \'' + it.line_type + '\')">Salvar</button>' +
@@ -2974,6 +2977,7 @@ async function salvarEdicaoItem(itemId, orderId, tipo) {
   const payload = {
     quantity, unit_price, updated_at: new Date().toISOString(),
     notes: document.getElementById('itEditNotas').value.trim() || null,
+    post_sale_extra_cost: parseFloat(document.getElementById('itEditCustoExtra').value) || null,
   };
   if (tipo === 'catalog') {
     payload.requested_filament_color_id = document.getElementById('itEditCor').value || null;
@@ -5480,6 +5484,12 @@ function calcularMargemFamilia(principal, reimpressoes, ctx) {
   const receita = Number(principal.unit_price || 0) * quantidade;
   const base = { receita: receita, quantidade: quantidade, reimpressoes: reimpressoes.length };
 
+  // Gasto descoberto DEPOIS da venda (patch-41) — não mexe no preço que
+  // já foi combinado/pago, mas ainda saiu do bolso, então soma em cima
+  // de qualquer fonte de custo abaixo. Nunca fica de fora, nem quando
+  // não tem nenhuma outra fonte de custo pra essa venda.
+  const custoPosVenda = membros.reduce((s, m) => s + (Number(m.post_sale_extra_cost) || 0), 0);
+
   let materialReal = 0;
   let temBaixaDeEstoque = false;
   membros.forEach((m) => {
@@ -5502,15 +5512,18 @@ function calcularMargemFamilia(principal, reimpressoes, ctx) {
     const pecas = membros.reduce((soma, m) => soma + Number(m.quantity || 1), 0);
     const custoNaoMaterial = custoReceita ? (custoReceita.custoMaquina + custoReceita.custoPintura + custoReceita.custoExtra) * pecas : 0;
     return Object.assign(base, {
-      custo: materialReal + custoNaoMaterial,
+      custo: materialReal + custoNaoMaterial + custoPosVenda,
       fonte: custoReceita ? 'real' : 'real_parcial',
     });
   }
   if (principal.unit_cost_estimate != null) {
-    return Object.assign(base, { custo: Number(principal.unit_cost_estimate) * quantidade, fonte: 'estimado' });
+    return Object.assign(base, { custo: Number(principal.unit_cost_estimate) * quantidade + custoPosVenda, fonte: 'estimado' });
   }
   if (custoReceita) {
-    return Object.assign(base, { custo: custoReceita.total * quantidade, fonte: 'receita' });
+    return Object.assign(base, { custo: custoReceita.total * quantidade + custoPosVenda, fonte: 'receita' });
+  }
+  if (custoPosVenda > 0) {
+    return Object.assign(base, { custo: custoPosVenda, fonte: 'real_parcial' });
   }
   return Object.assign(base, { custo: null, fonte: 'sem_custo' });
 }
