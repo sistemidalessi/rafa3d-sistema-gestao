@@ -120,9 +120,25 @@ código uma vez só, ao iniciar** — depois de um `git pull` ele segue
 rodando a versão velha sem avisar nada, e o sintoma é um defeito já
 consertado voltando do túmulo.
 
-## 🔴 O catálogo vende 155 peças que o sistema não sabe imprimir
+## ✔️ DECIDIDO: o catálogo fica como está, com os 155 sem arquivo
 
-Medido em 27/08, e é a raiz de quase toda a confusão do dia:
+**Decisão do Anderson em 28/08: não mexer.** O catálogo continua
+vendendo tudo, e cada peça é preparada quando é vendida — é o caminho 1
+abaixo. **Não proponha desativar produto de novo**; a pergunta já foi
+feita e respondida.
+
+O que isso implica, e é normal, não é defeito:
+
+- **"Primeira vez — fica sabido no Terminei"** na coluna de tempo da
+  Fila é o estado esperado da maioria das peças.
+- **⚠️ "pegar o arquivo da peça"** na aba Pedidos é o primeiro passo
+  normal de quase toda venda nova, não um alerta de erro.
+- O sistema aprende sozinho: a primeira impressão de cada peça grava as
+  horas reais na receita pelo "Terminei", e daí em diante ela tem tempo.
+
+O resto desta seção fica como registro do porquê.
+
+Medido em 27/08, e é a raiz de quase toda a confusão daquele dia:
 
 ```
 166 produtos ativos    11 com arquivo 3D    10 com colinha    9 com ficha de custo
@@ -133,16 +149,12 @@ não tem arquivo, não tem colinha e não sabe o tempo — e todo esse
 trabalho cai de uma vez na tela do pedido. Não era a tela que estava
 confusa: era a venda acontecendo antes do preparo.
 
-Isso não é bug, é decisão de negócio, e é do Anderson:
+Os dois caminhos possíveis eram:
 
 1. **Deixar como está** e preparar peça por peça conforme vende (é o que
-   o "Preparar pra imprimir" agora organiza).
-2. **Desativar no catálogo** o que não tem arquivo, e ir ativando à
-   medida que prepara.
-
-Enquanto for a opção 1, "sem tempo estimado" na Fila é o normal, não é
-defeito — e a primeira impressão de cada peça ensina o sistema, porque o
-"Terminei" grava as horas reais na receita.
+   o "Preparar pra imprimir" organiza). ← **escolhido**
+2. Desativar no catálogo o que não tem arquivo, e ir ativando à medida
+   que prepara. ← descartado
 
 ## Preparar pra imprimir — 27/08
 
