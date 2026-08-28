@@ -1897,6 +1897,60 @@ function resumoItensPedido(itensDoPedido) {
   return escapeHtml(nome) + (resto > 0 ? ' <span style="color:var(--muted); font-size:11px;">+' + resto + '</span>' : '');
 }
 
+// Semáforo do pedido: dá pra imprimir ou falta coisa?
+//
+// A lista de pedidos não dizia nada sobre preparo — pra saber se uma
+// venda estava pronta era preciso abrir o pedido, abrir cada item e
+// contar os passos. Agora a cor responde de longe, e o texto diz o que
+// falta em palavra, não em código.
+function preparoDoPedido(itensDoPedido) {
+  // Só peça entregue ou cancelada sai da conta. Estar na fila NÃO
+  // significa estar preparada: antes deste fluxo qualquer peça entrava
+  // na Fila só por mudar de status, e é por isso que hoje existem peças
+  // imprimindo sem arquivo e sem colinha. Se eu ignorasse quem já está
+  // na fila, os pedidos do Marco e do Bernardo apareceriam VERDES com o
+  // Pikachu e o Cine-Companion sem arquivo nenhum — um semáforo que
+  // mente é pior que semáforo nenhum.
+  const vivos = itensDoPedido.filter((it) =>
+    it.line_status !== 'entregue' && it.line_status !== 'cancelado');
+  if (!vivos.length) return { nivel: 'ok', texto: 'tudo pronto' };
+
+  let semPreco = 0, semArquivo = 0, semColinha = 0, semFatiador = 0, foraDaFila = 0;
+  vivos.forEach((it) => {
+    if (it.line_status === 'orcamento_pendente') { semPreco++; return; }
+    const naFila = FILA_PRONTAS.includes(it.line_status);
+    const p = passosDoPreparo(it);
+    if (!p[0].pronto) { semArquivo++; return; }
+    if (!p[1].pronto) { semColinha++; return; }
+    // Peça já na fila não é cobrada de "abrir no fatiador": ela já está
+    // sendo trabalhada, e insistir viraria alerta permanente. Fora da
+    // fila a cobrança existe pra bater com a trava da janela de
+    // preparar — senão a lista diria "pra mandar pra fila" e a janela
+    // diria "falta abrir no fatiador", cada uma pedindo uma coisa.
+    if (naFila) return;
+    if (!p[2].pronto) { semFatiador++; return; }
+    foraDaFila++;
+  });
+
+  const partes = [];
+  if (semPreco) partes.push(semPreco + ' sem preço');
+  if (semArquivo) partes.push(semArquivo + ' sem arquivo');
+  if (semColinha) partes.push(semColinha + ' sem colinha');
+  if (semFatiador) partes.push(semFatiador + ' pra abrir no fatiador');
+  if (foraDaFila) partes.push(foraDaFila + ' pra mandar pra fila');
+  if (!partes.length) return { nivel: 'ok', texto: 'tudo pronto' };
+  return { nivel: 'falta', texto: listaEmFrase(partes) };
+}
+
+function seloDoPreparo(p) {
+  const cor = p.nivel === 'ok'
+    ? { bg: '#e9f7ef', fg: '#1f6b3b', b: '#b7e4c7', icone: '✅' }
+    : { bg: '#fff6e5', fg: '#8a5b00', b: '#ffd894', icone: '⚠️' };
+  return '<span style="display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;'
+    + ' background:' + cor.bg + '; color:' + cor.fg + '; border:1px solid ' + cor.b + ';">'
+    + cor.icone + ' ' + escapeHtml(p.texto) + '</span>';
+}
+
 async function renderPedidos() {
   if (pedidoDetalheId) return renderPedidoDetalhe(pedidoDetalheId);
 
@@ -1906,8 +1960,11 @@ async function renderPedidos() {
   const statuses = await q(SUPA.from('orders_payment_status').select('*'));
   const statusById = {};
   statuses.forEach((s) => { statusById[s.order_id] = s; });
+  // Traz também os campos de preparo (do produto e da própria linha),
+  // pra lista poder dizer o que falta em cada pedido sem abrir um por
+  // um — que era a reclamação: "e quais são essas peças?".
   const itens = await q(SUPA.from('order_line_items')
-    .select('order_id, line_status, line_type, custom_description, products(name)').order('created_at'));
+    .select('id, order_id, line_status, line_type, custom_description, model_file_path, ai_slicing_tips, open_slicer_status, products(name, model_file_path, ai_slicing_tips, open_slicer_status)').order('created_at'));
   const itensPorPedido = {};
   itens.forEach((it) => {
     if (!itensPorPedido[it.order_id]) itensPorPedido[it.order_id] = [];
@@ -1931,7 +1988,10 @@ async function renderPedidos() {
   if (listaExibida.length === 0) {
     html += '<div class="empty">' + (orders.length === 0 ? 'Nenhum pedido ainda.' : 'Nenhum pedido em andamento — todos já foram entregues.') + '</div>';
   } else {
-    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>Tipo</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
+    // "Tipo" (catálogo/projeto) saiu: já dá pra ver isso lendo o item, e
+    // o lugar valia mais pra "Falta", que responde a pergunta que se faz
+    // olhando a lista — esta venda dá pra imprimir ou não?
+    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>Falta</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
     listaExibida.forEach((o) => {
       const ps = statusById[o.id];
       const itensDoPedido = itensPorPedido[o.id] || [];
@@ -1940,7 +2000,7 @@ async function renderPedidos() {
       html += '<td>' + escapeHtml(o.customers ? o.customers.name : (o.customer_name || '—')) + '</td>';
       html += '<td>' + escapeHtml(o.order_number || o.id.slice(0, 8)) + '<br><span style="color:var(--muted);font-size:11px;">' + fmtDate(o.created_at) + '</span></td>';
       html += '<td>' + resumoItensPedido(itensDoPedido) + '</td>';
-      html += '<td>' + escapeHtml(ORDER_TYPE_LABELS[o.order_type] || o.order_type) + '</td>';
+      html += '<td>' + seloDoPreparo(preparoDoPedido(itensDoPedido)) + '</td>';
       html += '<td>' + (statusPedido ? selo(statusPedido, LINE_STATUS_LABELS[statusPedido]) : '<span style="color:var(--muted); font-size:11px;">sem peça</span>') + '</td>';
       html += '<td>' + fmtMoney(o.total_amount) + '</td>';
       html += '<td>' + (ps ? selo(ps.payment_status, PAYMENT_STATUS_LABELS[ps.payment_status]) : '—') + '</td>';
@@ -3662,8 +3722,9 @@ async function renderFila() {
   // dizendo onde elas estão. Sem isso, tirar as não-preparadas da Fila
   // seria trocar "lista confusa" por "peça esquecida".
   const esperando = await q(SUPA.from('order_line_items')
-    .select('id')
-    .in('line_status', ['recebido', 'orcamento_aprovado'])) || [];
+    .select('id, order_id, line_type, custom_description, line_status, orders(order_number, customer_name, customers(name)), products(name)')
+    .in('line_status', ['recebido', 'orcamento_aprovado'])
+    .order('created_at')) || [];
   const impressoras = await getImpressorasSafe();
   const receitas = await getReceitas();
   const receitasPorProduto = {};
@@ -3765,11 +3826,24 @@ async function renderFila() {
   if (!grupos.length) {
     html += '<div class="card"><div class="empty">Não tem nada pra imprimir agora.</div></div>';
   }
+  // Dizer "2 peças estão sendo preparadas" sem dizer QUAIS obriga a
+  // caçar de pedido em pedido. Então diz o nome, de quem é, e leva
+  // direto pro passo a passo daquela peça.
   if (esperando.length) {
-    html += '<div class="card" style="background:#f7f9fc;"><div style="font-size:13px; color:var(--muted); line-height:1.6;">'
-      + '📋 <strong>' + pecas(esperando.length) + '</strong> ainda estão sendo preparadas e não entraram na fila. '
-      + 'Elas ficam na aba <strong>Pedidos</strong> até estarem prontas pra imprimir.'
-      + '</div></div>';
+    html += '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">';
+    html += '<strong style="color:#8a5b00;">📋 ' + pecas(esperando.length) + ' ainda não dá pra imprimir</strong>';
+    html += '<div style="color:#8a5b00; font-size:12px; margin-top:2px;">Falta preparar. Clique em <strong>Preparar</strong> pra ver o que falta em cada uma.</div>';
+    html += '<div class="tabela-rola" style="margin-top:10px;"><table><tr><th>Peça</th><th>De quem</th><th></th></tr>';
+    esperando.forEach((it) => {
+      const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+      const o = it.orders || {};
+      const dono = (o.customers && o.customers.name) || o.customer_name || 'Sem nome';
+      html += '<tr><td><strong>' + escapeHtml(nome || '—') + '</strong>'
+        + '<br><span style="color:var(--muted); font-size:10.5px;">' + escapeHtml(o.order_number || '') + '</span></td>';
+      html += '<td>' + escapeHtml(dono) + '</td>';
+      html += '<td><button class="btn" onclick="abrirPreparar(\'' + it.id + '\', \'' + it.order_id + '\')">🔧 Preparar</button></td></tr>';
+    });
+    html += '</table></div></div>';
   }
   el.innerHTML = html;
 }
