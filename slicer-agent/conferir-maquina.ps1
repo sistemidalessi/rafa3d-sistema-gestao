@@ -119,12 +119,22 @@ $rodando = Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" -ErrorActio
 if ($rodando) { Ok "Agente rodando agora" }
 else { Write-Host "  [aviso] Agente parado - de dois cliques em slicer-agent\start-hidden.vbs" -ForegroundColor DarkGray }
 
+# --- vigia (religa sozinho se o agente cair) ---------------------------
+# Em 28/08/2026 o agente ficou mais de 2 horas parado no meio do dia
+# sem ninguem perceber, ate um pedido de colinha nao sair da fila. Um
+# atalho em shell:startup so ajuda se o computador reiniciar; o vigia
+# confere a cada 5 minutos, o dia inteiro.
+$vigia = & schtasks.exe /Query /TN "Rafa3D - Vigia do Agente" 2>$null
+if ($LASTEXITCODE -eq 0) { Ok "Vigia instalado (religa o agente sozinho se ele cair)" }
+else {
+  Falta "Vigia nao instalado - o agente so volta se alguem perceber e religar na mao"
+  $faltando += "powershell -ExecutionPolicy Bypass -File slicer-agent\instalar-vigia.ps1"
+}
+
 # --- resumo -----------------------------------------------------------
 Write-Host ""
 if ($faltando.Count -eq 0) {
   Write-Host "Esta maquina esta pronta." -ForegroundColor Green
-  Write-Host "Para o agente subir junto com o Windows, coloque um atalho do"
-  Write-Host "start-hidden.vbs em:  Win+R  ->  shell:startup"
 } else {
   Write-Host "Faca isto, nesta ordem:" -ForegroundColor Yellow
   Write-Host ""

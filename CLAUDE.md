@@ -19,9 +19,9 @@ powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
 ```
 
 Ele confere Node, dependências, `.env` (inclusive se a chave está preenchida),
-Bambu Studio e se o agente está de pé — e imprime os comandos do que faltar, na
-ordem. É PowerShell e não Node de propósito: numa máquina nova o Node pode ser
-justamente o que falta.
+Bambu Studio, se o agente está de pé e se o vigia que religa ele sozinho está
+instalado — e imprime os comandos do que faltar, na ordem. É PowerShell e não
+Node de propósito: numa máquina nova o Node pode ser justamente o que falta.
 
 Sem isso, o sintoma é confuso: o sistema abre e funciona normal, mas todo botão
 de fatiador e de IA fica esperando na fila pra sempre, sem erro nenhum na tela.
@@ -123,6 +123,18 @@ sai dali.
   "falhou" e a conclusão quase foi de que o código não funcionava.
   Parar e subir: `Stop-Process` no `node.exe` cuja linha de comando tem
   `agent.js`, depois dois cliques em `start-hidden.vbs`.
+
+- **O agente pode cair no meio do dia, sem erro nenhum no `agent.log`.**
+  Em 28/08/2026 ficou mais de 2h parado (o computador continuava ligado
+  e em uso) até um pedido de colinha não sair da fila — sem stack trace,
+  sem mensagem de erro, só silêncio. `slicer_agents.last_seen_at` é o
+  jeito de confirmar: se está velho, ele não está rodando, ponto. Por
+  isso existe `instalar-vigia.ps1` (patch de infraestrutura, não SQL) —
+  registra uma Tarefa Agendada do Windows via `schtasks.exe` (não o
+  módulo `ScheduledTasks`/`Register-ScheduledTask`: esse devolveu
+  "Acesso negado" mesmo sem precisar de admin de verdade) que confere a
+  cada 5 minutos e religa sozinho. Rode uma vez por máquina; o
+  `conferir-maquina.ps1` avisa se falta.
 
 - **`GRANT` é separado de RLS, e vale até pro `service_role`.** Essa mesma
   pegadinha derrubou os patches 06, 09, 17, 19, 26, 34, 35 e 43: sem `grant`, a consulta nem

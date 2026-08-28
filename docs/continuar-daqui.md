@@ -9,10 +9,11 @@ Onde as coisas pararam em **27/08/2026**.
 ## ⚠️ Falta atualizar o computador do Rafa de novo — 28/08
 
 Ele só é usado à noite, então isso fica pendente até lá — **não deixe
-passar batido**. Rodar nele:
+passar batido**. Rodar nele, nesta ordem:
 
 ```
 powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
+powershell -ExecutionPolicy Bypass -File slicer-agent\instalar-vigia.ps1
 ```
 
 Motivo mais grave desta vez: o prompt da colinha (`agent.js`,
@@ -23,9 +24,17 @@ mesa no meio). Enquanto o computador do Rafa estiver com o prompt
 velho, "Pedir a colinha" pode cair nele (não tem dono fixo) e voltar a
 recomendar sem brim pra esse mesmo tipo de peça, silenciosamente.
 
-O script de cima é seguro de rodar mesmo se já estiver atualizado (ele
+O primeiro script é seguro de rodar mesmo se já estiver atualizado (ele
 mesmo avisa "já estava atualizado" e não faz nada a mais nesse caso) —
 não precisa checar antes, só rodar.
+
+O segundo é novo (28/08): no computador do Anderson o agente ficou mais
+de 2h parado no meio do dia, sem erro nenhum no log, até um pedido de
+colinha não sair da fila. `instalar-vigia.ps1` registra uma Tarefa
+Agendada do Windows que confere a cada 5 minutos se o agente está
+rodando e religa sozinho se não estiver — ver
+[`CLAUDE.md`](../CLAUDE.md) ("O agente pode cair no meio do dia...").
+Também é seguro rodar de novo se já estiver instalado.
 
 ## ✅ As duas máquinas estavam com o código de 27/08
 
