@@ -382,6 +382,15 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   'Olhe a imagem desta peça (miniatura renderizada de dentro do arquivo de projeto) e responda em DUAS partes, ' +
   'NESSA ORDEM (o bloco de números primeiro é importante — se sua resposta for cortada por tamanho, o que mais ' +
   'importa precisa ter saído primeiro):\n\n' +
+  'REGRA DE SEGURANÇA PRA "brim_type" (leia antes de decidir): brim sem necessidade custa quase nada — um pouco ' +
+  'de filamento e um corte a mais na base. Peça que solta da mesa no meio da impressão perde a peça inteira e todo ' +
+  'o filamento já gasto até aquele ponto — é o pior desfecho possível, muito pior que um brim desnecessário. Na ' +
+  'dúvida, prefira brim. Só use "no_brim" quando a base de contato for LARGA e o formato for estável (ex: um bloco ' +
+  'maciço, uma peça baixa e larga). Se a peça tiver QUALQUER parede fina e alta que nasce da base sozinha — ' +
+  'divisória, aba, orelha, qualquer saliência vertical estreita — ela é um ponto de empenamento independente do ' +
+  'resto da peça, mesmo que a base geral pareça grande: essa parede solta primeiro, e puxa a peça inteira atrás ' +
+  'dela. Nesse caso o brim tem que cobrir a base inteira (nunca "no_brim"), e vale considerar "auto_brim" em vez ' +
+  'de só nas bordas externas, porque a instabilidade nasce das paredes internas, não só do contorno.\n\n' +
   '1) Primeiro, só o bloco de código JSON abaixo, com os MESMOS valores que você vai decidir, preenchido — nada de ' +
   'texto antes dele, com exatamente estas chaves, sem inventar chave nova nem omitir nenhuma (se não precisar de ' +
   'suporte, ainda assim preencha support_enable como false e os outros campos de suporte com um valor qualquer, ' +
@@ -416,7 +425,8 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '## Suporte\nPrecisa? (sim/não) — Tipo (normal ou árvore) e por quê — Densidade (%) — Distância Z do topo/base ' +
   '(mm) — Ângulo limite de overhang (°) — Onde exatamente na peça (descreva a região)\n\n' +
   '## Aderência à mesa\nBrim, raft ou nenhum — Largura/altura (mm) e número de loops se for brim — Por quê, dado o ' +
-  'formato de contato da peça com a mesa\n\n' +
+  'formato de contato da peça com a mesa, e se tem alguma parede fina/divisória que nasce sozinha da base (essas ' +
+  'soltam primeiro e puxam o resto — nesse caso não vale "sem brim" mesmo com a base geral parecendo estável)\n\n' +
   '## Orientação sugerida\nComo posicionar na mesa e por quê (reduz suporte, melhora acabamento em superfície ' +
   'visível, evita peça soltar)\n\n' +
   '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
