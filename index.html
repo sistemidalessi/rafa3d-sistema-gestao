@@ -1595,8 +1595,8 @@ async function solicitarAnaliseIAProjeto(lineItemId) {
   if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
 }
 
-async function solicitarAbrirFatiadorProjeto(lineItemId) {
-  const pc = await garantirComputador(() => solicitarAbrirFatiadorProjeto(lineItemId));
+async function solicitarAbrirFatiadorProjeto(lineItemId, voltarPara) {
+  const pc = await garantirComputador(() => solicitarAbrirFatiadorProjeto(lineItemId, voltarPara));
   if (!pc) return;
   const { error } = await SUPA.from('order_line_items').update({
     open_slicer_status: 'queued', open_slicer_requested_at: new Date().toISOString(),
@@ -1604,6 +1604,7 @@ async function solicitarAbrirFatiadorProjeto(lineItemId) {
   }).eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Abrindo no fatiador — o agente local faz isso em instantes.');
+  if (voltarPara === 'fila') { await renderFila(); return; }
   await renderProjetos();
   if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
 }
@@ -3874,7 +3875,7 @@ async function renderFila() {
   el.innerHTML = '<div class="empty">Carregando...</div>';
 
   const items = await q(SUPA.from('order_line_items')
-    .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name)')
+    .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name, model_file_path, open_slicer_status, open_slicer_error)')
     .in('line_status', FILA_PRONTAS)
     .order('created_at'));
 
@@ -4202,10 +4203,36 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
     // "Falta dar o preço" pra quem só queria dizer que acabou.
     html += '<td>' + selo(it.line_status, LINE_STATUS_LABELS[it.line_status]) + '</td>';
     html += '<td class="row-actions">';
+    // O "abrir no fatiador" antes só existia na aba Pedidos — pra
+    // mandar imprimir era preciso sair da Fila, achar o pedido de novo
+    // e voltar. Se o arquivo já está pronto (passou pelo "Preparar"),
+    // o botão de abrir mora aqui também, porque é aqui que se decide
+    // o que vai pra impressora agora.
+    const fonteArquivo = fonteDoPreparo(it);
+    if (fonteArquivo.model_file_path) {
+      const cat = it.line_type === 'catalog';
+      const abrindo = fonteArquivo.open_slicer_status === 'queued' || fonteArquivo.open_slicer_status === 'processing';
+      if (abrindo) {
+        html += '<button class="btn ghost" disabled>Abrindo…</button>';
+      } else {
+        html += '<button class="btn ghost" onclick="' + (cat
+          ? 'solicitarAbrirFatiador(\'' + it.product_id + '\', \'fila\')'
+          : 'solicitarAbrirFatiadorProjeto(\'' + it.id + '\', \'fila\')') + '">🖥️ Abrir no fatiador</button>';
+      }
+    }
     if (it.line_status === 'fila_impressao') {
       html += '<button class="btn" onclick="mudarStatusFilaItem(\'' + it.id + '\', \'imprimindo\')">▶️ Comecei</button>';
     }
-    html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">✅ Terminei</button>';
+    // Depois do "Terminei" a peça vira "Dando o acabamento" de propósito
+    // (nem toda peça sai pronta da impressora) — mas sem um botão daqui
+    // pra frente ela ficava encalhada na Fila pra sempre, e "Terminei"
+    // continuava clicável, prometendo pedir peso e rolo de novo. Agora
+    // quem já imprimiu só tem o botão que resolve o que falta.
+    if (it.line_status === 'pos_processamento') {
+      html += '<button class="btn" onclick="marcarAcabamentoPronto(\'' + it.id + '\')">📦 Pronto, saiu da fila</button>';
+    } else {
+      html += '<button class="btn ghost" onclick="openConcluirImpressao(\'' + it.id + '\')">✅ Terminei</button>';
+    }
     if (it.line_status === 'falhou_reimprimir') {
       html += '<button class="btn ghost" onclick="reimprimirItem(\'' + it.id + '\')">Imprimir de novo</button>';
     } else {
@@ -4243,6 +4270,20 @@ async function mudarStatusFilaItem(itemId, novoStatus) {
   const { error } = await SUPA.from('order_line_items').update({ line_status: novoStatus, updated_at: new Date().toISOString() }).eq('id', itemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Status atualizado.');
+  await renderFila();
+}
+
+// Fecha o que o "Terminei" abre: uma peça "Dando o acabamento" precisa
+// de algum jeito de sair da Fila sem precisar ir na aba Pedidos. Não
+// mexe em pagamento nem confere o pedido inteiro — quem faz isso pro
+// pedido todo, com o aviso de cobrança, é o "✅ Pedido pronto" de lá.
+// Aqui é só "esta peça, na bancada, já terminou" e some da lista.
+async function marcarAcabamentoPronto(itemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ line_status: 'embalado', updated_at: new Date().toISOString() })
+    .eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Peça pronta — saiu da fila.');
   await renderFila();
 }
 
@@ -5222,6 +5263,10 @@ async function redesenharDepoisDaFila(voltarPara, productId) {
   // novo, que é exatamente o vai-e-vem que esta tela veio acabar.
   if (voltarPara === 'preparar' && _prepararItemId) {
     await desenharPreparar();
+    return;
+  }
+  if (voltarPara === 'fila') {
+    await renderFila();
     return;
   }
   if (voltarPara && voltarPara.indexOf('pedido:') === 0) {
