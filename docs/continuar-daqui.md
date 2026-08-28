@@ -89,6 +89,51 @@ código uma vez só, ao iniciar** — depois de um `git pull` ele segue
 rodando a versão velha sem avisar nada, e o sintoma é um defeito já
 consertado voltando do túmulo.
 
+## 🔴 O catálogo vende 155 peças que o sistema não sabe imprimir
+
+Medido em 27/08, e é a raiz de quase toda a confusão do dia:
+
+```
+166 produtos ativos    11 com arquivo 3D    10 com colinha    9 com ficha de custo
+```
+
+O catálogo foi montado com **fotos**. Quando alguém compra, o sistema
+não tem arquivo, não tem colinha e não sabe o tempo — e todo esse
+trabalho cai de uma vez na tela do pedido. Não era a tela que estava
+confusa: era a venda acontecendo antes do preparo.
+
+Isso não é bug, é decisão de negócio, e é do Anderson:
+
+1. **Deixar como está** e preparar peça por peça conforme vende (é o que
+   o "Preparar pra imprimir" agora organiza).
+2. **Desativar no catálogo** o que não tem arquivo, e ir ativando à
+   medida que prepara.
+
+Enquanto for a opção 1, "sem tempo estimado" na Fila é o normal, não é
+defeito — e a primeira impressão de cada peça ensina o sistema, porque o
+"Terminei" grava as horas reais na receita.
+
+## Preparar pra imprimir — 27/08
+
+A linha do item no pedido tinha **cinco botões** do mesmo tamanho, sem
+ordem. Virou **um**: `🔧 Preparar pra imprimir (1 de 3)`, que abre os
+passos numerados com visto no que já está pronto, e só deixa clicar o
+próximo possível — sem arquivo, "pedir colinha" e "abrir no fatiador"
+ficam apagados em vez de sumir (sumir faria o passo parecer opcional).
+
+O quarto passo é o que **faltava no sistema inteiro**: `Mandar pra fila`
+como ato explícito, liberado só com os três prontos. Antes a peça caía
+na Fila só por ter um certo status, sem ninguém garantir que dava pra
+imprimir — e a Fila enchia de peça sem arquivo e sem tempo. O dono tem
+uma saída discreta ("mandar assim mesmo"); travar de vez viraria beco
+sem saída.
+
+Editar, personalizar e remover foram pro `⋯ Mais`.
+
+⚠️ **Consequência:** peça em "recebido" ou "preço combinado" **não
+aparece mais na Fila** — ela fica em Pedidos até alguém mandar. A Fila
+mostra uma linha no rodapé dizendo quantas estão nesse estado.
+
 ## A Fila agora agrupa por cliente — 27/08
 
 Antes a Fila era organizada por impressora, e uma encomenda de três
