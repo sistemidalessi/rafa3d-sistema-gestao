@@ -2444,7 +2444,12 @@ async function mandarPraFila(itemId) {
     .eq('id', itemId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Pronto! A peça entrou na fila de impressão.');
-  await desenharPreparar();
+  // Chamado de dois lugares: de dentro da janela de preparar (que se
+  // redesenha no lugar) e direto do cartão da Fila (onde não há janela
+  // nenhuma — aí é a Fila que precisa se redesenhar, senão a peça
+  // continuaria listada como fora da fila depois de entrar nela).
+  if (_prepararItemId) await desenharPreparar();
+  else await renderFila();
 }
 
 
@@ -3762,7 +3767,7 @@ async function renderFila() {
   // dizendo onde elas estão. Sem isso, tirar as não-preparadas da Fila
   // seria trocar "lista confusa" por "peça esquecida".
   const esperando = await q(SUPA.from('order_line_items')
-    .select('id, order_id, line_type, custom_description, line_status, orders(order_number, customer_name, customers(name)), products(name)')
+    .select('id, order_id, line_type, custom_description, line_status, model_file_path, ai_slicing_tips, open_slicer_status, orders(order_number, customer_name, customers(name)), products(name, model_file_path, ai_slicing_tips, open_slicer_status)')
     .in('line_status', ['recebido', 'orcamento_aprovado'])
     .order('created_at')) || [];
   const impressoras = await getImpressorasSafe();
@@ -3869,19 +3874,33 @@ async function renderFila() {
   // Dizer "2 peças estão sendo preparadas" sem dizer QUAIS obriga a
   // caçar de pedido em pedido. Então diz o nome, de quem é, e leva
   // direto pro passo a passo daquela peça.
+  // Cada peça diz o que falta NELA, com as mesmas palavras da aba
+  // Pedidos. Antes o cartão dizia "falta preparar" pra todas e mandava
+  // clicar em Preparar — e quem clicava numa peça já pronta via os três
+  // passos verdes e nenhuma explicação: o que faltava era só apertar
+  // "mandar pra fila", que é justamente o que o cartão não dizia.
+  //
+  // Peça pronta ganha o botão que RESOLVE, não o que explica: um clique
+  // e ela entra na fila, sem abrir janela pra ver três vistos verdes.
   if (esperando.length) {
     html += '<div class="card" style="background:#fff6e5; border:1px solid #ffd894;">';
-    html += '<strong style="color:#8a5b00;">📋 ' + pecas(esperando.length) + ' ainda não dá pra imprimir</strong>';
-    html += '<div style="color:#8a5b00; font-size:12px; margin-top:2px;">Falta preparar. Clique em <strong>Preparar</strong> pra ver o que falta em cada uma.</div>';
-    html += '<div class="tabela-rola" style="margin-top:10px;"><table><tr><th>Peça</th><th>De quem</th><th></th></tr>';
+    html += '<strong style="color:#8a5b00;">📋 ' + pecas(esperando.length) + ' fora da fila</strong>';
+    html += '<div style="color:#8a5b00; font-size:12px; margin-top:2px;">Elas não vão pra impressora enquanto estiverem aqui.</div>';
+    html += '<div class="tabela-rola" style="margin-top:10px;"><table><tr><th>Peça</th><th>De quem</th><th>O que falta</th><th></th></tr>';
     esperando.forEach((it) => {
       const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
       const o = it.orders || {};
       const dono = (o.customers && o.customers.name) || o.customer_name || 'Sem nome';
+      const acao = proximaAcaoDaPeca(it);
+      const def = ACOES_DA_PECA[acao] || ACOES_DA_PECA.mandar;
       html += '<tr><td><strong>' + escapeHtml(nome || '—') + '</strong>'
         + '<br><span style="color:var(--muted); font-size:10.5px;">' + escapeHtml(o.order_number || '') + '</span></td>';
       html += '<td>' + escapeHtml(dono) + '</td>';
-      html += '<td><button class="btn" onclick="abrirPreparar(\'' + it.id + '\', \'' + it.order_id + '\')">🔧 Preparar</button></td></tr>';
+      html += '<td>' + seloDoPreparo({ tom: def.tom, texto: def.texto, quantas: 0 }) + '</td>';
+      html += '<td>' + (acao === 'mandar'
+        ? '<button class="btn" onclick="mandarPraFila(\'' + it.id + '\')">🖨️ Mandar pra imprimir</button>'
+        : '<button class="btn" onclick="abrirPreparar(\'' + it.id + '\', \'' + it.order_id + '\')">🔧 Resolver</button>')
+        + '</td></tr>';
     });
     html += '</table></div></div>';
   }
