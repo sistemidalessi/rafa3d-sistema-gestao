@@ -134,6 +134,64 @@ Editar, personalizar e remover foram pro `⋯ Mais`.
 aparece mais na Fila** — ela fica em Pedidos até alguém mandar. A Fila
 mostra uma linha no rodapé dizendo quantas estão nesse estado.
 
+## A tela fala o que fazer, não o que o banco guarda — 27/08
+
+Três rodadas de "ainda está confuso" até chegar aqui. O que mudou de
+princípio: **a tela diz a próxima ação, em português, não o estado
+interno.**
+
+- A coluna da aba Pedidos era "Falta" e dizia `1 pra mandar pra fila`,
+  `1 sem arquivo` — e listava três coisas ao mesmo tempo, quando só a
+  primeira dá pra fazer agora. Virou **"O que fazer agora"**: uma frase
+  no infinitivo (`pegar o arquivo da peça`, `pedir a colinha`, `mandar
+  pra imprimir`, `entregar pro cliente`), a mais atrasada das peças do
+  pedido, com contagem só quando é mais de uma.
+- Cores por tipo de ação: 🟡 trava, 🔵 dá pra fazer agora, ⚪ a máquina
+  está trabalhando, 🟢 acabou.
+- O cartão do rodapé da Fila dizia "falta preparar" e mandava clicar em
+  Preparar — só que aquelas peças **não tinham nada faltando**: os três
+  passos apareciam verdes e o que faltava era apertar "mandar pra fila".
+  Agora cada linha mostra a própria falta, e peça pronta ganha um botão
+  que **resolve num clique** em vez de abrir janela.
+
+⚠️ **Dois bugs desta rodada valem como aviso permanente:**
+
+1. **Semáforo que mente é pior que semáforo nenhum.** A primeira versão
+   ignorava as peças já na fila, e os pedidos do Marco e do Bernardo
+   apareciam VERDES com peça sem arquivo nenhum. Estar na fila não
+   significa estar preparada — peça entrou na Fila por anos só mudando
+   de status. Só `entregue` e `cancelado` saem da conta.
+2. **`embalado` já passou da impressão.** Contar tudo que não está na
+   fila como "falta mandar pra fila" fez o pedido do Batista, embalado,
+   pedir uma coisa impossível. E ele continua na lista porque pedido só
+   sai quando está **entregue** — embalado é "pronto pra sair".
+
+## Cabeçalho que ordena, como no Excel — 27/08
+
+Cinco telas: Pedidos, Produtos, Clientes, Filamentos e Financeiro.
+Clica no título, organiza; clica de novo, inverte; a seta diz por onde
+está e pra que lado.
+
+Mecanismo único em `ORDENS` / `ordenarTabela()` / `aplicarOrdem()` —
+Pedidos e Produtos começaram com um estado cada e foram unificados
+antes da terceira cópia.
+
+Detalhes que só aparecem com dado de verdade, e que valem pra qualquer
+ordenação nova:
+
+- **`localeCompare` com `'pt-BR'`**, senão "Ângela" vai pro fim da lista.
+- **Empate sempre desempatado** (nome ou data), senão ordenar por uma
+  coluna repetida embaralha a lista a cada redesenho.
+- **Valor desconhecido vai pro fim**, nunca pro topo: margem sem receita
+  é `-1` (não zero — com 157 produtos sem ficha, eles se misturariam com
+  quem dá prejuízo), campo de texto vazio vira `'￿'`, e peça sem
+  tempo fica atrás nas duas direções.
+- **Ordem de fluxo, não alfabética**, pra status e ações: por letra,
+  "Cancelado" viria antes de "Imprimindo".
+
+Financeiro abre por **"Falta", do maior** — antes vinha na ordem que o
+banco devolvia, que é nenhuma.
+
 ## A Fila agora agrupa por cliente — 27/08
 
 Antes a Fila era organizada por impressora, e uma encomenda de três
