@@ -1415,8 +1415,18 @@ async function renderParteHtml(parte) {
 
   html += '<div style="font-size:12px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">';
   html += '<span>Modelo 3D — ' + (parte.model_file_path ? '<span class="badge on">' + (parte.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (PARTE_STATUS_BADGE[parte.meshy_status] || '<span style="color:var(--muted);">nenhum</span>')) + '</span>';
-  if (!parte.model_file_path && parte.meshy_status !== 'queued' && parte.meshy_status !== 'processing' && parte.reference_image_path) {
-    html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="solicitarGerarModeloParte(\'' + parte.id + '\')">🧬 Gerar por IA</button>';
+  // Antes só existia "Gerar por IA" — quem já tem o arquivo pronto de
+  // cada parte (baixado, modelado à mão) era obrigado a passar pela IA
+  // mesmo assim, sem jeito de simplesmente anexar. O botão de anexar
+  // fica sempre visível (vira "Trocar" quando já tem arquivo), do mesmo
+  // jeito que já funciona lá em cima pro projeto inteiro.
+  if (parte.meshy_status !== 'queued' && parte.meshy_status !== 'processing') {
+    html += '<span class="row-actions">';
+    if (!parte.model_file_path && parte.reference_image_path) {
+      html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="solicitarGerarModeloParte(\'' + parte.id + '\')">🧬 Gerar por IA</button>';
+    }
+    html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="abrirAnexarModeloParte(\'' + parte.id + '\')">' + (parte.model_file_path ? '🔁 Trocar' : '+ Anexar') + '</button>';
+    html += '</span>';
   }
   html += '</div>';
 
@@ -1440,7 +1450,8 @@ function abrirAdicionarParte(lineItemId) {
   openModal(
     '<h3>Adicionar parte</h3>' +
     '<label>Nome dessa parte (opcional)</label><input id="parteNome" placeholder="Ex: Base, Tampa, Encaixe...">' +
-    '<label>Foto de referência dessa parte</label><input id="parteFoto" type="file" accept="image/*">' +
+    '<label>Foto de referência dessa parte (opcional)</label><input id="parteFoto" type="file" accept="image/*">' +
+    '<div style="font-size:11.5px; color:var(--muted); margin:4px 0 0;">Só precisa de foto se for gerar o modelo dessa parte por IA. Se você já tem o arquivo 3D pronto (baixado, modelado à mão...), pode deixar sem foto e anexar o arquivo direto depois de criar a parte.</div>' +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="abrirGerenciarProjeto(\'' + lineItemId + '\')">Cancelar</button>' +
       '<button class="btn" onclick="salvarNovaParte(\'' + lineItemId + '\')">Adicionar</button>' +
@@ -1451,7 +1462,6 @@ function abrirAdicionarParte(lineItemId) {
 async function salvarNovaParte(lineItemId) {
   const nome = document.getElementById('parteNome').value.trim() || null;
   const file = document.getElementById('parteFoto').files[0];
-  if (!file) { toast('Escolhe uma foto pra essa parte.'); return; }
 
   const existentes = await q(SUPA.from('project_parts').select('ordem').eq('order_line_item_id', lineItemId).order('ordem', { ascending: false }).limit(1));
   const ordem = existentes.length ? existentes[0].ordem + 1 : 1;
@@ -1461,14 +1471,49 @@ async function salvarNovaParte(lineItemId) {
   }).select().single();
   if (error) { toast('Erro: ' + error.message); return; }
 
-  const ext = file.name.split('.').pop();
-  const path = lineItemId + '/partes/' + parte.id + '/foto.' + ext;
-  const { error: upErr } = await SUPA.storage.from('projetos-fotos').upload(path, file, { upsert: true });
-  if (upErr) { toast('Parte criada, mas a foto falhou: ' + upErr.message); }
-  else await SUPA.from('project_parts').update({ reference_image_path: path }).eq('id', parte.id);
+  if (file) {
+    const ext = file.name.split('.').pop();
+    const path = lineItemId + '/partes/' + parte.id + '/foto.' + ext;
+    const { error: upErr } = await SUPA.storage.from('projetos-fotos').upload(path, file, { upsert: true });
+    if (upErr) { toast('Parte criada, mas a foto falhou: ' + upErr.message); }
+    else await SUPA.from('project_parts').update({ reference_image_path: path }).eq('id', parte.id);
+  }
 
   toast('Parte adicionada.');
   abrirGerenciarProjeto(lineItemId);
+}
+
+// Espelha abrirAnexarModeloProjeto/uploadModeloProjeto, só que por
+// PARTE — antes só dava pra anexar o arquivo 3D do projeto inteiro;
+// cada parte só tinha "Gerar por IA", que exige foto de referência e
+// não serve pra quem já tem o arquivo de cada pedaço em mãos.
+function abrirAnexarModeloParte(parteId) {
+  openModal(
+    '<h3>Anexar arquivo 3D da parte</h3>' +
+    '<label>Arquivo (.stl ou .3mf)</label>' +
+    '<input id="parteModeloArquivo" type="file" accept=".stl,.3mf">' +
+    '<div class="modal-actions">' +
+      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
+      '<button class="btn" onclick="uploadModeloParte(\'' + parteId + '\')">Enviar</button>' +
+    '</div>'
+  );
+}
+
+async function uploadModeloParte(parteId) {
+  const file = document.getElementById('parteModeloArquivo').files[0];
+  if (!file) { toast('Escolhe um arquivo .stl ou .3mf.'); return; }
+  if (!arquivoE3DValido(file)) { toast('Esse arquivo não é .stl nem .3mf — se for a foto de referência, usa o botão "Anexar foto" em vez desse.'); return; }
+  const parte = await q(SUPA.from('project_parts').select('order_line_item_id').eq('id', parteId).maybeSingle());
+  if (!parte) { toast('Parte não encontrada.'); return; }
+  const path = 'projetos/' + parte.order_line_item_id + '/partes/' + parteId + '/' + file.name;
+  const { error: upErr } = await SUPA.storage.from('modelos-3d').upload(path, file, { upsert: true });
+  if (upErr) { toast('Erro no envio: ' + upErr.message); return; }
+  const { error: dbErr } = await SUPA.from('project_parts').update({
+    model_file_path: path, model_source: 'manual_upload',
+  }).eq('id', parteId);
+  if (dbErr) { toast('Erro: ' + dbErr.message); return; }
+  toast('Arquivo 3D anexado.');
+  abrirGerenciarProjeto(parte.order_line_item_id);
 }
 
 async function excluirParte(parteId) {
