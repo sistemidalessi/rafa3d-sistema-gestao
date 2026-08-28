@@ -6,35 +6,36 @@ Onde as coisas pararam em **27/08/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ Falta atualizar o computador do Rafa de novo — 28/08
+## ✅ As duas máquinas em dia, e as duas com vigia — 28/08 à noite
 
-Ele só é usado à noite, então isso fica pendente até lá — **não deixe
-passar batido**. Rodar nele, nesta ordem:
+O computador do Rafa foi atualizado (estava com o prompt velho da
+colinha, o que recomendava "sem brim" e custou duas impressões) e ganhou
+o vigia. O do Anderson ganhou o vigia também — ele **não tinha**, apesar
+de ser a máquina que motivou o script; foi achado por acaso, com o
+agente parado há 119 minutos.
 
-```
-powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
-powershell -ExecutionPolicy Bypass -File slicer-agent\instalar-vigia.ps1
-```
+O vigia foi **testado**, não só instalado: matei o agente (PID 30572),
+disparei a tarefa na mão com `schtasks /run`, e ele voltou sozinho
+(PID 36008) e se anunciou no banco. Mensagem de sucesso de script não é
+prova; processo de pé é.
 
-Motivo mais grave desta vez: o prompt da colinha (`agent.js`,
-`PROMPT_ANALISE`) foi corrigido em 28/08 porque a IA recomendava "sem
-brim" em peça com divisória fina que nasce sozinha da base (achado com
-duas impressões reais perdidas, filamento e tudo — a peça descolou da
-mesa no meio). Enquanto o computador do Rafa estiver com o prompt
-velho, "Pedir a colinha" pode cair nele (não tem dono fixo) e voltar a
-recomendar sem brim pra esse mesmo tipo de peça, silenciosamente.
+### Dois defeitos do próprio aviso, no mesmo dia
 
-O primeiro script é seguro de rodar mesmo se já estiver atualizado (ele
-mesmo avisa "já estava atualizado" e não faz nada a mais nesse caso) —
-não precisa checar antes, só rodar.
+O patch 42 nasceu pra avisar quando uma máquina está com código velho.
+Ele errou nas duas direções antes de acertar:
 
-O segundo é novo (28/08): no computador do Anderson o agente ficou mais
-de 2h parado no meio do dia, sem erro nenhum no log, até um pedido de
-colinha não sair da fila. `instalar-vigia.ps1` registra uma Tarefa
-Agendada do Windows que confere a cada 5 minutos se o agente está
-rodando e religa sozinho se não estiver — ver
-[`CLAUDE.md`](../CLAUDE.md) ("O agente pode cair no meio do dia...").
-Também é seguro rodar de novo se já estiver instalado.
+1. **Ficou calado no caso dele.** A folga era de 24h e a diferença entre
+   os dois códigos era de 22,4h — o Rafa ligou com o prompt velho e a
+   tela não disse nada. A folga agora é de **2h**: cobre o vai-e-vem de
+   um mesmo dia e não engole "ontem à noite contra hoje à tarde".
+2. **Gritou à toa.** O agente reportava o commit do repositório inteiro,
+   então todo commit no `index.html` — a maior parte deles — marcava os
+   agentes como antigos sem nada ter mudado pra eles. Agora o `git log`
+   é limitado a `slicer-agent/`, que é o que o agente de fato roda.
+
+Os dois juntos importam: com a folga de 2h **e** a versão do repositório
+inteiro, o alarme dispararia quase todo dia — e aviso que grita à toa é
+aviso que ninguém lê.
 
 ## ✅ As duas máquinas estavam com o código de 27/08
 
