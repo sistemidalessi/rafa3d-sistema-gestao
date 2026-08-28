@@ -2008,15 +2008,52 @@ function thOrdenavel(campo, rotulo, estado, funcao) {
     + ' title="Clique pra organizar por aqui">' + escapeHtml(rotulo) + seta + '</th>';
 }
 
-// Colunas que começam do MAIOR quando clicadas pela primeira vez.
-const PEDIDOS_COMECAM_GRANDE = ['criado', 'total'];
-let _ordemPedidos = { campo: 'criado', desc: true };
+// Por qual coluna cada tela está ordenada agora, e o padrão de cada
+// uma — o que a pessoa espera ver ao abrir a tela sem clicar em nada.
+const ORDENS = {
+  pedidos:    { campo: 'criado', desc: true },
+  produtos:   { campo: 'nome',   desc: false },
+  clientes:   { campo: 'nome',   desc: false },
+  filamentos: { campo: 'nome',   desc: false },
+  financeiro: { campo: 'falta',  desc: true },
+};
 
-function ordenarPedidos(campo) {
-  if (_ordemPedidos.campo === campo) _ordemPedidos.desc = !_ordemPedidos.desc;
-  else _ordemPedidos = { campo: campo, desc: PEDIDOS_COMECAM_GRANDE.indexOf(campo) !== -1 };
-  renderPedidos();
+// Colunas que começam do MAIOR no primeiro clique. Dinheiro, data e
+// quantidade: ninguém clica em "Total" querendo ver o mais barato.
+const COMECAM_GRANDE = ['criado', 'total', 'preco', 'margem', 'estoque', 'custo', 'pago', 'falta'];
+
+function ordenarTabela(tabela, campo, redesenhar) {
+  const o = ORDENS[tabela];
+  if (o.campo === campo) o.desc = !o.desc;
+  else { o.campo = campo; o.desc = COMECAM_GRANDE.indexOf(campo) !== -1; }
+  redesenhar();
 }
+
+// Ordena uma lista pela coluna escolhida. `chave` devolve o valor de
+// comparação daquela linha; `desempate` decide quem vem primeiro quando
+// duas linhas empatam — sem ele, ordenar por uma coluna repetida
+// (categoria, material) embaralharia a lista a cada redesenho.
+function aplicarOrdem(lista, tabela, chave, desempate) {
+  const o = ORDENS[tabela];
+  return lista.slice().sort((a, b) => {
+    const ka = chave(a, o.campo), kb = chave(b, o.campo);
+    let r;
+    if (typeof ka === 'string' || typeof kb === 'string') {
+      // localeCompare pt-BR: sem isso "Ângela" vai pro fim da lista.
+      r = String(ka).localeCompare(String(kb), 'pt-BR');
+    } else {
+      r = (ka || 0) - (kb || 0);
+    }
+    if (r === 0) return desempate ? desempate(a, b) : 0;
+    return o.desc ? -r : r;
+  });
+}
+
+function ordenarPedidos(campo) { ordenarTabela('pedidos', campo, renderPedidos); }
+function ordenarProdutos(campo) { ordenarTabela('produtos', campo, desenharProdutos); }
+function ordenarClientes(campo) { ordenarTabela('clientes', campo, renderClientes); }
+function ordenarFilamentos(campo) { ordenarTabela('filamentos', campo, renderFilamentos); }
+function ordenarFinanceiro(campo) { ordenarTabela('financeiro', campo, renderFinanceiro); }
 
 // Ordem do fluxo de trabalho, não alfabética: ordenar status por letra
 // colocaria "Cancelado" antes de "Imprimindo", que não quer dizer nada.
@@ -2077,20 +2114,13 @@ async function renderPedidos() {
   listaExibida.forEach((o) => {
     const ps = statusById[o.id];
     chaves[o.id] = chaveDeOrdemDoPedido(o, itensPorPedido[o.id] || [],
-      ps ? ps.payment_status : null, _ordemPedidos.campo);
+      ps ? ps.payment_status : null, ORDENS.pedidos.campo);
   });
-  listaExibida.sort((a, b) => {
-    const ka = chaves[a.id], kb = chaves[b.id];
-    let r = 0;
-    if (typeof ka === 'string' || typeof kb === 'string') {
-      // localeCompare pra acento não jogar "Ângela" pro fim da lista.
-      r = String(ka).localeCompare(String(kb), 'pt-BR');
-    } else {
-      r = (ka || 0) - (kb || 0);
-    }
-    if (r === 0) return new Date(b.created_at) - new Date(a.created_at);
-    return _ordemPedidos.desc ? -r : r;
-  });
+  const ordenados = aplicarOrdem(listaExibida, 'pedidos',
+    (o) => chaves[o.id],
+    (a, b) => new Date(b.created_at) - new Date(a.created_at));
+  listaExibida.length = 0;
+  ordenados.forEach((o) => listaExibida.push(o));
 
   let html = '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">';
@@ -2109,13 +2139,13 @@ async function renderPedidos() {
     // o lugar valia mais pra "Falta", que responde a pergunta que se faz
     // olhando a lista — esta venda dá pra imprimir ou não?
     html += '<table><tr>'
-      + thOrdenavel('cliente', 'Cliente', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('criado', 'Pedido', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('item', 'Item', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('acao', 'O que fazer agora', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('status', 'Status', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('total', 'Total', _ordemPedidos, 'ordenarPedidos')
-      + thOrdenavel('pagamento', 'Pagamento', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('cliente', 'Cliente', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('criado', 'Pedido', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('item', 'Item', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('acao', 'O que fazer agora', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('status', 'Status', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('total', 'Total', ORDENS.pedidos, 'ordenarPedidos')
+      + thOrdenavel('pagamento', 'Pagamento', ORDENS.pedidos, 'ordenarPedidos')
       + '<th></th></tr>';
     listaExibida.forEach((o) => {
       const ps = statusById[o.id];
@@ -4444,8 +4474,20 @@ async function renderFilamentos() {
   if (cores.length === 0) {
     html += '<div class="empty">Nenhuma cor cadastrada ainda.</div>';
   } else {
-    html += '<table><tr><th></th><th>Cor</th><th>Material</th><th>Estoque</th><th>Custo/kg</th><th></th></tr>';
-    cores.forEach((c) => {
+    html += '<table><tr><th></th>'
+      + thOrdenavel('nome', 'Cor', ORDENS.filamentos, 'ordenarFilamentos')
+      + thOrdenavel('material', 'Material', ORDENS.filamentos, 'ordenarFilamentos')
+      + thOrdenavel('estoque', 'Estoque', ORDENS.filamentos, 'ordenarFilamentos')
+      + thOrdenavel('custo', 'Custo/kg', ORDENS.filamentos, 'ordenarFilamentos')
+      + '<th></th></tr>';
+    // Ordenar por estoque é a razão principal desta tela existir: põe o
+    // que está acabando na frente com um clique.
+    aplicarOrdem(cores, 'filamentos', (c, campo) => {
+      if (campo === 'material') return (c.material || '').toLowerCase();
+      if (campo === 'estoque') return estoquePorCor(c.id);
+      if (campo === 'custo') return Number(c.cost_per_kg) || 0;
+      return (c.name || '').toLowerCase();
+    }, (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')).forEach((c) => {
       const estoqueG = estoquePorCor(c.id);
       const baixo = estoqueG <= c.low_stock_threshold_g;
       html += '<tr>';
@@ -5010,14 +5052,6 @@ async function renderProdutos() {
   desenharProdutos();
 }
 
-const PRODUTOS_COMECAM_GRANDE = ['preco', 'margem'];
-let _ordemProdutos = { campo: 'nome', desc: false };
-
-function ordenarProdutos(campo) {
-  if (_ordemProdutos.campo === campo) _ordemProdutos.desc = !_ordemProdutos.desc;
-  else _ordemProdutos = { campo: campo, desc: PRODUTOS_COMECAM_GRANDE.indexOf(campo) !== -1 };
-  desenharProdutos();
-}
 
 function chaveDeOrdemDoProduto(p, campo) {
   if (campo === 'codigo') return (p.catalog_code || '').toLowerCase();
@@ -5052,18 +5086,9 @@ function desenharProdutos() {
   if (produtoCadastroAberto) { desenharCadastroProduto(el); return; }
   const scrollY = window.scrollY;
   const isOwner = currentProfile && currentProfile.role === 'owner';
-  const produtos = produtosFiltrados().slice();
-  produtos.sort((a, b) => {
-    const ka = chaveDeOrdemDoProduto(a, _ordemProdutos.campo);
-    const kb = chaveDeOrdemDoProduto(b, _ordemProdutos.campo);
-    let r = (typeof ka === 'string' || typeof kb === 'string')
-      ? String(ka).localeCompare(String(kb), 'pt-BR')
-      : (ka || 0) - (kb || 0);
-    // Empate desempata pelo nome, sempre: sem isso, ordenar por
-    // categoria embaralharia os produtos dela a cada redesenho.
-    if (r === 0) return (a.name || '').localeCompare(b.name || '', 'pt-BR');
-    return _ordemProdutos.desc ? -r : r;
-  });
+  const produtos = aplicarOrdem(produtosFiltrados(), 'produtos',
+    chaveDeOrdemDoProduto,
+    (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR'));
 
   let opcoesCategoria = '<option value="">Todas as categorias</option>';
   Object.keys(CATEGORY_LABELS).forEach((k) => {
@@ -5083,13 +5108,13 @@ function desenharProdutos() {
     html += '<div class="empty">Nenhum produto encontrado' + (produtosFiltroTexto || produtosFiltroCategoria ? ' com esse filtro.' : ' ainda.') + '</div>';
   } else {
     html += '<table><tr><th></th>'
-      + thOrdenavel('codigo', 'Código', _ordemProdutos, 'ordenarProdutos')
-      + thOrdenavel('categoria', 'Categoria', _ordemProdutos, 'ordenarProdutos')
-      + thOrdenavel('nome', 'Nome', _ordemProdutos, 'ordenarProdutos')
-      + thOrdenavel('preco', 'Preço', _ordemProdutos, 'ordenarProdutos')
-      + (isOwner ? thOrdenavel('margem', 'Margem', _ordemProdutos, 'ordenarProdutos') : '')
-      + thOrdenavel('ativo', 'Status', _ordemProdutos, 'ordenarProdutos')
-      + (isOwner ? thOrdenavel('arquivo', 'Arquivo 3D', _ordemProdutos, 'ordenarProdutos') + '<th></th>' : '')
+      + thOrdenavel('codigo', 'Código', ORDENS.produtos, 'ordenarProdutos')
+      + thOrdenavel('categoria', 'Categoria', ORDENS.produtos, 'ordenarProdutos')
+      + thOrdenavel('nome', 'Nome', ORDENS.produtos, 'ordenarProdutos')
+      + thOrdenavel('preco', 'Preço', ORDENS.produtos, 'ordenarProdutos')
+      + (isOwner ? thOrdenavel('margem', 'Margem', ORDENS.produtos, 'ordenarProdutos') : '')
+      + thOrdenavel('ativo', 'Status', ORDENS.produtos, 'ordenarProdutos')
+      + (isOwner ? thOrdenavel('arquivo', 'Arquivo 3D', ORDENS.produtos, 'ordenarProdutos') + '<th></th>' : '')
       + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
@@ -6248,8 +6273,20 @@ async function renderClientes() {
   if (clientes.length === 0) {
     html += '<div class="empty">Nenhum cliente cadastrado ainda.</div>';
   } else {
-    html += '<table><tr><th>Nome</th><th>WhatsApp</th><th>E-mail</th><th></th></tr>';
-    clientes.forEach((c) => {
+    html += '<table><tr>'
+      + thOrdenavel('nome', 'Nome', ORDENS.clientes, 'ordenarClientes')
+      + thOrdenavel('fone', 'WhatsApp', ORDENS.clientes, 'ordenarClientes')
+      + thOrdenavel('email', 'E-mail', ORDENS.clientes, 'ordenarClientes')
+      + '<th></th></tr>';
+    // '￿' é o último caractere possível: campo vazio vai pro FIM da
+    // lista em vez de encabeçá-la. Ordenar por e-mail e ver primeiro
+    // quem não tem e-mail nenhum não ajuda ninguém.
+    const naoVazio = (s) => s || '￿';
+    aplicarOrdem(clientes, 'clientes', (c, campo) => {
+      if (campo === 'fone') return naoVazio((c.phone || '').replace(/\D/g, ''));
+      if (campo === 'email') return naoVazio((c.email || '').toLowerCase());
+      return naoVazio((c.name || '').toLowerCase());
+    }, (a, b) => (a.name || '').localeCompare(b.name || '', 'pt-BR')).forEach((c) => {
       html += '<tr><td>' + escapeHtml(c.name) + '</td><td>' + escapeHtml(c.phone) + '</td><td>' + escapeHtml(c.email) + '</td>';
       html += '<td class="row-actions"><button class="btn ghost" onclick="openClienteForm(\'' + c.id + '\')">Editar</button></td></tr>';
     });
@@ -6688,8 +6725,28 @@ async function renderFinanceiro() {
   if (pendentes.length === 0) {
     html += '<div class="empty">Nenhum pedido com pagamento pendente.</div>';
   } else {
-    html += '<table><tr><th>Pedido</th><th>Cliente</th><th>Total</th><th>Pago</th><th>Falta</th><th>Status</th><th></th></tr>';
-    pendentes.forEach((o) => {
+    html += '<table><tr>'
+      + thOrdenavel('pedido', 'Pedido', ORDENS.financeiro, 'ordenarFinanceiro')
+      + thOrdenavel('cliente', 'Cliente', ORDENS.financeiro, 'ordenarFinanceiro')
+      + thOrdenavel('total', 'Total', ORDENS.financeiro, 'ordenarFinanceiro')
+      + thOrdenavel('pago', 'Pago', ORDENS.financeiro, 'ordenarFinanceiro')
+      + thOrdenavel('falta', 'Falta', ORDENS.financeiro, 'ordenarFinanceiro')
+      + thOrdenavel('status', 'Status', ORDENS.financeiro, 'ordenarFinanceiro')
+      + '<th></th></tr>';
+    // Começa por "Falta", do maior: a pergunta desta tela é quem deve
+    // mais. Antes vinha na ordem que o banco devolveu, que é nenhuma.
+    aplicarOrdem(pendentes, 'financeiro', (o, campo) => {
+      const s = statusById[o.id] || {};
+      if (campo === 'cliente') return ((o.customers ? o.customers.name : o.customer_name) || '').toLowerCase();
+      if (campo === 'total') return Number(o.total_amount) || 0;
+      if (campo === 'pago') return Number(s.total_paid) || 0;
+      if (campo === 'falta') return (Number(o.total_amount) || 0) - (Number(s.total_paid) || 0);
+      if (campo === 'status') {
+        const i = ORDEM_DO_PAGAMENTO.indexOf(s.payment_status);
+        return i === -1 ? 999 : i;
+      }
+      return (o.order_number || '').toLowerCase();
+    }, (a, b) => new Date(b.created_at) - new Date(a.created_at)).forEach((o) => {
       const ps = statusById[o.id];
       const falta = o.total_amount - ps.total_paid;
       html += '<tr>';
