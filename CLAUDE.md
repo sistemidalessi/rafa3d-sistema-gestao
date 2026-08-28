@@ -258,6 +258,9 @@ escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelment
    "leio as configurações" e "importo só a malha" pelo
    `<metadata name="Application">BambuStudio-...` e pela presença do
    `Metadata/slice_info.config`. Sem os dois, ignora tudo em silêncio.
+   `reconfigurarHi3d3mf()` já injeta os dois quando faltam (achado em
+   28/08 com um `.3mf` do Layerpaint) — mas **não resolve sozinho**, ver
+   item 4.
 3. **`different_settings_to_system` é o que faz os valores valerem.** O Bambu
    não lê os valores soltos: ele carrega o perfil nomeado em
    `print_settings_id` e aplica por cima **só** os campos listados nesse
@@ -273,6 +276,30 @@ escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelment
    27/08: índice fixo marcava só a cor 1 como "mexida" e gravava a placa
    na posição da cor 2) — se voltar a escrever índice fixo, o mesmo bug
    volta, só que silencioso de novo.
+4. **Nem todo `.3mf` anexado à mão É um projeto do Bambu por baixo — e
+   isso não tem conserto no nosso código.** Achado em 28/08 com peças de
+   um projeto (Friends) baixadas do Layerpaint (ferramenta de pintura de
+   cor, não fatiador): o arquivo original — **mesmo sem nenhuma
+   modificação nossa** — já abre no Bambu Studio com "O arquivo 3mf
+   contém uma configuração inválida, carregar apenas os dados de
+   geometria". Não é o item 2 (isso a gente resolve); é a
+   **estrutura interna do modelo**: o Layerpaint grava a peça inteira
+   num `3D/3dmodel.model` só, com cor por `<m:colorgroup>` (extensão de
+   Materiais do padrão 3MF), sem o esqueleto de
+   `3D/Objects/object_N.model` + `3D/_rels/3dmodel.model.rels` que um
+   projeto real do Bambu sempre tem (comparado lado a lado com um
+   projeto de verdade que abre bem). O Bambu reconhece que tem cor pra
+   importar (mostra a janela "Cor padrão 3mf Importada", pra mapear as
+   cores do arquivo pros filamentos carregados) mas não trata como
+   projeto seu, e por isso descarta a configuração inteira — **de
+   propósito**, não é bug do Bambu nem nosso.
+   Na prática: a peça abre certinha (malha e cor corretas), só que sem a
+   colinha aplicada — quem for imprimir uma peça dessas precisa mapear a
+   cor na janela que aparece e digitar brim/temperatura/altura de camada
+   à mão, olhando o texto da colinha (💬 "Ver colinha" na tela do
+   sistema). Isso só afeta arquivo vindo do Layerpaint; Hi3D, Meshy e
+   `.stl`/`.3mf` anexado de um projeto real do Bambu continuam recebendo
+   a colinha automática do jeito de sempre.
 
 Além disso, os campos de lista só aceitam as palavras exatas do Bambu, e
 **valor inválido derruba o arquivo de configuração inteiro**, não só aquele

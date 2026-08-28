@@ -497,6 +497,27 @@ function reconfigurarHi3d3mf(zipBuffer, ajustes) {
   const projectSettingsHi3d = porNome['Metadata/project_settings.config'];
   if (!projectSettingsHi3d) throw new Error('.3mf do Hi3D veio sem project_settings.config — formato inesperado.');
 
+  // Achado em 28/08/2026 com um .3mf exportado do Layerpaint (peça
+  // dividida por cor à mão, fora do Hi3D): o Bambu Studio abriu dizendo
+  // "configuração inválida, carregar apenas os dados de geometria" —
+  // a colinha inteira ia pro lixo, silenciosamente, mesmo com o
+  // project_settings.config certinho. O motivo é a regra 2 do
+  // CLAUDE.md ("por que é delicado"): o Bambu só lê a configuração
+  // quando o 3D/3dmodel.model se declara com
+  // <metadata name="Application">BambuStudio-...</metadata>. O Hi3D e o
+  // Bambu Studio sempre escrevem essa tag; o Layerpaint não escreve
+  // nada parecido (só a fingerprint dele) — por isso nunca tinha
+  // aparecido antes. Se a tag já existir (Hi3D, projeto real do Bambu),
+  // isto não mexe em nada.
+  const modeloTop = porNome['3D/3dmodel.model'];
+  if (modeloTop && !/<metadata\s+name="Application">/i.test(modeloTop.toString('utf8'))) {
+    const xml = modeloTop.toString('utf8').replace(
+      /(<model\b[^>]*>)/i,
+      '$1\n <metadata name="Application">BambuStudio-' + VERSAO_BAMBU + '</metadata>'
+    );
+    porNome['3D/3dmodel.model'] = Buffer.from(xml, 'utf8');
+  }
+
   // Parte da config que o PRÓPRIO Hi3D mandou, não do nosso template do
   // zero — ele já escolheu uma cor por parte (filament_colour) batendo
   // com quantas partes a peça tem. Só troca o que precisa: a impressora
@@ -507,6 +528,12 @@ function reconfigurarHi3d3mf(zipBuffer, ajustes) {
   const numFilamentos = Array.isArray(settingsBase.filament_settings_id) ? settingsBase.filament_settings_id.length : 1;
   settingsBase.printer_settings_id = TEMPLATE_SETTINGS.printer_settings_id;
   settingsBase.filament_settings_id = Array(numFilamentos).fill(TEMPLATE_SETTINGS.filament_settings_id[0]);
+  // Mesmo achado do Layerpaint: ele não escreve print_settings_id (só
+  // mexe em filamento/cor), e sem esse campo o Bambu não tem qual
+  // perfil de processo (altura de camada, parede etc.) carregar como
+  // base. Só entra quando falta — Hi3D e projeto real do Bambu já
+  // trazem um válido, e nesse caso mantém o que já tinha.
+  if (!settingsBase.print_settings_id) settingsBase.print_settings_id = TEMPLATE_SETTINGS.print_settings_id;
 
   const settings = aplicarAjustesColinha(ajustes, settingsBase);
 
