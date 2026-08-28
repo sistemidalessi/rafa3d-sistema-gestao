@@ -718,10 +718,17 @@ async function listarComputadores() {
   // está com código mais velho que a outra, é ela que precisa atualizar
   // — que é exatamente a pergunta que se quer responder aqui.
   //
-  // Um dia de folga de propósito: quem atualizou hoje de manhã e quem
-  // atualizou ontem à noite estão na prática juntos, e marcar isso como
-  // problema faria o aviso virar barulho e ninguém mais olhar.
-  const FOLGA_MS = 24 * 60 * 60 * 1000;
+  // DUAS HORAS de folga, e o número tem história: começou em 24h, com
+  // medo de virar barulho. Em 28/08 a máquina do Rafa ficou com o
+  // prompt velho da colinha (o que recomendava "sem brim" e custou duas
+  // impressões) e o aviso NÃO apareceu — a diferença entre os dois
+  // códigos era de 22,4h, dentro da folga. O aviso ficou calado
+  // exatamente no caso pra que foi feito.
+  //
+  // Duas horas cobre o vai-e-vem normal de um mesmo dia de trabalho e
+  // não engole "ontem à noite contra hoje à tarde". Errar pro lado do
+  // barulho aqui é barato; errar pro lado do silêncio custou filamento.
+  const FOLGA_MS = 2 * 60 * 60 * 1000;
   const maisNovo = computadores.reduce((m, c) => (c.dataDoCodigo > m ? c.dataDoCodigo : m), 0);
   computadores.forEach((c) => {
     c.atrasado = !!(maisNovo && c.dataDoCodigo && maisNovo - c.dataDoCodigo > FOLGA_MS);
@@ -2347,7 +2354,10 @@ async function avisoAgenteParado() {
   // Só avisa quando a máquina atrasada está LIGADA: uma desligada não
   // vai pegar tarefa nenhuma, e cobrar atualização de um computador que
   // ninguém está usando é barulho.
-  const FOLGA_MS = 24 * 60 * 60 * 1000;
+  //
+  // A folga é a mesma da lista de escolher computador — ver o porquê
+  // das duas horas lá em listarComputadores().
+  const FOLGA_MS = 2 * 60 * 60 * 1000;
   const datas = agentes.map((a) => (a.code_date ? new Date(a.code_date).getTime() : null));
   const maisNovo = datas.reduce((m, d) => (d > m ? d : m), 0);
   const avisoDeCodigoVelho = () => {
