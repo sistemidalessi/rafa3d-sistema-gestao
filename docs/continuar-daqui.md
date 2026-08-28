@@ -6,7 +6,28 @@ Onde as coisas pararam em **27/08/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ✅ As duas máquinas estão com o código de 27/08
+## ⚠️ Falta atualizar o computador do Rafa de novo — 28/08
+
+Ele só é usado à noite, então isso fica pendente até lá — **não deixe
+passar batido**. Rodar nele:
+
+```
+powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
+```
+
+Motivo mais grave desta vez: o prompt da colinha (`agent.js`,
+`PROMPT_ANALISE`) foi corrigido em 28/08 porque a IA recomendava "sem
+brim" em peça com divisória fina que nasce sozinha da base (achado com
+duas impressões reais perdidas, filamento e tudo — a peça descolou da
+mesa no meio). Enquanto o computador do Rafa estiver com o prompt
+velho, "Pedir a colinha" pode cair nele (não tem dono fixo) e voltar a
+recomendar sem brim pra esse mesmo tipo de peça, silenciosamente.
+
+O script de cima é seguro de rodar mesmo se já estiver atualizado (ele
+mesmo avisa "já estava atualizado" e não faz nada a mais nesse caso) —
+não precisa checar antes, só rodar.
+
+## ✅ As duas máquinas estavam com o código de 27/08
 
 Fechado em 27/08 à noite: o computador do Rafa foi atualizado com o
 `atualizar-agente.ps1` e os dois agentes apareceram ligados no banco.
