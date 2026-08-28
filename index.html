@@ -1903,6 +1903,57 @@ function resumoItensPedido(itensDoPedido) {
 // venda estava pronta era preciso abrir o pedido, abrir cada item e
 // contar os passos. Agora a cor responde de longe, e o texto diz o que
 // falta em palavra, não em código.
+/* A coluna diz O QUE FAZER, não o que falta.
+
+   "1 pra mandar pra fila" e "1 sem arquivo" descrevem um estado interno
+   do sistema, e quem lê tem que traduzir sozinho pra uma ação. Pior:
+   listava três coisas ao mesmo tempo ("1 sem preço, 1 sem arquivo e 1
+   sem colinha"), quando só a primeira dá pra fazer agora.
+
+   Agora é UMA frase, no infinitivo, do próximo passo real. E cobre o
+   pedido inteiro, não só o preparo: "entregar pro cliente" é tão
+   próximo passo quanto "pedir a colinha". Foi o que faltou pro pedido
+   do Batista, que estava embalado e aparecia como "1 pra mandar pra
+   fila" — embalado já passou da impressão, e ninguém entendia o que o
+   sistema estava pedindo. */
+
+const ACOES_DA_PECA = {
+  preco:      { ordem: 1,  texto: 'dizer o preço',           tom: 'atencao' },
+  refazer:    { ordem: 2,  texto: 'deu errado — refazer',    tom: 'atencao' },
+  arquivo:    { ordem: 3,  texto: 'pegar o arquivo da peça', tom: 'atencao' },
+  colinha:    { ordem: 4,  texto: 'pedir a colinha',         tom: 'atencao' },
+  fatiador:   { ordem: 5,  texto: 'abrir no fatiador',       tom: 'atencao' },
+  mandar:     { ordem: 6,  texto: 'mandar pra imprimir',     tom: 'pode' },
+  na_fila:    { ordem: 7,  texto: 'pôr na impressora',       tom: 'pode' },
+  imprimindo: { ordem: 8,  texto: 'imprimindo agora',        tom: 'andando' },
+  acabamento: { ordem: 9,  texto: 'dar o acabamento',        tom: 'pode' },
+  entregar:   { ordem: 10, texto: 'entregar pro cliente',    tom: 'pode' },
+  a_caminho:  { ordem: 11, texto: 'a caminho do cliente',    tom: 'andando' },
+};
+
+// A próxima coisa a fazer com UMA peça. Null quando não há mais nada.
+function proximaAcaoDaPeca(it) {
+  const st = it.line_status;
+  if (st === 'entregue' || st === 'cancelado') return null;
+  if (st === 'orcamento_pendente') return 'preco';
+  if (st === 'falhou_reimprimir') return 'refazer';
+  if (st === 'enviado') return 'a_caminho';
+  if (st === 'embalado') return 'entregar';
+  if (st === 'pos_processamento') return 'acabamento';
+
+  // Arquivo e colinha são conferidos ANTES do status de produção de
+  // propósito: existe peça na fila sem arquivo nenhum (entrou antes
+  // deste fluxo existir), e ela precisa aparecer como problema, não
+  // como "imprimindo agora".
+  const p = passosDoPreparo(it);
+  if (!p[0].pronto) return 'arquivo';
+  if (!p[1].pronto) return 'colinha';
+  if (st === 'imprimindo') return 'imprimindo';
+  if (st === 'fila_impressao') return 'na_fila';
+  if (!p[2].pronto) return 'fatiador';
+  return 'mandar';
+}
+
 function preparoDoPedido(itensDoPedido) {
   // Só peça entregue ou cancelada sai da conta. Estar na fila NÃO
   // significa estar preparada: antes deste fluxo qualquer peça entrava
@@ -1911,44 +1962,33 @@ function preparoDoPedido(itensDoPedido) {
   // na fila, os pedidos do Marco e do Bernardo apareceriam VERDES com o
   // Pikachu e o Cine-Companion sem arquivo nenhum — um semáforo que
   // mente é pior que semáforo nenhum.
-  const vivos = itensDoPedido.filter((it) =>
-    it.line_status !== 'entregue' && it.line_status !== 'cancelado');
-  if (!vivos.length) return { nivel: 'ok', texto: 'tudo pronto' };
+  // A ação do pedido é a MAIS ATRASADA das peças dele: não adianta
+  // mostrar "entregar" se ainda tem peça sem arquivo.
+  const acoes = itensDoPedido.map(proximaAcaoDaPeca).filter(Boolean);
+  if (!acoes.length) return { tom: 'feito', texto: 'acabou', quantas: 0 };
 
-  let semPreco = 0, semArquivo = 0, semColinha = 0, semFatiador = 0, foraDaFila = 0;
-  vivos.forEach((it) => {
-    if (it.line_status === 'orcamento_pendente') { semPreco++; return; }
-    const naFila = FILA_PRONTAS.includes(it.line_status);
-    const p = passosDoPreparo(it);
-    if (!p[0].pronto) { semArquivo++; return; }
-    if (!p[1].pronto) { semColinha++; return; }
-    // Peça já na fila não é cobrada de "abrir no fatiador": ela já está
-    // sendo trabalhada, e insistir viraria alerta permanente. Fora da
-    // fila a cobrança existe pra bater com a trava da janela de
-    // preparar — senão a lista diria "pra mandar pra fila" e a janela
-    // diria "falta abrir no fatiador", cada uma pedindo uma coisa.
-    if (naFila) return;
-    if (!p[2].pronto) { semFatiador++; return; }
-    foraDaFila++;
-  });
-
-  const partes = [];
-  if (semPreco) partes.push(semPreco + ' sem preço');
-  if (semArquivo) partes.push(semArquivo + ' sem arquivo');
-  if (semColinha) partes.push(semColinha + ' sem colinha');
-  if (semFatiador) partes.push(semFatiador + ' pra abrir no fatiador');
-  if (foraDaFila) partes.push(foraDaFila + ' pra mandar pra fila');
-  if (!partes.length) return { nivel: 'ok', texto: 'tudo pronto' };
-  return { nivel: 'falta', texto: listaEmFrase(partes) };
+  let escolhida = acoes[0];
+  acoes.forEach((a) => { if (ACOES_DA_PECA[a].ordem < ACOES_DA_PECA[escolhida].ordem) escolhida = a; });
+  const quantas = acoes.filter((a) => a === escolhida).length;
+  const def = ACOES_DA_PECA[escolhida];
+  // A contagem só aparece quando é mais de uma. Com uma peça, "1 dizer
+  // o preço" só põe um número no caminho da frase.
+  return { tom: def.tom, texto: def.texto, quantas: quantas > 1 ? quantas : 0 };
 }
 
+const TOM_DA_ACAO = {
+  atencao: { bg: '#fff6e5', fg: '#8a5b00', b: '#ffd894', icone: '⚠️' },
+  pode:    { bg: '#e8f1ff', fg: '#1f4f9c', b: '#c3d9f7', icone: '👉' },
+  andando: { bg: '#f2f2f5', fg: '#5b5b66', b: '#e0e0e6', icone: '⏳' },
+  feito:   { bg: '#e9f7ef', fg: '#1f6b3b', b: '#b7e4c7', icone: '✅' },
+};
+
 function seloDoPreparo(p) {
-  const cor = p.nivel === 'ok'
-    ? { bg: '#e9f7ef', fg: '#1f6b3b', b: '#b7e4c7', icone: '✅' }
-    : { bg: '#fff6e5', fg: '#8a5b00', b: '#ffd894', icone: '⚠️' };
+  const c = TOM_DA_ACAO[p.tom] || TOM_DA_ACAO.andando;
   return '<span style="display:inline-block; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600;'
-    + ' background:' + cor.bg + '; color:' + cor.fg + '; border:1px solid ' + cor.b + ';">'
-    + cor.icone + ' ' + escapeHtml(p.texto) + '</span>';
+    + ' background:' + c.bg + '; color:' + c.fg + '; border:1px solid ' + c.b + ';">'
+    + c.icone + ' ' + escapeHtml(p.texto) + '</span>'
+    + (p.quantas ? '<div style="color:var(--muted); font-size:10.5px; margin-top:3px;">em ' + p.quantas + ' peças</div>' : '');
 }
 
 async function renderPedidos() {
@@ -1991,7 +2031,7 @@ async function renderPedidos() {
     // "Tipo" (catálogo/projeto) saiu: já dá pra ver isso lendo o item, e
     // o lugar valia mais pra "Falta", que responde a pergunta que se faz
     // olhando a lista — esta venda dá pra imprimir ou não?
-    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>Falta</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
+    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>O que fazer agora</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
     listaExibida.forEach((o) => {
       const ps = statusById[o.id];
       const itensDoPedido = itensPorPedido[o.id] || [];
