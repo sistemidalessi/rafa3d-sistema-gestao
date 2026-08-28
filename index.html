@@ -1965,7 +1965,9 @@ function preparoDoPedido(itensDoPedido) {
   // A ação do pedido é a MAIS ATRASADA das peças dele: não adianta
   // mostrar "entregar" se ainda tem peça sem arquivo.
   const acoes = itensDoPedido.map(proximaAcaoDaPeca).filter(Boolean);
-  if (!acoes.length) return { tom: 'feito', texto: 'acabou', quantas: 0 };
+  // ordem 99 põe os acabados no fim ao organizar por esta coluna — quem
+  // não tem mais nada a fazer não disputa atenção com quem tem.
+  if (!acoes.length) return { tom: 'feito', texto: 'acabou', quantas: 0, ordem: 99 };
 
   let escolhida = acoes[0];
   acoes.forEach((a) => { if (ACOES_DA_PECA[a].ordem < ACOES_DA_PECA[escolhida].ordem) escolhida = a; });
@@ -1973,7 +1975,7 @@ function preparoDoPedido(itensDoPedido) {
   const def = ACOES_DA_PECA[escolhida];
   // A contagem só aparece quando é mais de uma. Com uma peça, "1 dizer
   // o preço" só põe um número no caminho da frase.
-  return { tom: def.tom, texto: def.texto, quantas: quantas > 1 ? quantas : 0 };
+  return { tom: def.tom, texto: def.texto, quantas: quantas > 1 ? quantas : 0, ordem: def.ordem };
 }
 
 const TOM_DA_ACAO = {
@@ -1989,6 +1991,58 @@ function seloDoPreparo(p) {
     + ' background:' + c.bg + '; color:' + c.fg + '; border:1px solid ' + c.b + ';">'
     + c.icone + ' ' + escapeHtml(p.texto) + '</span>'
     + (p.quantas ? '<div style="color:var(--muted); font-size:10.5px; margin-top:3px;">em ' + p.quantas + ' peças</div>' : '');
+}
+
+/* Cabeçalho que ordena, como no Excel: clica no título e a lista se
+   organiza por ele; clica de novo e inverte. A seta mostra por qual
+   coluna está ordenado e pra que lado — sem isso, quem clicou não tem
+   como saber se a lista mudou porque ele mandou ou sozinha.
+
+   O padrão de cada coluna é o que a pessoa espera ao clicar: texto
+   começa de A pra Z, dinheiro e data começam do maior/mais novo. */
+
+function thOrdenavel(campo, rotulo, estado, funcao) {
+  const ativo = estado.campo === campo;
+  const seta = ativo ? (estado.desc ? ' ▼' : ' ▲') : ' <span style="opacity:.25;">↕</span>';
+  return '<th style="cursor:pointer; user-select:none; white-space:nowrap;" onclick="' + funcao + '(\'' + campo + '\')"'
+    + ' title="Clique pra organizar por aqui">' + escapeHtml(rotulo) + seta + '</th>';
+}
+
+// Colunas que começam do MAIOR quando clicadas pela primeira vez.
+const PEDIDOS_COMECAM_GRANDE = ['criado', 'total'];
+let _ordemPedidos = { campo: 'criado', desc: true };
+
+function ordenarPedidos(campo) {
+  if (_ordemPedidos.campo === campo) _ordemPedidos.desc = !_ordemPedidos.desc;
+  else _ordemPedidos = { campo: campo, desc: PEDIDOS_COMECAM_GRANDE.indexOf(campo) !== -1 };
+  renderPedidos();
+}
+
+// Ordem do fluxo de trabalho, não alfabética: ordenar status por letra
+// colocaria "Cancelado" antes de "Imprimindo", que não quer dizer nada.
+const ORDEM_DOS_STATUS = Object.keys(LINE_STATUS_LABELS);
+const ORDEM_DO_PAGAMENTO = ['aguardando_sinal', 'sinal_pago', 'pago_total'];
+
+function chaveDeOrdemDoPedido(o, itensDoPedido, statusPagamento, campo) {
+  if (campo === 'cliente') return ((o.customers ? o.customers.name : o.customer_name) || '').toLowerCase();
+  if (campo === 'criado') return new Date(o.created_at).getTime();
+  if (campo === 'item') {
+    const p = itensDoPedido[0];
+    if (!p) return '';
+    return ((p.line_type === 'catalog' ? (p.products ? p.products.name : '') : p.custom_description) || '').toLowerCase();
+  }
+  if (campo === 'acao') return preparoDoPedido(itensDoPedido).ordem;
+  if (campo === 'status') {
+    const st = statusResumoPedido(itensDoPedido);
+    const i = ORDEM_DOS_STATUS.indexOf(st);
+    return i === -1 ? 999 : i;
+  }
+  if (campo === 'total') return Number(o.total_amount) || 0;
+  if (campo === 'pagamento') {
+    const i = ORDEM_DO_PAGAMENTO.indexOf(statusPagamento);
+    return i === -1 ? 999 : i;
+  }
+  return 0;
 }
 
 async function renderPedidos() {
@@ -2013,7 +2067,30 @@ async function renderPedidos() {
 
   const fechados = orders.filter((o) => pedidoEstaFechado(itensPorPedido[o.id] || []));
   const abertos = orders.filter((o) => !pedidoEstaFechado(itensPorPedido[o.id] || []));
-  const listaExibida = mostrarPedidosFinalizados ? orders : abertos;
+  const listaExibida = (mostrarPedidosFinalizados ? orders : abertos).slice();
+
+  // Ordena pela coluna que a pessoa clicou. A chave é calculada uma vez
+  // por pedido e guardada: "o que fazer agora" percorre os itens do
+  // pedido inteiro, e recalcular isso a cada comparação deixaria a
+  // lista lenta à toa.
+  const chaves = {};
+  listaExibida.forEach((o) => {
+    const ps = statusById[o.id];
+    chaves[o.id] = chaveDeOrdemDoPedido(o, itensPorPedido[o.id] || [],
+      ps ? ps.payment_status : null, _ordemPedidos.campo);
+  });
+  listaExibida.sort((a, b) => {
+    const ka = chaves[a.id], kb = chaves[b.id];
+    let r = 0;
+    if (typeof ka === 'string' || typeof kb === 'string') {
+      // localeCompare pra acento não jogar "Ângela" pro fim da lista.
+      r = String(ka).localeCompare(String(kb), 'pt-BR');
+    } else {
+      r = (ka || 0) - (kb || 0);
+    }
+    if (r === 0) return new Date(b.created_at) - new Date(a.created_at);
+    return _ordemPedidos.desc ? -r : r;
+  });
 
   let html = '<div class="card">';
   html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px;">';
@@ -2031,7 +2108,15 @@ async function renderPedidos() {
     // "Tipo" (catálogo/projeto) saiu: já dá pra ver isso lendo o item, e
     // o lugar valia mais pra "Falta", que responde a pergunta que se faz
     // olhando a lista — esta venda dá pra imprimir ou não?
-    html += '<table><tr><th>Cliente</th><th>Pedido</th><th>Item</th><th>O que fazer agora</th><th>Status</th><th>Total</th><th>Pagamento</th><th></th></tr>';
+    html += '<table><tr>'
+      + thOrdenavel('cliente', 'Cliente', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('criado', 'Pedido', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('item', 'Item', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('acao', 'O que fazer agora', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('status', 'Status', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('total', 'Total', _ordemPedidos, 'ordenarPedidos')
+      + thOrdenavel('pagamento', 'Pagamento', _ordemPedidos, 'ordenarPedidos')
+      + '<th></th></tr>';
     listaExibida.forEach((o) => {
       const ps = statusById[o.id];
       const itensDoPedido = itensPorPedido[o.id] || [];
@@ -4925,6 +5010,36 @@ async function renderProdutos() {
   desenharProdutos();
 }
 
+const PRODUTOS_COMECAM_GRANDE = ['preco', 'margem'];
+let _ordemProdutos = { campo: 'nome', desc: false };
+
+function ordenarProdutos(campo) {
+  if (_ordemProdutos.campo === campo) _ordemProdutos.desc = !_ordemProdutos.desc;
+  else _ordemProdutos = { campo: campo, desc: PRODUTOS_COMECAM_GRANDE.indexOf(campo) !== -1 };
+  desenharProdutos();
+}
+
+function chaveDeOrdemDoProduto(p, campo) {
+  if (campo === 'codigo') return (p.catalog_code || '').toLowerCase();
+  if (campo === 'categoria') return (CATEGORY_LABELS[p.category] || p.category || '').toLowerCase();
+  if (campo === 'nome') return (p.name || '').toLowerCase();
+  if (campo === 'preco') return Number(p.sale_price) || 0;
+  if (campo === 'margem') {
+    // (receitasCache || []) porque as receitas só são carregadas pro
+    // dono — o ajudante nem vê esta coluna, mas um cache vazio não pode
+    // derrubar a ordenação da lista inteira.
+    const custo = calcularCustoReceita((receitasCache || []).find((r) => r.product_id === p.id));
+    // Sem receita não é margem zero, é margem desconhecida: -1 junta
+    // essas todas numa ponta só, em vez de espalhá-las entre produtos
+    // que dão prejuízo de verdade.
+    if (!custo || !p.sale_price) return -1;
+    return (p.sale_price - custo.total) / p.sale_price * 100;
+  }
+  if (campo === 'ativo') return p.active ? 0 : 1;
+  if (campo === 'arquivo') return p.model_file_path ? 0 : 1;
+  return 0;
+}
+
 function onFiltroProdutosTexto(v) { produtosFiltroTexto = v; desenharProdutos(); }
 function onFiltroProdutosCategoria(v) { produtosFiltroCategoria = v; desenharProdutos(); }
 
@@ -4937,7 +5052,18 @@ function desenharProdutos() {
   if (produtoCadastroAberto) { desenharCadastroProduto(el); return; }
   const scrollY = window.scrollY;
   const isOwner = currentProfile && currentProfile.role === 'owner';
-  const produtos = produtosFiltrados();
+  const produtos = produtosFiltrados().slice();
+  produtos.sort((a, b) => {
+    const ka = chaveDeOrdemDoProduto(a, _ordemProdutos.campo);
+    const kb = chaveDeOrdemDoProduto(b, _ordemProdutos.campo);
+    let r = (typeof ka === 'string' || typeof kb === 'string')
+      ? String(ka).localeCompare(String(kb), 'pt-BR')
+      : (ka || 0) - (kb || 0);
+    // Empate desempata pelo nome, sempre: sem isso, ordenar por
+    // categoria embaralharia os produtos dela a cada redesenho.
+    if (r === 0) return (a.name || '').localeCompare(b.name || '', 'pt-BR');
+    return _ordemProdutos.desc ? -r : r;
+  });
 
   let opcoesCategoria = '<option value="">Todas as categorias</option>';
   Object.keys(CATEGORY_LABELS).forEach((k) => {
@@ -4956,7 +5082,15 @@ function desenharProdutos() {
   if (produtos.length === 0) {
     html += '<div class="empty">Nenhum produto encontrado' + (produtosFiltroTexto || produtosFiltroCategoria ? ' com esse filtro.' : ' ainda.') + '</div>';
   } else {
-    html += '<table><tr><th></th><th>Código</th><th>Categoria</th><th>Nome</th><th>Preço</th>' + (isOwner ? '<th>Margem</th>' : '') + '<th>Status</th>' + (isOwner ? '<th>Arquivo 3D</th><th></th>' : '') + '</tr>';
+    html += '<table><tr><th></th>'
+      + thOrdenavel('codigo', 'Código', _ordemProdutos, 'ordenarProdutos')
+      + thOrdenavel('categoria', 'Categoria', _ordemProdutos, 'ordenarProdutos')
+      + thOrdenavel('nome', 'Nome', _ordemProdutos, 'ordenarProdutos')
+      + thOrdenavel('preco', 'Preço', _ordemProdutos, 'ordenarProdutos')
+      + (isOwner ? thOrdenavel('margem', 'Margem', _ordemProdutos, 'ordenarProdutos') : '')
+      + thOrdenavel('ativo', 'Status', _ordemProdutos, 'ordenarProdutos')
+      + (isOwner ? thOrdenavel('arquivo', 'Arquivo 3D', _ordemProdutos, 'ordenarProdutos') + '<th></th>' : '')
+      + '</tr>';
     produtos.forEach((p) => {
       html += '<tr>';
       html += '<td><img class="thumb" src="' + escapeHtml(produtoFotoSrc(p)) + '" onerror="this.style.visibility=\'hidden\'"></td>';
