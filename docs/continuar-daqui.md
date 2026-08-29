@@ -236,6 +236,23 @@ foi a **fonte** do número, não o destino.
 
 **Não reintroduza medição por relógio**, em nenhuma tela.
 
+### E o número entra onde ele aparece: passo 4 do preparo
+
+"Preparar pra imprimir" ganhou um quarto passo — **"Anotar o que o
+fatiador disse"** (tempo e gramas) — logo depois de "abrir no fatiador",
+de propósito: é nesse momento que os dois números estão na tela do
+Bambu. Perguntar depois é perguntar de memória.
+
+Hora e minuto em campos separados, do jeito que o Bambu mostra ("17h
+31min"): pedir 17,52 obriga a converter de cabeça, e é aí que entra
+número errado.
+
+Onde grava: item de catálogo vai pra **receita do produto** (serve pra
+toda venda futura); personalizado vai pra própria linha. É isso que faz
+os 155 produtos sem ficha irem ganhando tempo sozinhos, conforme forem
+vendidos — sem ninguém preencher 155 fichas de uma vez, que era o
+trabalho que ninguém ia fazer.
+
 ## A tela fala o que fazer, não o que o banco guarda — 27/08
 
 Três rodadas de "ainda está confuso" até chegar aqui. O que mudou de

@@ -2202,6 +2202,10 @@ async function renderPedidos() {
   const statuses = await q(SUPA.from('orders_payment_status').select('*'));
   const statusById = {};
   statuses.forEach((s) => { statusById[s.order_id] = s; });
+  // A coluna "o que fazer agora" olha o passo das medidas, que lê a
+  // receita do produto — sem isto ela cobraria "anotar o fatiador" de
+  // peça que já tem tempo guardado.
+  await getReceitas();
   // Traz também os campos de preparo (do produto e da própria linha),
   // pra lista poder dizer o que falta em cada pedido sem abrir um por
   // um — que era a reclamação: "e quais são essas peças?".
@@ -2496,8 +2500,20 @@ function fonteDoPreparo(it) {
   return it.line_type === 'catalog' ? (it.products || {}) : it;
 }
 
+// Tempo e gramas que a peça gasta. Item de catálogo guarda na receita
+// do produto (vale pra toda venda futura); personalizado guarda na
+// própria linha, porque não se repete.
+function medidasDaPeca(it) {
+  if (it.line_type === 'catalog') {
+    const r = (receitasCache || []).find((x) => x.product_id === it.product_id);
+    return { horas: r ? r.estimated_print_hours : null, gramas: r ? r.estimated_grams : null };
+  }
+  return { horas: it.estimated_print_hours, gramas: it.estimated_grams };
+}
+
 function passosDoPreparo(it) {
   const f = fonteDoPreparo(it);
+  const m = medidasDaPeca(it);
   return [
     { chave: 'arquivo', titulo: 'Ter o arquivo da peça',
       ajuda: 'É o desenho 3D que a impressora entende.',
@@ -2513,6 +2529,14 @@ function passosDoPreparo(it) {
       pronto: f.open_slicer_status === 'done',
       fazendo: f.open_slicer_status === 'queued' || f.open_slicer_status === 'processing',
       erro: f.open_slicer_status === 'error' ? f.open_slicer_error : null },
+    // O passo que faltava, e vem logo depois de abrir no fatiador de
+    // propósito: é EXATAMENTE nesse momento que o Bambu mostra o tempo
+    // e as gramas na tela. Perguntar depois é perguntar de memória, e
+    // foi tentar responder isso de memória — ou pelo relógio de
+    // parede — que estragava o custo da peça.
+    { chave: 'medidas', titulo: 'Anotar o que o fatiador disse',
+      ajuda: 'O tempo e os gramas aparecem no Bambu quando ele termina de fatiar. É este número que vale pra sempre.',
+      pronto: !!(m.horas && m.gramas), fazendo: false, erro: null },
   ];
 }
 
@@ -2538,6 +2562,9 @@ async function desenharPreparar() {
   const it = await q(SUPA.from('order_line_items')
     .select('*, products(*)').eq('id', _prepararItemId).maybeSingle());
   if (!it) { closeModal(); return; }
+  // O passo das medidas lê a receita do produto — sem isto ele diria
+  // "falta anotar" numa peça que já tem o tempo guardado.
+  await getReceitas();
 
   const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
   const passos = passosDoPreparo(it);
@@ -2623,12 +2650,84 @@ function botaoDoPasso(it, p) {
       ? 'solicitarAnaliseIA(\'' + alvo + '\', \'preparar\')'
       : 'solicitarAnaliseIAProjeto(\'' + alvo + '\')') + '">Pedir</button>';
   }
+  if (p.chave === 'medidas') {
+    const m = medidasDaPeca(it);
+    return '<button class="btn' + (p.pronto ? ' ghost' : '') + '" onclick="abrirMedidasDoFatiador(\'' + it.id + '\')">'
+      + (p.pronto ? fmtHoras(m.horas) + ' · ' + Math.round(m.gramas) + 'g' : 'Anotar') + '</button>';
+  }
   // fatiador
   const p1 = passosDoPreparo(it)[0];
   if (!p1.pronto) return '<button class="btn ghost" disabled style="opacity:.5;">Abrir</button>';
   return '<button class="btn' + (p.pronto ? ' ghost' : '') + '" onclick="' + (cat
     ? 'solicitarAbrirFatiador(\'' + alvo + '\', \'preparar\')'
     : 'solicitarAbrirFatiadorProjeto(\'' + alvo + '\')') + '">' + (p.pronto ? 'Abrir de novo' : 'Abrir') + '</button>';
+}
+
+// Pergunta o tempo e as gramas com o Bambu ainda aberto do lado. Hora e
+// minuto em campos separados de propósito, do jeito que o fatiador
+// mostra ("17h 31min") — pedir 17,52 obrigaria a converter de cabeça, e
+// é aí que entra número errado.
+async function abrirMedidasDoFatiador(itemId) {
+  const it = await q(SUPA.from('order_line_items')
+    .select('*, products(id, name)').eq('id', itemId).maybeSingle());
+  if (!it) return;
+  await getReceitas();
+  const m = medidasDaPeca(it);
+  const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+
+  openModal(
+    '<h3 style="margin:0 0 2px;">O que o fatiador disse?</h3>'
+    + '<div style="color:var(--muted); font-size:12.5px; margin-bottom:14px;">' + escapeHtml(nome || '')
+    + ' — copie os dois números da tela do Bambu Studio, de UMA peça.</div>'
+    + '<label class="pergunta">Quanto tempo ele leva pra imprimir?</label>'
+    + dicaCampo('O Bambu mostra assim: 17h 31min. Põe do mesmo jeito, sem converter nada.')
+    + '<div style="display:flex; gap:8px;">'
+    + '<div style="flex:1;"><input id="mfH" type="number" step="1" min="0" placeholder="horas" value="' + horasParteInteira(m.horas) + '"></div>'
+    + '<div style="flex:1;"><input id="mfM" type="number" step="1" min="0" max="59" placeholder="minutos" value="' + horasParteMinutos(m.horas) + '"></div>'
+    + '</div>'
+    + '<label class="pergunta">Quantos gramas de filamento ela gasta?</label>'
+    + dicaCampo('Também sai do fatiador, junto com o tempo.')
+    + '<input id="mfG" type="number" step="0.1" value="' + (m.gramas || '') + '">'
+    + '<div class="modal-actions">'
+    + '<button class="btn ghost" onclick="fecharPreparar()">Cancelar</button>'
+    + '<button class="btn" onclick="salvarMedidasDoFatiador(\'' + itemId + '\')">Salvar</button>'
+    + '</div>'
+  );
+}
+
+async function salvarMedidasDoFatiador(itemId) {
+  const horas = (parseFloat(document.getElementById('mfH').value) || 0)
+    + (parseFloat(document.getElementById('mfM').value) || 0) / 60;
+  const gramas = parseFloat(document.getElementById('mfG').value);
+  if (!horas) { toast('Diz quanto tempo ele leva.'); return; }
+  if (!gramas || gramas <= 0) { toast('Diz quantos gramas ela gasta.'); return; }
+
+  const it = await q(SUPA.from('order_line_items').select('id, line_type, product_id').eq('id', itemId).maybeSingle());
+  if (!it) return;
+
+  let error = null;
+  if (it.line_type === 'catalog' && it.product_id) {
+    // Vai pra RECEITA do produto: o número serve pra toda venda futura
+    // dessa peça, não só pra esta. É isso que faz os produtos do
+    // catálogo irem ganhando tempo sozinhos, conforme vão sendo
+    // vendidos — sem ninguém preencher 155 fichas de uma vez.
+    await getReceitas(true);
+    const r = (receitasCache || []).find((x) => x.product_id === it.product_id);
+    const payload = { estimated_print_hours: horas, estimated_grams: gramas };
+    const res = r
+      ? await SUPA.from('product_recipes').update(payload).eq('id', r.id)
+      : await SUPA.from('product_recipes').insert([Object.assign({ product_id: it.product_id }, payload)]);
+    error = res.error;
+    await getReceitas(true);
+  } else {
+    const res = await SUPA.from('order_line_items').update({
+      estimated_print_hours: horas, estimated_grams: gramas, updated_at: new Date().toISOString(),
+    }).eq('id', itemId);
+    error = res.error;
+  }
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Anotado! Agora a Fila sabe quanto essa peça demora.');
+  await desenharPreparar();
 }
 
 // As ações raras do item. Ficam atrás de um clique porque cada uma
@@ -2711,6 +2810,7 @@ async function personalizarItemDoPedido(itemId, orderId) {
 async function renderPedidoDetalhe(id) {
   const el = document.getElementById('tab-pedidos');
   el.innerHTML = '<div class="empty">Carregando...</div>';
+  await getReceitas();
   const order = await q(SUPA.from('orders').select('*, customers(name, phone)').eq('id', id).maybeSingle());
   // Traz junto o que o produto tem de arquivo 3D e o estado das filas.
   // Sem isso a tela do pedido só sabia o nome da peça, e quem quisesse
@@ -2853,7 +2953,7 @@ async function renderPedidoDetalhe(id) {
         html += '<button class="btn ghost" onclick="abrirPreparar(\'' + it.id + '\', \'' + id + '\')">✅ Na fila de impressão</button>';
       } else {
         html += '<button class="btn" onclick="abrirPreparar(\'' + it.id + '\', \'' + id + '\')">🔧 Preparar pra imprimir'
-          + '<span style="opacity:.75; font-weight:400;"> (' + prontos + ' de 3)</span></button>';
+          + '<span style="opacity:.75; font-weight:400;"> (' + prontos + ' de ' + passos.length + ')</span></button>';
       }
       html += '<button class="btn ghost" onclick="abrirMaisDoItem(\'' + it.id + '\', \'' + id + '\')">⋯ Mais</button>';
       html += '</td>';
