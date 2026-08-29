@@ -149,6 +149,14 @@ sai dali.
   campo `error`, e quem não conferir segue achando que apagou. Se você
   escreveu no banco por script, confira o resultado — não a sua mensagem
   de sucesso.
+- **`delete` que não apaga nada devolve SUCESSO.** Pior que o caso
+  acima: sem `.select()`, o Supabase não distingue "apaguei uma linha"
+  de "não achei nenhuma" — as duas voltam sem `error`. Em 29/08 a tela
+  disse "Pedido excluído" três vezes com o pedido ainda no banco.
+  **Todo `delete` de tela leva `.select()` e confere `data.length`**, e
+  zero linha vira aviso pra pessoa. Escrevi a regra do bullet anterior
+  de manhã e caí nela à tarde, nas duas funções que tinha acabado de
+  criar — não confie em ter lido isto uma vez.
 - **Todo `delete` passa pela lixeira (patch 47).** Guarde a cópia
   (`guardarNaLixeira`) ANTES de apagar, e não apague se a cópia falhar.
   A cópia inclui as filhas que somem na cascata. Nasceu de 28/08, quando
