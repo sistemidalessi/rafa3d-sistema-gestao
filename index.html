@@ -4145,18 +4145,48 @@ function cartaoPlanoDoDia(items, impressoras, slots, partesPorItem) {
       custo: custoDeMontagem(it, imp, slots, partesPorItem),
     }));
 
-    const agora = avaliadas.filter((a) => a.custo.possivel && a.custo.minutos === 0);
-    const depois = avaliadas.filter((a) => a.custo.possivel && a.custo.minutos > 0);
-    const travadas = avaliadas.filter((a) => !a.custo.possivel);
+    // O que ESTÁ na máquina sai da sugestão e ganha lugar próprio no
+    // topo. Sugerir o que já está imprimindo é a tela contradizendo a
+    // realidade — foi o que deixou o dono sem saída: a máquina fazia a
+    // peça 4 e a lista insistia na peça 1.
+    const imprimindo = avaliadas.filter((a) => a.it.line_status === 'imprimindo');
+    const restantes = avaliadas.filter((a) => a.it.line_status !== 'imprimindo');
 
+    // Peça fixada à mão sai das seções automáticas e ganha a primeira
+    // delas. Deixá-la só "em primeiro dentro da seção dela" não
+    // resolvia: ela precisava de troca de filamento, caía na seção de
+    // baixo e o dono via a peça que ele escolheu continuar embaixo —
+    // exatamente a sensação de não conseguir mexer em nada.
+    const fixadas = restantes.filter((a) => a.it.ordem_na_fila != null);
+    const soltas = restantes.filter((a) => a.it.ordem_na_fila == null);
+
+    const agora = soltas.filter((a) => a.custo.possivel && a.custo.minutos === 0);
+    const depois = soltas.filter((a) => a.custo.possivel && a.custo.minutos > 0);
+    const travadas = soltas.filter((a) => !a.custo.possivel);
+
+    // Ordem escolhida à mão vence a sugestão, sempre (patch-46).
+    // Sugestão que não pode ser contrariada não é sugestão, é ordem.
     const porPrazoEDepoisCurta = (a, b) => {
+      const ma = a.it.ordem_na_fila, mb = b.it.ordem_na_fila;
+      if (ma != null || mb != null) {
+        if (ma == null) return 1;
+        if (mb == null) return -1;
+        if (ma !== mb) return ma - mb;
+      }
       const pa = a.it._prazo.comecarAte ? a.it._prazo.comecarAte.getTime() : Infinity;
       const pb = b.it._prazo.comecarAte ? b.it._prazo.comecarAte.getTime() : Infinity;
       if (pa !== pb) return pa - pb;
       return (a.it._horas.total || Infinity) - (b.it._horas.total || Infinity);
     };
+    fixadas.sort(porPrazoEDepoisCurta);
     agora.sort(porPrazoEDepoisCurta);
-    depois.sort((a, b) => (a.custo.minutos - b.custo.minutos) || porPrazoEDepoisCurta(a, b));
+    // Aqui a ordem à mão vem ANTES do custo de troca: quem fixou a peça
+    // já sabe que vai trocar filamento e decidiu assim mesmo.
+    depois.sort((a, b) => {
+      const ma = a.it.ordem_na_fila, mb = b.it.ordem_na_fila;
+      if (ma != null || mb != null) return porPrazoEDepoisCurta(a, b);
+      return (a.custo.minutos - b.custo.minutos) || porPrazoEDepoisCurta(a, b);
+    });
 
     const carregadas = slots.filter((s) => s.printer_id === imp.id && s.filament_color_id)
       .map((s) => { const c = corDoFilamento(s.filament_color_id); return c ? c.name : '?'; });
@@ -4179,10 +4209,19 @@ function cartaoPlanoDoDia(items, impressoras, slots, partesPorItem) {
         + 'Vale trocar por ela primeiro, mesmo custando ' + urgenteQueCustaTroca.custo.minutos + ' min.</div>';
     }
 
+    if (imprimindo.length) {
+      html += '<div style="margin-top:12px; font-size:12.5px; color:#1f4f9c; font-weight:600;">🖨️ Na máquina agora</div>';
+      html += listaDoPlano(imprimindo, { imprimindo: true });
+    }
+    if (fixadas.length) {
+      html += '<div style="margin-top:12px; font-size:12.5px; color:#1f4f9c; font-weight:600;">📌 Você escolheu fazer estas primeiro</div>';
+      html += listaDoPlano(fixadas);
+    }
     if (agora.length) {
       const horas = agora.reduce((s, a) => s + (a.it._horas.total || 0), 0);
       html += '<div style="margin-top:12px; font-size:12.5px; color:#1f6b3b; font-weight:600;">'
-        + '👉 Sem trocar nada' + (horas ? ' — ' + fmtHoras(horas) + ' de impressão' : '') + '</div>';
+        + '👉 ' + (imprimindo.length || fixadas.length ? 'Depois destas, sem trocar nada' : 'Sem trocar nada')
+        + (horas ? ' — ' + fmtHoras(horas) + ' de impressão' : '') + '</div>';
       html += listaDoPlano(agora);
     }
     if (depois.length) {
@@ -4202,7 +4241,8 @@ function nomeDaPecaNaFila(it) {
   return (it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description) || '—';
 }
 
-function listaDoPlano(avaliadas) {
+function listaDoPlano(avaliadas, opts) {
+  const o = opts || {};
   let html = '<div class="tabela-rola" style="margin-top:6px;"><table>';
   avaliadas.forEach((a, i) => {
     const it = a.it;
@@ -4219,10 +4259,59 @@ function listaDoPlano(avaliadas) {
       + '<br><span style="color:var(--muted); font-size:11px;">' + escapeHtml(coresEmTexto(it)) + '</span></td>';
     html += '<td style="white-space:nowrap;">' + (it._horas.total ? fmtHoras(it._horas.total) : '—') + '</td>';
     html += '<td style="font-size:12px;">' + oQueFazer + '</td>';
+
+    // A coluna que faltava: dá pra AGIR daqui. Antes o plano era só
+    // leitura — o dono via a sugestão, decidia outra coisa e não tinha
+    // como contar isso pro sistema.
+    html += '<td class="row-actions">';
+    if (o.imprimindo) {
+      html += '<button class="btn" onclick="openConcluirImpressao(\'' + it.id + '\')">✅ Terminei</button>';
+      html += '<button class="btn ghost" onclick="openMarcarFalha(\'' + it.id + '\')">Deu errado</button>';
+    } else {
+      if (c.possivel) {
+        html += '<button class="btn" onclick="mudarStatusFilaItem(\'' + it.id + '\', \'imprimindo\')">▶️ Pus pra imprimir</button>';
+      }
+      // Subir é o suficiente pra reordenar: pra descer uma, sobe a de
+      // baixo. Dois botões por linha numa tabela já cheia custam mais
+      // do que ajudam.
+      if (i > 0) html += '<button class="btn ghost" onclick="subirNaFila(\'' + it.id + '\')" title="Fazer esta antes">⬆️</button>';
+      if (it.ordem_na_fila != null) {
+        html += '<button class="btn ghost" onclick="soltarNaFila(\'' + it.id + '\')" title="Deixar o sistema decidir de novo">✖️</button>';
+      }
+    }
+    html += '</td>';
     html += '</tr>';
   });
   html += '</table></div>';
   return html;
+}
+
+/* Reordenar à mão.
+
+   A regra é simples de propósito: "subir" põe a peça na frente de todo
+   mundo que já foi fixado, e quem nunca foi fixado continua depois. Não
+   existe arrastar — arrastar em celular, com a lista se redesenhando a
+   cada mudança de status, erra mais do que acerta. */
+async function subirNaFila(itemId) {
+  const fixados = await q(SUPA.from('order_line_items')
+    .select('id, ordem_na_fila').not('ordem_na_fila', 'is', null)
+    .order('ordem_na_fila').limit(1)) || [];
+  const menor = fixados.length ? (fixados[0].ordem_na_fila || 0) : 1;
+  const { error } = await SUPA.from('order_line_items')
+    .update({ ordem_na_fila: menor - 1, updated_at: new Date().toISOString() })
+    .eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Essa vai primeiro.');
+  await renderFila();
+}
+
+async function soltarNaFila(itemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ ordem_na_fila: null, updated_at: new Date().toISOString() })
+    .eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Voltou pra ordem sugerida.');
+  await renderFila();
 }
 
 function pluralRolo(n) { return n + (n === 1 ? ' rolo' : ' rolos'); }
