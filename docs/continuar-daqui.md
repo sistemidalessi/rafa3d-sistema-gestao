@@ -208,6 +208,52 @@ livre = 3 min por rolo; cor faltando com AMS cheio = 12 min por rolo,
 porque é preciso tirar um pra pôr o outro. Peça que pede mais cores do
 que a máquina tem gavetas fica bloqueada, com o motivo escrito.
 
+### 🔴 Cor sozinha não basta: o MATERIAL vale igual
+
+Achado em 28/08, e quase custou uma peça. A Fila dizia *"Transportador
+de Sacola — Preto — a cor já está na máquina"*. Estava certa sobre a cor
+e errada sobre o que importa: o Preto carregado era **TPU** e a peça é
+**PETG**.
+
+**Regra que não pode voltar atrás: cor nunca aparece sozinha na tela.**
+Sempre `Preto (TPU)`, nunca `Preto`. "Preto" e "Preto" são filamentos
+diferentes se um é PLA e o outro é TPU — muda temperatura, muda placa,
+muda se a peça sai ou derrete. Vale no plano do dia, na tabela da Fila,
+nas gavetas da impressora, nas duas janelas de escolher cor, na cor da
+parte e na cor pedida no pedido. Use `rotuloDaCor()`.
+
+E o sistema **confere sozinho**: peça cujo material não bate com a cor
+escolhida fica em "⛔ ainda não dá", com o motivo por extenso. Peça sem
+material declarado não trava — a maioria do catálogo não tem ficha, e
+travar tudo deixaria a Fila vazia.
+
+#### ⚠️ São DOIS vocabulários de material — compare a família
+
+```
+família        (products, project_parts):  pla | petg | tpu | abs
+nome comercial (cores, receitas):          PLA · PLA Silk · PETG Basic ·
+                                           PETG Silk · TPU · PLA Premium
+```
+
+`products.material` tem `check` que só aceita a família (patch 33).
+Comparar texto exato entre os dois vocabulários acusa `pla` contra
+`PLA Silk` como conflito — metade do catálogo. **A conferência é pela
+primeira palavra** (`familiaDoMaterial()`): pega o erro que estraga a
+peça e não implica com o que só muda o brilho.
+
+#### Os três conflitos que existiam, e o que foi feito
+
+Todos escolheram o item chamado só **"Preto"**, que por acaso é o rolo
+de TPU — os outros pretos têm sobrenome (`Preto Fosco` é PLA, `Preto
+Brilhante` é PETG Basic) e passaram batido.
+
+- **Transportador de Sacola**: receita e produto corrigidos pra PETG
+  Basic, cor apontada pro Preto Brilhante.
+- **Cine-Companion (2 peças, já embaladas)**: cor corrigida pro Preto
+  Fosco (PLA).
+
+Varredura final: **nenhum conflito restante**.
+
 ### E dá pra contrariar a sugestão — patch 46
 
 A primeira versão do plano era **só leitura**, e o dono ficou (palavra

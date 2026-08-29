@@ -149,6 +149,17 @@ sai dali.
   campo `error`, e quem não conferir segue achando que apagou. Se você
   escreveu no banco por script, confira o resultado — não a sua mensagem
   de sucesso.
+- **Cor sozinha na tela é bug.** Sempre `Preto (TPU)`, nunca `Preto` —
+  use `rotuloDaCor()`. "Preto" e "Preto" são filamentos diferentes se um
+  é PLA e o outro é TPU, e o material decide temperatura, placa e se a
+  peça sai ou derrete. Em 28/08 a Fila aprovou imprimir uma peça de PETG
+  num rolo de TPU porque os dois eram pretos e a tela só escrevia a cor.
+- **Material tem DOIS vocabulários — compare a família.** `products` e
+  `project_parts` guardam `pla|petg|tpu|abs` (tem `check`, patch 33);
+  `filament_colors` e as receitas guardam o nome comercial (`PLA Silk`,
+  `PETG Basic`). Texto exato entre os dois acusa `pla` contra `PLA Silk`
+  como conflito — metade do catálogo. `familiaDoMaterial()` compara a
+  primeira palavra.
 - **São dois fatiadores, de propósito.** `SLICER_APP_PATH` (Bambu Studio) é o
   que abre pro Rafael trabalhar; `ORCA_PATH` (OrcaSlicer) é só pro fatiamento
   por linha de comando. Não unifique.
