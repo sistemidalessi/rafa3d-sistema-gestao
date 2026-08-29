@@ -27,7 +27,12 @@ $nomeTarefa = "Rafa3D - Vigia do Agente"
 Write-Host ""
 Write-Host "Instalando o vigia do agente nesta maquina" -ForegroundColor Cyan
 
-$comando = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' + $script + '"'
+# Via wscript.exe, e nao powershell.exe direto: o -WindowStyle Hidden
+# NAO impede o piscar -- o PowerShell cria a janela do console e so
+# depois esconde, entao uma janela preta aparecia a cada 5 minutos, o
+# dia inteiro. O wscript com estilo 0 nunca chega a desenhar janela.
+$oculto = Join-Path $pasta "vigia-oculto.vbs"
+$comando = 'wscript.exe "' + $oculto + '"'
 
 & schtasks.exe /Create /TN $nomeTarefa /TR $comando /SC MINUTE /MO 5 /F | Out-Null
 
