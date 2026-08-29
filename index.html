@@ -4105,10 +4105,10 @@ function custoDeMontagem(it, impressora, slots, partesPorItem) {
   // Sem esta conferência o sistema aprovava imprimir o Transportador de
   // Sacola (PETG Silk) num rolo de TPU só porque os dois eram pretos —
   // e ninguém veria, porque a tela mostrava só "Preto".
-  const precisa = materialDaPeca(it, partesPorItem);
+  const precisa = familiaDoMaterial(materialDaPeca(it, partesPorItem));
   if (precisa) {
     const erradas = cores.map(corDoFilamento).filter((c) =>
-      c && materialNormalizado(c.material) !== precisa);
+      c && familiaDoMaterial(c.material) !== precisa);
     if (erradas.length) {
       return {
         possivel: false,
@@ -5508,6 +5508,28 @@ function rotuloDaCor(corOuId) {
 // guarda "PETG Silk".
 function materialNormalizado(m) {
   return String(m || '').trim().toLowerCase();
+}
+
+/* O sistema tem DOIS vocabulários de material, e comparar texto exato
+   entre eles dá conflito falso:
+
+     família        (products, project_parts):  pla | petg | tpu | abs
+     nome comercial (cores, receitas):          PLA, PLA Silk, PETG Basic,
+                                                PETG Silk, TPU, PLA Premium
+
+   "pla" contra "PLA Silk" não é conflito nenhum — é o mesmo plástico,
+   com acabamento diferente. Já "petg" contra "tpu" é peça derretida.
+   Por isso a conferência é pela FAMÍLIA (a primeira palavra): pega o
+   erro que estraga a peça e não implica com o que só muda o brilho.
+
+   Descoberto ao corrigir o Transportador: a versão anterior comparava
+   texto exato e teria acusado metade do catálogo. */
+function familiaDoMaterial(m) {
+  const t = materialNormalizado(m);
+  if (!t) return null;
+  const familias = ['petg', 'pla', 'tpu', 'abs', 'asa', 'pc', 'pa', 'pet'];
+  const achada = familias.find((f) => t === f || t.indexOf(f + ' ') === 0 || t.indexOf(f) === 0);
+  return achada || t;
 }
 
 // Qual material esta peça precisa, segundo o cadastro dela.
