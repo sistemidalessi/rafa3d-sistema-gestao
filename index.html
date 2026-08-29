@@ -2176,10 +2176,17 @@ async function excluirProjeto(lineItemId, orderId) {
   // Apaga o pedido só quando ele existe SÓ por causa deste projeto.
   // Com outras peças dentro, apaga apenas esta — apagar o pedido levava
   // as irmãs junto, e foi assim que a Cesta Suspensa sumiu com tudo.
-  const { error } = (orderId && !temIrmas)
-    ? await SUPA.from('orders').delete().eq('id', orderId)
-    : await SUPA.from('order_line_items').delete().eq('id', lineItemId);
+  // Mesmo cuidado do excluirPedido: confere que apagou de verdade, em
+  // vez de confiar no "sem erro".
+  const { data: apagados, error } = (orderId && !temIrmas)
+    ? await SUPA.from('orders').delete().eq('id', orderId).select('id')
+    : await SUPA.from('order_line_items').delete().eq('id', lineItemId).select('id');
   if (error) { toast('Erro: ' + error.message); return; }
+  if (!apagados || !apagados.length) {
+    alert('O banco não deixou apagar, e não disse por quê — nenhuma linha foi removida.\n\n'
+      + 'A cópia ficou guardada em "Coisas apagadas", então nada se perdeu.');
+    return;
+  }
   closeModal();
   toast('Projeto excluído.');
   await renderProjetos();
@@ -2519,8 +2526,20 @@ async function excluirPedido(orderId) {
     + 'Vai junto: ' + pecas(quantas) + ' e os pagamentos anotados.\n\n'
     + 'Fica guardado em "Coisas apagadas", dá pra trazer de volta.')) return;
   if (!await guardarNaLixeira('pedido', quem, copia)) return;
-  const { error } = await SUPA.from('orders').delete().eq('id', orderId);
+  // `.select()` no delete: sem ele o Supabase devolve sucesso mesmo
+  // quando NÃO apagou nada — é assim que RLS recusa, em silêncio. Foi
+  // exatamente isso que fez o sistema dizer "Pedido excluído" com o
+  // pedido ainda lá, e é a mesma armadilha que deixou uma linha de
+  // teste presa em slicer_agents até o patch 43. Confira o resultado,
+  // não a sua mensagem de sucesso.
+  const { data: apagados, error } = await SUPA.from('orders').delete().eq('id', orderId).select('id');
   if (error) { toast('Erro: ' + error.message); return; }
+  if (!apagados || !apagados.length) {
+    alert('O banco não deixou apagar este pedido, e não disse por quê — nenhuma linha foi removida.\n\n'
+      + 'A cópia dele ficou guardada em "Coisas apagadas", então nada se perdeu.\n\n'
+      + 'Isso costuma ser permissão (RLS/GRANT) faltando pra apagar pedido. Avise o Anderson.');
+    return;
+  }
   toast('Pedido excluído.');
   pedidoDetalheId = null;
   await renderPedidos();
