@@ -4392,7 +4392,7 @@ async function renderFila() {
   el.innerHTML = '<div class="empty">Carregando...</div>';
 
   const items = await q(SUPA.from('order_line_items')
-    .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name, model_file_path, open_slicer_status, open_slicer_error)')
+    .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name, material, model_file_path, open_slicer_status, open_slicer_error)')
     .in('line_status', FILA_PRONTAS)
     .order('created_at'));
 
@@ -5511,15 +5511,27 @@ function materialNormalizado(m) {
 }
 
 // Qual material esta peça precisa, segundo o cadastro dela.
+// Três fontes, nesta ordem — e a terceira é a que faz a conferência
+// valer alguma coisa: só pela receita ela cobria 3 das 8 peças com cor
+// escolhida; somando products.material, cobre as 8.
+//
+// products.material é preenchido quando se pede a colinha (é a escolha
+// de "PLA ou PETG?" daquela tela), então quase toda peça que já passou
+// pelo preparo tem esse dado — enquanto a receita de custo, não.
 function materialDaPeca(it, partesPorItem) {
   const partes = (partesPorItem && partesPorItem[it.id]) || [];
   const daParte = partes.map((p) => materialNormalizado(p.material)).filter(Boolean);
   if (daParte.length) return daParte[0];
+
   if (it.line_type === 'catalog') {
     const r = (receitasCache || []).find((x) => x.product_id === it.product_id);
-    return r ? materialNormalizado(r.filament_material_media) : null;
+    if (r && r.filament_material_media) return materialNormalizado(r.filament_material_media);
+    if (it.products && it.products.material) return materialNormalizado(it.products.material);
+    return null;
   }
-  return null;
+  // Item personalizado sem partes guarda o material na própria linha,
+  // do mesmo jeito que guarda arquivo e colinha.
+  return it.material ? materialNormalizado(it.material) : null;
 }
 
 function bolinhaDeSlot(p, slot) {
