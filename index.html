@@ -1420,6 +1420,25 @@ async function renderParteHtml(parte) {
   html += '<div style="display:flex; justify-content:space-between; align-items:center;"><strong style="font-size:13px;">' + nome + '</strong>';
   html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="excluirParte(\'' + parte.id + '\')">🗑️</button></div>';
 
+  // De que cor é esta parte (patch-45). Fica aqui, na parte, porque é
+  // ela que é de uma cor só — é essa a divisão que o Hi3D faz. E é o
+  // que a Fila usa pra saber se a peça inteira dá pra imprimir com o
+  // que está carregado no AMS: peça de 3 cores precisa das 3 ao mesmo
+  // tempo. Sem a cor preenchida, a peça aparece como "ainda não sei de
+  // que cor é" e não entra no plano do dia.
+  const corDaParte = corDoFilamento(parte.filament_color_id);
+  html += '<div style="font-size:12px; margin-top:6px; display:flex; justify-content:space-between; align-items:center; gap:8px;">';
+  html += '<span>Cor</span>';
+  html += '<button onclick="abrirCorDaParte(\'' + parte.id + '\')" title="Clique pra dizer de que cor é esta parte"'
+    + ' style="display:flex; align-items:center; gap:6px; padding:3px 10px 3px 4px; border-radius:999px; cursor:pointer; font:inherit; font-size:11.5px;'
+    + ' background:#fff; border:1px solid ' + (corDaParte ? 'var(--border)' : '#ffd894') + ';">'
+    + '<span style="width:20px; height:20px; border-radius:50%; flex:none;'
+    + ' background:' + (corDaParte ? (corDaParte.hex_or_gradient || '#ccc').replace(/"/g, '') : 'transparent')
+    + '; border:' + (corDaParte ? '1px solid rgba(0,0,0,0.12)' : '2px dashed #ffd894') + ';"></span>'
+    + (corDaParte ? escapeHtml(corDaParte.name) : '<span style="color:#8a5b00;">escolher</span>')
+    + '</button>';
+  html += '</div>';
+
   html += '<div style="font-size:12px; margin-top:6px; display:flex; justify-content:space-between; align-items:center;">';
   html += '<span>Modelo 3D — ' + (parte.model_file_path ? '<span class="badge on">' + (parte.model_source === 'meshy_generated' ? 'gerado por IA' : 'anexado') + '</span>' : (PARTE_STATUS_BADGE[parte.meshy_status] || '<span style="color:var(--muted);">nenhum</span>')) + '</span>';
   // Antes só existia "Gerar por IA" — quem já tem o arquivo pronto de
@@ -1521,6 +1540,45 @@ async function uploadModeloParte(parteId) {
   if (dbErr) { toast('Erro: ' + dbErr.message); return; }
   toast('Arquivo 3D anexado.');
   abrirGerenciarProjeto(parte.order_line_item_id);
+}
+
+// Escolher a cor de uma parte. Mesmo desenho da troca de gaveta do AMS
+// — bolinha colorida, não lista de texto: quem escolhe compara com o
+// rolo que tem na mão.
+async function abrirCorDaParte(parteId) {
+  await getFilamentos();
+  const parte = await q(SUPA.from('project_parts')
+    .select('id, nome, ordem, filament_color_id').eq('id', parteId).maybeSingle());
+  if (!parte) return;
+
+  let html = '<h3 style="margin:0 0 2px;">De que cor é esta parte?</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">'
+    + escapeHtml(parte.nome || ('Parte ' + parte.ordem))
+    + ' — a Fila usa isso pra saber se dá pra imprimir com o que está na impressora.</div>';
+  html += '<div style="display:flex; flex-wrap:wrap; gap:8px; max-height:46vh; overflow-y:auto;">';
+  (filamentosCache || []).filter((c) => c.active !== false).forEach((c) => {
+    const marcada = parte.filament_color_id === c.id;
+    html += '<button onclick="salvarCorDaParte(\'' + parte.id + '\', \'' + c.id + '\')"'
+      + ' style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
+      + ' background:' + (marcada ? 'var(--bg)' : '#fff') + '; border:' + (marcada ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
+      + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
+      + '<span style="font-size:13px;">' + escapeHtml(c.name) + '</span></button>';
+  });
+  html += '</div>';
+  html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:10px;">'
+    + '<button class="btn ghost full" onclick="salvarCorDaParte(\'' + parte.id + '\', null)">Ainda não sei</button></div>';
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  openModal(html);
+}
+
+async function salvarCorDaParte(parteId, corId) {
+  const parte = await q(SUPA.from('project_parts').select('order_line_item_id').eq('id', parteId).maybeSingle());
+  const { error } = await SUPA.from('project_parts')
+    .update({ filament_color_id: corId, updated_at: new Date().toISOString() }).eq('id', parteId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast(corId ? 'Cor anotada!' : 'Deixei sem cor.');
+  if (parte) await abrirGerenciarProjeto(parte.order_line_item_id);
 }
 
 async function excluirParte(parteId) {
