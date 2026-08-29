@@ -1435,7 +1435,7 @@ async function renderParteHtml(parte) {
     + '<span style="width:20px; height:20px; border-radius:50%; flex:none;'
     + ' background:' + (corDaParte ? (corDaParte.hex_or_gradient || '#ccc').replace(/"/g, '') : 'transparent')
     + '; border:' + (corDaParte ? '1px solid rgba(0,0,0,0.12)' : '2px dashed #ffd894') + ';"></span>'
-    + (corDaParte ? escapeHtml(corDaParte.name) : '<span style="color:#8a5b00;">escolher</span>')
+    + (corDaParte ? escapeHtml(rotuloDaCor(corDaParte)) : '<span style="color:#8a5b00;">escolher</span>')
     + '</button>';
   html += '</div>';
 
@@ -1562,7 +1562,7 @@ async function abrirCorDaParte(parteId) {
       + ' style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
       + ' background:' + (marcada ? 'var(--bg)' : '#fff') + '; border:' + (marcada ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
       + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
-      + '<span style="font-size:13px;">' + escapeHtml(c.name) + '</span></button>';
+      + '<span style="font-size:13px;">' + escapeHtml(rotuloDaCor(c)) + '</span></button>';
   });
   html += '</div>';
   html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:10px;">'
@@ -2921,7 +2921,10 @@ async function renderPedidoDetalhe(id) {
       // nome porque é a primeira coisa que o Rafa precisa saber pra
       // botar a peça na impressora. O nome chega junto na consulta, pra
       // não ter que ir buscar cor por cor.
-      const corPedida = it.filament_colors ? it.filament_colors.name : null;
+      // Com o MATERIAL junto, sempre — "Preto" e "Preto" são filamentos
+      // diferentes se um é PLA e o outro é TPU, e é o material que
+      // decide temperatura, placa e se a peça sai ou derrete.
+      const corPedida = it.filament_colors ? rotuloDaCor(it.filament_colors) : null;
       if (corPedida) html += '<br><span style="font-size:11px;">🎨 quer na cor <strong>' + escapeHtml(corPedida) + '</strong></span>';
       if (it.notes) html += '<br><span style="font-size:11px; color:var(--muted);">📝 ' + escapeHtml(it.notes) + '</span>';
       // O código vem junto porque é por ele que a peça é achada no
@@ -4097,6 +4100,23 @@ function custoDeMontagem(it, impressora, slots, partesPorItem) {
   if (temDesconhecida) {
     return { possivel: false, motivo: 'ainda não sei de que cor é' };
   }
+
+  // O material da cor escolhida tem que bater com o material da peça.
+  // Sem esta conferência o sistema aprovava imprimir o Transportador de
+  // Sacola (PETG Silk) num rolo de TPU só porque os dois eram pretos —
+  // e ninguém veria, porque a tela mostrava só "Preto".
+  const precisa = materialDaPeca(it, partesPorItem);
+  if (precisa) {
+    const erradas = cores.map(corDoFilamento).filter((c) =>
+      c && materialNormalizado(c.material) !== precisa);
+    if (erradas.length) {
+      return {
+        possivel: false,
+        motivo: 'a peça é ' + precisa.toUpperCase() + ', mas a cor escolhida é '
+          + erradas.map((c) => c.name + ' (' + c.material + ')').join(', '),
+      };
+    }
+  }
   if (!faltando.length) {
     return { possivel: true, minutos: 0, encaixar: 0, trocar: 0, faltando: [] };
   }
@@ -4189,7 +4209,7 @@ function cartaoPlanoDoDia(items, impressoras, slots, partesPorItem) {
     });
 
     const carregadas = slots.filter((s) => s.printer_id === imp.id && s.filament_color_id)
-      .map((s) => { const c = corDoFilamento(s.filament_color_id); return c ? c.name : '?'; });
+      .map((s) => rotuloDaCor(s.filament_color_id));
 
     html += '<div class="card">';
     html += '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px;">';
@@ -4319,7 +4339,7 @@ function pluralRolo(n) { return n + (n === 1 ? ' rolo' : ' rolos'); }
 function coresEmTexto(it) {
   const nomes = (it._coresNecessarias || []).map((id) => {
     const c = corDoFilamento(id);
-    return c ? c.name : '?';
+    return rotuloDaCor(c);
   });
   return nomes.length ? nomes.join(' + ') : 'cor ainda não definida';
 }
@@ -4418,7 +4438,7 @@ async function renderFila() {
   let partes = [];
   if (idsDeItem.length) {
     partes = await q(SUPA.from('project_parts')
-      .select('order_line_item_id, filament_color_id')
+      .select('order_line_item_id, filament_color_id, material')
       .in('order_line_item_id', idsDeItem)) || [];
   }
   const partesPorItem = {};
@@ -4776,7 +4796,7 @@ async function preencherCoresFila(itens) {
     const el = document.getElementById('cor-' + it.id);
     if (!el) return;
     const cor = cores.find((c) => c.id === it.requested_filament_color_id);
-    el.textContent = cor ? cor.name : '—';
+    el.textContent = cor ? rotuloDaCor(cor) : '—';
   });
 }
 
@@ -5467,10 +5487,45 @@ function corDoFilamento(corId) {
   return (filamentosCache || []).find((c) => c.id === corId) || null;
 }
 
+/* Cor NUNCA aparece sozinha na tela — sempre com o material junto.
+
+   Achado em 28/08, e quase custou uma peça: o Transportador de Sacola
+   pedia "Preto", a impressora tinha "Preto", e o sistema disse "a cor
+   já está na máquina". Só que o Preto carregado era TPU, e a peça é
+   PETG Silk. Estava certo sobre a cor e errado sobre o que importa.
+
+   "Preto" e "Preto" são coisas diferentes se um é PLA e o outro é TPU:
+   temperatura diferente, placa diferente, resultado diferente. Escrever
+   só o nome da cor esconde justamente o que faz a peça dar errado — e
+   quem lê tem 10 anos. */
+function rotuloDaCor(corOuId) {
+  const c = (typeof corOuId === 'string') ? corDoFilamento(corOuId) : corOuId;
+  if (!c) return '—';
+  return c.material ? c.name + ' (' + c.material + ')' : c.name;
+}
+
+// Normaliza pra comparar: a receita guarda "petg silk" e o filamento
+// guarda "PETG Silk".
+function materialNormalizado(m) {
+  return String(m || '').trim().toLowerCase();
+}
+
+// Qual material esta peça precisa, segundo o cadastro dela.
+function materialDaPeca(it, partesPorItem) {
+  const partes = (partesPorItem && partesPorItem[it.id]) || [];
+  const daParte = partes.map((p) => materialNormalizado(p.material)).filter(Boolean);
+  if (daParte.length) return daParte[0];
+  if (it.line_type === 'catalog') {
+    const r = (receitasCache || []).find((x) => x.product_id === it.product_id);
+    return r ? materialNormalizado(r.filament_material_media) : null;
+  }
+  return null;
+}
+
 function bolinhaDeSlot(p, slot) {
   const cor = corDoFilamento(slot.corId);
   const fundo = cor ? (cor.hex_or_gradient || '#ccc').replace(/"/g, '') : 'transparent';
-  const legenda = cor ? cor.name : (slot.preenchido ? 'vazia' : 'não sei');
+  const legenda = cor ? rotuloDaCor(cor) : (slot.preenchido ? 'vazia' : 'não sei');
   const borda = cor ? '2px solid rgba(0,0,0,0.12)' : '2px dashed var(--border)';
   return '<button onclick="abrirTrocarSlot(\'' + p.id + '\', ' + slot.numero + ')"'
     + ' title="Clique pra dizer o que está nesta gaveta"'
@@ -5538,7 +5593,7 @@ function abrirTrocarSlot(printerId, numero) {
       + ' style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
       + ' background:' + (marcada ? 'var(--bg)' : '#fff') + '; border:' + (marcada ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
       + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
-      + '<span style="font-size:13px;">' + escapeHtml(c.name) + '</span></button>';
+      + '<span style="font-size:13px;">' + escapeHtml(rotuloDaCor(c)) + '</span></button>';
   });
   html += '</div>';
   html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:10px;">'
