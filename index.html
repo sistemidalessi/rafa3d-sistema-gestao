@@ -1934,6 +1934,94 @@ async function reabrirOrcamentoProjeto(lineItemId) {
   await abrirGerenciarProjeto(lineItemId);
 }
 
+/* ============================================================
+   LIXEIRA (patch-47)
+
+   Guarda uma cópia do que vai ser apagado, antes de apagar. A linha é
+   removida de verdade — nenhuma consulta do sistema muda, nem a do
+   agente — e a cópia fica em JSON, com os ids originais, pra poder
+   voltar exatamente igual.
+
+   Existe porque em 28/08 excluir um projeto levou o pedido inteiro do
+   cliente e não havia como desfazer. O que salvou foi coincidência.
+   ============================================================ */
+
+// Chamado ANTES do delete. Se falhar, o delete não acontece: melhor não
+// apagar do que apagar sem cópia.
+async function guardarNaLixeira(tipo, descricao, dados) {
+  const { error } = await SUPA.from('lixeira').insert([{
+    tipo: tipo, descricao: descricao, dados: dados,
+    apagado_por: (currentUser && currentUser.id) || null,
+  }]);
+  if (error) {
+    alert('Não consegui guardar uma cópia de segurança, então não vou apagar nada.\n\n'
+      + 'Erro: ' + error.message + '\n\nSe o patch 47 ainda não foi rodado, é isso.');
+    return false;
+  }
+  return true;
+}
+
+async function copiaDoPedido(orderId) {
+  const order = await q(SUPA.from('orders').select('*').eq('id', orderId).maybeSingle());
+  const items = await q(SUPA.from('order_line_items').select('*').eq('order_id', orderId)) || [];
+  // As partes vão junto: são filhas das peças e somem na cascata.
+  const ids = items.map((i) => i.id);
+  let partes = [];
+  if (ids.length) {
+    partes = await q(SUPA.from('project_parts').select('*').in('order_line_item_id', ids)) || [];
+  }
+  return { order: order, items: items, partes: partes };
+}
+
+async function abrirLixeira() {
+  const linhas = await q(SUPA.from('lixeira').select('*')
+    .is('restaurado_em', null).order('apagado_em', { ascending: false }).limit(50)) || [];
+  let html = '<h3 style="margin:0 0 2px;">Coisas apagadas</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">'
+    + 'Tudo que foi apagado fica guardado aqui. Dá pra trazer de volta do jeito que estava.</div>';
+  if (!linhas.length) {
+    html += '<div class="empty">Nada apagado por enquanto.</div>';
+  } else {
+    html += '<div class="tabela-rola"><table><tr><th>O que era</th><th>Quando</th><th></th></tr>';
+    linhas.forEach((l) => {
+      html += '<tr><td><strong>' + escapeHtml(l.descricao) + '</strong>'
+        + '<br><span style="color:var(--muted); font-size:10.5px;">' + (l.tipo === 'pedido' ? 'pedido inteiro' : 'uma peça') + '</span></td>';
+      html += '<td style="white-space:nowrap;">' + fmtDate(l.apagado_em) + '</td>';
+      html += '<td><button class="btn" onclick="restaurarDaLixeira(\'' + l.id + '\')">↩️ Trazer de volta</button></td></tr>';
+    });
+    html += '</table></div>';
+  }
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
+  openModal(html);
+}
+
+async function restaurarDaLixeira(lixeiraId) {
+  const l = await q(SUPA.from('lixeira').select('*').eq('id', lixeiraId).maybeSingle());
+  if (!l) return;
+  const d = l.dados || {};
+
+  // Ordem importa: o pedido primeiro, depois as peças, depois as
+  // partes — cada uma depende da anterior existir.
+  if (d.order) {
+    const { error } = await SUPA.from('orders').insert([d.order]);
+    if (error && error.code !== '23505') { toast('Erro: ' + error.message); return; }
+  }
+  const itens = d.items || (d.item ? [d.item] : []);
+  if (itens.length) {
+    const { error } = await SUPA.from('order_line_items').insert(itens);
+    if (error && error.code !== '23505') { toast('Erro: ' + error.message); return; }
+  }
+  if (d.partes && d.partes.length) {
+    const { error } = await SUPA.from('project_parts').insert(d.partes);
+    if (error && error.code !== '23505') { toast('Erro nas partes: ' + error.message); return; }
+  }
+
+  await SUPA.from('lixeira').update({ restaurado_em: new Date().toISOString() }).eq('id', lixeiraId);
+  closeModal();
+  toast('Trouxe de volta!');
+  await renderPedidos();
+}
+
 async function excluirProjeto(lineItemId, orderId) {
   // Projeto que já baixou filamento do estoque (já imprimiu de verdade)
   // ou já tem pagamento registrado não pode ser apagado — excluir o
@@ -1975,9 +2063,18 @@ async function excluirProjeto(lineItemId, orderId) {
 
   const nome = (eu && eu.custom_description) || 'esse projeto';
   const aviso = temIrmas
-    ? 'Excluir "' + nome + '"? O resto do pedido continua.'
-    : 'Excluir "' + nome + '" e o pedido dele? Não tem como desfazer — não existe lixeira.';
+    ? 'Excluir "' + nome + '"? O resto do pedido continua.\n\nFica guardado em "Coisas apagadas", dá pra trazer de volta.'
+    : 'Excluir "' + nome + '" e o pedido dele?\n\nFica guardado em "Coisas apagadas", dá pra trazer de volta.';
   if (!confirm(aviso)) return;
+
+  // A cópia vem antes do delete. Se não der pra guardar, não apaga.
+  const copia = (orderId && !temIrmas)
+    ? await copiaDoPedido(orderId)
+    : { item: await q(SUPA.from('order_line_items').select('*').eq('id', lineItemId).maybeSingle()),
+        partes: await q(SUPA.from('project_parts').select('*').eq('order_line_item_id', lineItemId)) || [] };
+  const guardou = await guardarNaLixeira(
+    (orderId && !temIrmas) ? 'pedido' : 'peca', nome, copia);
+  if (!guardou) return;
   const { data: liData } = await SUPA.from('order_line_items').select('custom_reference_image_path, model_file_path').eq('id', lineItemId).maybeSingle();
   if (liData) {
     if (liData.custom_reference_image_path) await SUPA.storage.from('projetos-fotos').remove([liData.custom_reference_image_path]);
@@ -2277,6 +2374,10 @@ async function renderPedidos() {
     html += '<button class="btn ghost" onclick="alternarPedidosFinalizados()">' +
       (mostrarPedidosFinalizados ? 'Esconder os já finalizados' : 'Ver os ' + fechados.length + ' já finalizados') + '</button>';
   }
+  // Fica discreto e sempre visível: quem apagou sem querer procura por
+  // ele nervoso, e um botão que só aparece quando tem algo na lixeira
+  // não seria achado justamente na hora do sufoco.
+  html += '<button class="btn ghost" onclick="abrirLixeira()" title="Trazer de volta algo apagado">🗑️ Coisas apagadas</button>';
   html += '<button class="btn" onclick="openPedidoForm()">+ Novo pedido</button>';
   html += '</div></div>';
   if (listaExibida.length === 0) {
@@ -2317,7 +2418,14 @@ async function renderPedidos() {
 }
 
 async function excluirPedido(orderId) {
-  if (!confirm('Excluir esse pedido de vez? Isso apaga os itens e pagamentos dele também. Não tem como desfazer.')) return;
+  const copia = await copiaDoPedido(orderId);
+  const o = copia.order;
+  const quem = o ? ((o.customer_name || '') + ' ' + (o.order_number || '')).trim() : 'pedido';
+  const quantas = (copia.items || []).length;
+  if (!confirm('Excluir o pedido de ' + quem + '?\n\n'
+    + 'Vai junto: ' + pecas(quantas) + ' e os pagamentos anotados.\n\n'
+    + 'Fica guardado em "Coisas apagadas", dá pra trazer de volta.')) return;
+  if (!await guardarNaLixeira('pedido', quem, copia)) return;
   const { error } = await SUPA.from('orders').delete().eq('id', orderId);
   if (error) { toast('Erro: ' + error.message); return; }
   toast('Pedido excluído.');
