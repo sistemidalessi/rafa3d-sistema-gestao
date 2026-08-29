@@ -149,6 +149,13 @@ sai dali.
   campo `error`, e quem não conferir segue achando que apagou. Se você
   escreveu no banco por script, confira o resultado — não a sua mensagem
   de sucesso.
+- **Não existe lixeira: `delete` aqui é definitivo.** Sem exclusão
+  lógica, sem auditoria, sem PITR — apagou, acabou. Em 28/08 excluir um
+  projeto apagou o pedido inteiro do cliente, e só deu pra remontar
+  porque eu tinha consultado aquele pedido na mesma sessão. Antes de
+  escrever qualquer `delete`, pergunte o que mais cai junto (cascata) e
+  se "cancelado" não resolve melhor. Aviso de exclusão precisa dizer o
+  **tamanho** do estrago, não só "não tem como desfazer".
 - **Cor sozinha na tela é bug.** Sempre `Preto (TPU)`, nunca `Preto` —
   use `rotuloDaCor()`. "Preto" e "Preto" são filamentos diferentes se um
   é PLA e o outro é TPU, e o material decide temperatura, placa e se a

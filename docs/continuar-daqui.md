@@ -208,6 +208,36 @@ livre = 3 min por rolo; cor faltando com AMS cheio = 12 min por rolo,
 porque é preciso tirar um pra pôr o outro. Peça que pede mais cores do
 que a máquina tem gavetas fica bloqueada, com o motivo escrito.
 
+### 🔴 O sistema NÃO TEM LIXEIRA — e isso já custou um pedido
+
+Em 28/08 a **Cesta Suspensa** foi excluída pela aba Projetos estando
+*"esperando pra imprimir"*, e levou o **pedido inteiro** junto. Não há
+exclusão lógica, nem tabela de auditoria, nem PITR: procurei em todas as
+tabelas ligadas e não sobrou rastro nenhum no banco.
+
+**O que salvou foi eu ter consultado aquele pedido várias vezes na mesma
+sessão** — os dados estavam no meu histórico de consultas, não no
+sistema. Isso não é backup, é sorte. O pedido foi recriado à mão
+(PED-MTBW89YM, Donice Cuidadora, R$ 95,90, Bege Natural, na fila), com
+duas diferenças: o cliente ficou como nome solto (o `customer_id` foi
+junto, e `service_role` não lê `customers`) e a data foi deduzida da
+numeração do pedido.
+
+**As duas falhas, as duas corrigidas:**
+
+1. **A trava só olhava pagamento e baixa de estoque.** A peça nunca
+   tinha sido impressa e ninguém tinha pago — passou. Mas ela estava na
+   fila, que é uma promessa feita pra um cliente. Agora projeto em
+   qualquer status de produção (da fila até entregue) não apaga: manda
+   usar "Cancelado", que some da lista e guarda o histórico.
+2. **A função apagava `orders`, não a peça.** Pedido com outras peças
+   perdia as irmãs junto. Agora só apaga o pedido quando ele existe
+   **só** por causa daquele projeto, e o aviso diz qual dos dois vai
+   acontecer.
+
+Se um dia alguém pedir "excluído há 30 dias dá pra voltar", é patch de
+`deleted_at` — e vale, porque hoje qualquer exclusão é definitiva.
+
 ### 🔴 Cor sozinha não basta: o MATERIAL vale igual
 
 Achado em 28/08, e quase custou uma peça. A Fila dizia *"Transportador
