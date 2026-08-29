@@ -1948,13 +1948,45 @@ async function excluirProjeto(lineItemId, orderId) {
     alert('Esse projeto já tem histórico de verdade — filamento baixado do estoque e/ou pagamento registrado. Apagar ele apagaria isso tudo junto, então não dá.\n\nSe já terminou, é só deixar o status como "Entregue" (ou "Cancelado") — ele já some sozinho da lista principal, com o botão "Ver os já finalizados" pra achar de novo se precisar.');
     return;
   }
-  if (!confirm('Excluir esse projeto de vez? Não tem como desfazer.')) return;
+
+  // TRAVA QUE FALTAVA: projeto que já virou trabalho de verdade.
+  //
+  // Em 28/08 a Cesta Suspensa foi apagada estando "esperando pra
+  // imprimir". Ela passou nas duas travas acima — nunca tinha baixado
+  // filamento (não foi impressa ainda) e não tinha pagamento — e levou
+  // o PEDIDO INTEIRO junto, porque esta função apagava `orders`.
+  // Pagamento e estoque não são as únicas coisas que doem: uma peça na
+  // fila é uma promessa feita pra um cliente.
+  const eu = await q(SUPA.from('order_line_items').select('line_status, custom_description').eq('id', lineItemId).maybeSingle());
+  const jaEhTrabalho = eu && ['fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir',
+    'embalado', 'enviado', 'entregue'].indexOf(eu.line_status) !== -1;
+  if (jaEhTrabalho) {
+    alert('Esse projeto já virou pedido de verdade — ele está como "' + (LINE_STATUS_LABELS[eu.line_status] || eu.line_status) + '".\n\n'
+      + 'Apagar sumiria com o pedido do cliente. Se a encomenda foi desfeita, mude o status pra "Cancelado": ele some da lista principal e o histórico fica.');
+    return;
+  }
+
+  // Nunca apaga o PEDIDO quando ele tem outras peças. Antes apagava
+  // sempre, e uma peça arrastava as irmãs do mesmo pedido junto.
+  const irmas = orderId
+    ? (await q(SUPA.from('order_line_items').select('id').eq('order_id', orderId)) || [])
+    : [];
+  const temIrmas = irmas.filter((x) => x.id !== lineItemId).length > 0;
+
+  const nome = (eu && eu.custom_description) || 'esse projeto';
+  const aviso = temIrmas
+    ? 'Excluir "' + nome + '"? O resto do pedido continua.'
+    : 'Excluir "' + nome + '" e o pedido dele? Não tem como desfazer — não existe lixeira.';
+  if (!confirm(aviso)) return;
   const { data: liData } = await SUPA.from('order_line_items').select('custom_reference_image_path, model_file_path').eq('id', lineItemId).maybeSingle();
   if (liData) {
     if (liData.custom_reference_image_path) await SUPA.storage.from('projetos-fotos').remove([liData.custom_reference_image_path]);
     if (liData.model_file_path) await SUPA.storage.from('modelos-3d').remove([liData.model_file_path]);
   }
-  const { error } = orderId
+  // Apaga o pedido só quando ele existe SÓ por causa deste projeto.
+  // Com outras peças dentro, apaga apenas esta — apagar o pedido levava
+  // as irmãs junto, e foi assim que a Cesta Suspensa sumiu com tudo.
+  const { error } = (orderId && !temIrmas)
     ? await SUPA.from('orders').delete().eq('id', orderId)
     : await SUPA.from('order_line_items').delete().eq('id', lineItemId);
   if (error) { toast('Erro: ' + error.message); return; }
