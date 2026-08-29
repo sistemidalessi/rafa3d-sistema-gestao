@@ -3658,17 +3658,29 @@ async function salvarItem(orderId) {
 // outro.
 async function abrirEditarItem(itemId, orderId) {
   const it = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
-  let camposTipo;
-  if (it.line_type === 'catalog') {
-    const cores = await getFilamentosSafe();
-    let coresOptions = '<option value="">— sem cor combinada ainda —</option>';
-    cores.forEach((c) => { coresOptions += '<option value="' + c.id + '"' + (c.id === it.requested_filament_color_id ? ' selected' : '') + '>' + escapeHtml(c.name) + '</option>'; });
-    camposTipo = '<label class="pergunta">De qual cor o cliente quer?</label>' +
-      dicaCampo('Pra não ter que ir catar essa informação de novo no WhatsApp na hora de imprimir.') +
-      '<select id="itEditCor">' + coresOptions + '</select>';
-  } else {
+  // A cor vale pros DOIS tipos. Antes só o item de catálogo tinha esse
+  // campo, e um projeto sob medida não tinha onde dizer a cor em lugar
+  // nenhum — nem aqui, nem no "Mais", nem no gerenciador. A Fila então
+  // dizia "ainda não sei de que cor é" e não havia como responder.
+  //
+  // Projeto dividido em partes continua tendo a cor POR PARTE (cada
+  // parte é de uma cor); esta aqui é a cor da peça inteira, pra quando
+  // não há divisão.
+  const cores = await getFilamentosSafe();
+  let coresOptions = '<option value="">— sem cor combinada ainda —</option>';
+  cores.forEach((c) => {
+    coresOptions += '<option value="' + c.id + '"' + (c.id === it.requested_filament_color_id ? ' selected' : '') +
+      '>' + escapeHtml(rotuloDaCor(c)) + '</option>';
+  });
+  const campoCor = '<label class="pergunta">De qual cor o cliente quer?</label>' +
+    dicaCampo('O material vem junto do nome — "Preto (PLA)" e "Preto (TPU)" são rolos diferentes, e a peça só sai certa no material dela.') +
+    '<select id="itEditCor">' + coresOptions + '</select>';
+
+  let camposTipo = campoCor;
+  if (it.line_type !== 'catalog') {
     camposTipo = '<label>Descrição</label><input id="itEditDescricao" value="' + escapeHtml(it.custom_description || '') + '">' +
-      '<label>Referência (link, se houver)</label><input id="itEditLink" value="' + escapeHtml(it.custom_reference_link || '') + '">';
+      '<label>Referência (link, se houver)</label><input id="itEditLink" value="' + escapeHtml(it.custom_reference_link || '') + '">' +
+      campoCor;
   }
   openModal(
     '<h3>Editar item</h3>' +
@@ -3698,9 +3710,9 @@ async function salvarEdicaoItem(itemId, orderId, tipo) {
     notes: document.getElementById('itEditNotas').value.trim() || null,
     post_sale_extra_cost: parseFloat(document.getElementById('itEditCustoExtra').value) || null,
   };
-  if (tipo === 'catalog') {
-    payload.requested_filament_color_id = document.getElementById('itEditCor').value || null;
-  } else {
+  // A cor é gravada nos dois tipos — o campo agora existe pros dois.
+  payload.requested_filament_color_id = document.getElementById('itEditCor').value || null;
+  if (tipo !== 'catalog') {
     const desc = document.getElementById('itEditDescricao').value.trim();
     if (!desc) { toast('Descreve o item personalizado.'); return; }
     payload.custom_description = desc;
@@ -4284,6 +4296,13 @@ function listaDoPlano(avaliadas, opts) {
     // leitura — o dono via a sugestão, decidia outra coisa e não tinha
     // como contar isso pro sistema.
     html += '<td class="row-actions">';
+    // Peça travada por falta de cor se resolve AQUI, sem sair da tela.
+    // Antes o aviso "ainda não sei de que cor é" não tinha resposta: o
+    // pedido não oferecia o campo, o "Mais > Editar" também não, e a
+    // pessoa ficava olhando um problema sem botão.
+    if (!c.possivel && (c.motivo || '').indexOf('cor') !== -1) {
+      html += '<button class="btn" onclick="abrirCorDaPeca(\'' + it.id + '\')">🎨 Dizer a cor</button>';
+    }
     if (o.imprimindo) {
       html += '<button class="btn" onclick="openConcluirImpressao(\'' + it.id + '\')">✅ Terminei</button>';
       html += '<button class="btn ghost" onclick="openMarcarFalha(\'' + it.id + '\')">Deu errado</button>';
@@ -4335,6 +4354,62 @@ async function soltarNaFila(itemId) {
 }
 
 function pluralRolo(n) { return n + (n === 1 ? ' rolo' : ' rolos'); }
+
+// Escolher a cor da peça inteira, direto da Fila. Mesmo desenho da cor
+// da parte e da gaveta do AMS — bolinha, e com o material escrito.
+async function abrirCorDaPeca(itemId) {
+  await getFilamentos();
+  const it = await q(SUPA.from('order_line_items')
+    .select('id, line_type, custom_description, requested_filament_color_id, product_id, products(name, material), material')
+    .eq('id', itemId).maybeSingle());
+  if (!it) return;
+  await getReceitas();
+  const nome = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+  const precisa = familiaDoMaterial(materialDaPeca(it, {}));
+
+  let html = '<h3 style="margin:0 0 2px;">De que cor é esta peça?</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">' + escapeHtml(nome || '')
+    + (precisa ? ' — ela é de <strong>' + precisa.toUpperCase() + '</strong>, então só as cores desse material servem.' : '')
+    + '</div>';
+
+  const ativas = (filamentosCache || []).filter((c) => c.active !== false);
+  // Cor de outro material fica na lista, mas apagada e avisando: some
+  // sem explicação seria pior — a pessoa procuraria "Preto" e não
+  // acharia, sem entender por quê.
+  const servem = precisa ? ativas.filter((c) => familiaDoMaterial(c.material) === precisa) : ativas;
+  const naoServem = precisa ? ativas.filter((c) => familiaDoMaterial(c.material) !== precisa) : [];
+
+  const botao = (c, ok) => '<button onclick="' + (ok
+    ? 'salvarCorDaPeca(\'' + itemId + '\', \'' + c.id + '\')'
+    : 'toast(\'Essa é ' + escapeHtml(c.material) + ' e a peça é ' + (precisa || '').toUpperCase() + '.\')')
+    + '" style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
+    + ' opacity:' + (ok ? '1' : '.4') + '; background:#fff; border:'
+    + (it.requested_filament_color_id === c.id ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
+    + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
+    + '<span style="font-size:13px;">' + escapeHtml(rotuloDaCor(c)) + '</span></button>';
+
+  html += '<div style="display:flex; flex-wrap:wrap; gap:8px; max-height:40vh; overflow-y:auto;">';
+  servem.forEach((c) => { html += botao(c, true); });
+  html += '</div>';
+  if (naoServem.length) {
+    html += '<div style="color:var(--muted); font-size:11.5px; margin:12px 0 6px;">Estas são de outro material e não servem pra esta peça:</div>';
+    html += '<div style="display:flex; flex-wrap:wrap; gap:8px; max-height:20vh; overflow-y:auto;">';
+    naoServem.forEach((c) => { html += botao(c, false); });
+    html += '</div>';
+  }
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  openModal(html);
+}
+
+async function salvarCorDaPeca(itemId, corId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ requested_filament_color_id: corId, updated_at: new Date().toISOString() })
+    .eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Cor anotada!');
+  await renderFila();
+}
 
 function coresEmTexto(it) {
   const nomes = (it._coresNecessarias || []).map((id) => {
