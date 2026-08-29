@@ -208,7 +208,40 @@ livre = 3 min por rolo; cor faltando com AMS cheio = 12 min por rolo,
 porque é preciso tirar um pra pôr o outro. Peça que pede mais cores do
 que a máquina tem gavetas fica bloqueada, com o motivo escrito.
 
-### 🔴 O sistema NÃO TEM LIXEIRA — e isso já custou um pedido
+### Apagar virou escolha, e tem volta — patches 47 e 48
+
+Depois do incidente abaixo, duas coisas mudaram.
+
+**Lixeira (patch 47).** Guarda uma cópia em JSON — do pedido, das peças
+e das partes — **antes** de apagar, com os ids originais. A linha some
+de verdade, então **nenhuma consulta do sistema muda**; trazer de volta
+é reinserir na ordem certa. Acesso pelo `🗑️ Coisas apagadas`, na aba
+Pedidos, sempre visível mesmo vazio.
+
+> **Não usei `deleted_at` de propósito.** Exclusão lógica obrigaria cada
+> consulta a filtrar: 34 leituras no navegador e 19 no agente. Uma
+> esquecida mostra dado apagado — e no agente é pior, ele pegaria uma
+> peça apagada pra imprimir.
+
+Se a cópia falhar, o delete não acontece. Melhor não apagar do que
+apagar sem cópia.
+
+**Arquivar (patch 48).** Projeto e pedido são a MESMA linha
+(`order_line_items` com `line_type='custom'`) — por isso apagar um
+apagava o outro. Mas o trabalho de projeto acaba, e a aba entulhava. O
+botão virou pergunta com as duas saídas separadas:
+
+- **📥 Só tirar da lista de Projetos** — o pedido continua inteiro em
+  Pedidos, Fila e Financeiro. Só a aba Projetos olha
+  `projeto_arquivado_em`; o agente e o resto não.
+- **🗑️ Apagar o projeto E o pedido** — some tudo, e vai pra lixeira.
+
+⚠️ **Eu tinha "resolvido" isso proibindo apagar projeto que já virou
+pedido. Estava errado dos dois lados**: prendia o dono numa tela
+entulhada E não explicava a diferença. Proibir foi a saída preguiçosa;
+o certo era separar as duas ideias que estavam grudadas.
+
+### 🔴 O sistema NÃO TINHA LIXEIRA — e isso custou um pedido
 
 Em 28/08 a **Cesta Suspensa** foi excluída pela aba Projetos estando
 *"esperando pra imprimir"*, e levou o **pedido inteiro** junto. Não há

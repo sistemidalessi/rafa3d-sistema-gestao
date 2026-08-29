@@ -149,13 +149,18 @@ sai dali.
   campo `error`, e quem não conferir segue achando que apagou. Se você
   escreveu no banco por script, confira o resultado — não a sua mensagem
   de sucesso.
-- **Não existe lixeira: `delete` aqui é definitivo.** Sem exclusão
-  lógica, sem auditoria, sem PITR — apagou, acabou. Em 28/08 excluir um
-  projeto apagou o pedido inteiro do cliente, e só deu pra remontar
-  porque eu tinha consultado aquele pedido na mesma sessão. Antes de
-  escrever qualquer `delete`, pergunte o que mais cai junto (cascata) e
-  se "cancelado" não resolve melhor. Aviso de exclusão precisa dizer o
+- **Todo `delete` passa pela lixeira (patch 47).** Guarde a cópia
+  (`guardarNaLixeira`) ANTES de apagar, e não apague se a cópia falhar.
+  A cópia inclui as filhas que somem na cascata. Nasceu de 28/08, quando
+  excluir um projeto apagou o pedido inteiro do cliente e só deu pra
+  remontar por coincidência. Aviso de exclusão precisa dizer o
   **tamanho** do estrago, não só "não tem como desfazer".
+- **Proibir é a saída preguiçosa.** Quando o dono pede pra fazer algo
+  que parece perigoso, quase sempre são duas ideias grudadas que
+  precisam ser separadas — não uma trava. "Excluir projeto" apagava o
+  pedido junto; eu proibi, e o resultado foi prendê-lo numa tela
+  entulhada sem explicar nada. O certo era oferecer as duas saídas
+  ("tirar da lista" e "apagar tudo") e deixar ele escolher.
 - **Cor sozinha na tela é bug.** Sempre `Preto (TPU)`, nunca `Preto` —
   use `rotuloDaCor()`. "Preto" e "Preto" são filamentos diferentes se um
   é PLA e o outro é TPU, e o material decide temperatura, placa e se a
