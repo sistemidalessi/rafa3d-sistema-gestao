@@ -4947,33 +4947,139 @@ async function getImpressorasSafe() {
   return await q(SUPA.rpc('printers_safe'));
 }
 
+/* ============================================================
+   O QUE ESTÁ CARREGADO EM CADA IMPRESSORA (patch-44)
+
+   O AMS Lite segura 4 rolos e escolhe entre eles sozinho. Saber o que
+   está em cada gaveta é o que permite a Fila sugerir uma ordem que não
+   obriga a trocar filamento — troca custa 10 a 15 minutos na mão, e
+   preto/amarelo/preto/amarelo joga meia hora fora sem ninguém contar.
+
+   A tela é feita de bolinha colorida e não de lista de texto: quem
+   confere isso é o Rafael, olhando a máquina e a tela lado a lado.
+   ============================================================ */
+
+let slotsCache = null;
+
+async function getSlots(forcar) {
+  if (!slotsCache || forcar) {
+    slotsCache = await q(SUPA.from('printer_slots').select('*')) || [];
+  }
+  return slotsCache;
+}
+
+// As gavetas de uma impressora, sempre do 1 até o total dela — gaveta
+// sem linha no banco vira "não sei o que tem", que é diferente de
+// vazia. A tela precisa das duas, porque só uma delas é pergunta.
+function slotsDaImpressora(p) {
+  const total = p.slots_count || 4;
+  const meus = (slotsCache || []).filter((s) => s.printer_id === p.id);
+  const lista = [];
+  for (let i = 1; i <= total; i++) {
+    const achado = meus.find((s) => s.slot_number === i);
+    lista.push({
+      numero: i,
+      corId: achado ? achado.filament_color_id : null,
+      preenchido: !!achado,
+    });
+  }
+  return lista;
+}
+
+function corDoFilamento(corId) {
+  return (filamentosCache || []).find((c) => c.id === corId) || null;
+}
+
+function bolinhaDeSlot(p, slot) {
+  const cor = corDoFilamento(slot.corId);
+  const fundo = cor ? (cor.hex_or_gradient || '#ccc').replace(/"/g, '') : 'transparent';
+  const legenda = cor ? cor.name : (slot.preenchido ? 'vazia' : 'não sei');
+  const borda = cor ? '2px solid rgba(0,0,0,0.12)' : '2px dashed var(--border)';
+  return '<button onclick="abrirTrocarSlot(\'' + p.id + '\', ' + slot.numero + ')"'
+    + ' title="Clique pra dizer o que está nesta gaveta"'
+    + ' style="background:none; border:none; padding:4px; cursor:pointer; text-align:center; font:inherit;">'
+    + '<span style="display:block; width:44px; height:44px; border-radius:50%; margin:0 auto;'
+    + ' background:' + fundo + '; border:' + borda + '; box-shadow:0 1px 3px rgba(0,0,0,0.12);">'
+    + (cor ? '' : '<span style="color:var(--muted); font-size:20px; line-height:40px;">+</span>') + '</span>'
+    + '<span style="display:block; font-size:10.5px; color:var(--muted); margin-top:4px; max-width:64px;">'
+    + escapeHtml(legenda) + '</span></button>';
+}
+
 async function renderImpressoras() {
   const el = document.getElementById('tab-impressoras');
   el.innerHTML = '<div class="empty">Carregando...</div>';
   const impressoras = await getImpressoras(true);
+  await getFilamentos();
+  await getSlots(true);
+
   let html = '<div class="card">';
-  html += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">';
-  html += '<strong>' + impressoras.length + ' impressoras</strong>';
+  html += '<div style="display:flex; justify-content:space-between; align-items:center;">';
+  html += '<strong>' + impressoras.length + (impressoras.length === 1 ? ' impressora' : ' impressoras') + '</strong>';
   html += '<button class="btn" onclick="openImpressoraForm()">+ Nova impressora</button>';
-  html += '</div>';
+  html += '</div></div>';
+
   if (impressoras.length === 0) {
-    html += '<div class="empty">Nenhuma impressora cadastrada ainda.</div>';
-  } else {
-    html += '<table><tr><th>Nome</th><th>Modelo</th><th>Potência</th><th>Custo/hora</th><th>Status</th><th></th></tr>';
-    impressoras.forEach((p) => {
-      html += '<tr>';
-      html += '<td>' + escapeHtml(p.name) + '</td>';
-      html += '<td>' + escapeHtml(p.model || '—') + '</td>';
-      html += '<td>' + (p.power_watts ? p.power_watts + ' W' : '—') + '</td>';
-      html += '<td>' + (p.hourly_cost != null ? fmtMoney(p.hourly_cost) : '—') + '</td>';
-      html += '<td><span class="badge ' + (p.active ? 'on' : 'off') + '">' + (p.active ? 'Ativa' : 'Inativa') + '</span></td>';
-      html += '<td class="row-actions"><button class="btn ghost" onclick="openImpressoraForm(\'' + p.id + '\')">Editar</button></td>';
-      html += '</tr>';
-    });
-    html += '</table>';
+    html += '<div class="card"><div class="empty">Nenhuma impressora cadastrada ainda.</div></div>';
   }
-  html += '</div>';
+
+  impressoras.forEach((p) => {
+    html += '<div class="card">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:8px;">';
+    html += '<strong>🖨️ ' + escapeHtml(p.name) + '</strong>';
+    html += '<span style="color:var(--muted); font-size:12px;">' + escapeHtml(p.model || 'sem modelo')
+      + (p.hourly_cost != null ? ' · ' + fmtMoney(p.hourly_cost) + ' por hora' : '')
+      + (p.active ? '' : ' · <strong>desligada</strong>') + '</span>';
+    html += '</div>';
+
+    html += '<div style="margin-top:12px;">';
+    html += '<div style="font-size:12.5px; margin-bottom:6px;">Que cores estão nela agora?'
+      + ' <span style="color:var(--muted); font-size:11px;">— clique numa bolinha pra trocar</span></div>';
+    html += '<div style="display:flex; gap:10px; flex-wrap:wrap;">';
+    slotsDaImpressora(p).forEach((s) => { html += bolinhaDeSlot(p, s); });
+    html += '</div></div>';
+
+    html += '<div style="margin-top:12px; display:flex; gap:8px;">';
+    html += '<button class="btn ghost" onclick="openImpressoraForm(\'' + p.id + '\')">Editar a impressora</button>';
+    html += '</div>';
+    html += '</div>';
+  });
   el.innerHTML = html;
+}
+
+function abrirTrocarSlot(printerId, numero) {
+  const p = (impressorasCache || []).find((x) => x.id === printerId);
+  const atual = slotsDaImpressora(p).find((s) => s.numero === numero);
+  let html = '<h3 style="margin:0 0 2px;">O que tem na gaveta ' + numero + '?</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">'
+    + escapeHtml(p ? p.name : '') + ' — olhe a impressora e clique na cor certa.</div>';
+
+  const ativas = (filamentosCache || []).filter((c) => c.active !== false);
+  html += '<div style="display:flex; flex-wrap:wrap; gap:8px; max-height:46vh; overflow-y:auto;">';
+  ativas.forEach((c) => {
+    const marcada = atual && atual.corId === c.id;
+    html += '<button onclick="salvarSlot(\'' + printerId + '\', ' + numero + ', \'' + c.id + '\')"'
+      + ' style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
+      + ' background:' + (marcada ? 'var(--bg)' : '#fff') + '; border:' + (marcada ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
+      + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
+      + '<span style="font-size:13px;">' + escapeHtml(c.name) + '</span></button>';
+  });
+  html += '</div>';
+  html += '<div style="border-top:1px solid var(--border); margin-top:12px; padding-top:10px;">'
+    + '<button class="btn ghost full" onclick="salvarSlot(\'' + printerId + '\', ' + numero + ', null)">Esta gaveta está vazia</button></div>';
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  openModal(html);
+}
+
+async function salvarSlot(printerId, numero, corId) {
+  const { error } = await SUPA.from('printer_slots').upsert({
+    printer_id: printerId, slot_number: numero,
+    filament_color_id: corId, updated_at: new Date().toISOString(),
+  }, { onConflict: 'printer_id,slot_number' });
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Anotado!');
+  await getSlots(true);
+  await renderImpressoras();
 }
 
 function openImpressoraForm(id) {
