@@ -177,6 +177,65 @@ Editar, personalizar e remover foram pro `⋯ Mais`.
 aparece mais na Fila** — ela fica em Pedidos até alguém mandar. A Fila
 mostra uma linha no rodapé dizendo quantas estão nesse estado.
 
+## O plano do dia: a Fila sugere a ordem — 28/08, patches 44 e 45
+
+A Fila listava por prazo e ignorava que **trocar filamento custa 10 a 15
+minutos na mão**. Imprimir preto, amarelo, preto, amarelo jogava meia
+hora fora sem ninguém contar.
+
+Agora o topo da Fila mostra, por impressora, o que fazer primeiro:
+
+```
+🖨️ Impressora 1 — o que fazer primeiro      carregado: Preto, Amarelo, Verde
+⏰ Vaso de Folha tem prazo apertado e precisa de troca de cor.
+👉 Sem trocar nada — 10h42 de impressão
+🔄 Só depois de mexer no filamento
+⛔ Estas ainda não dá
+```
+
+**A base** (patch 44): `printer_slots` guarda o que está em cada gaveta
+do AMS, e `printers.slots_count` diz quantas gavetas a máquina tem. É
+tabela e não colunas `slot1..slot4` porque máquina sem AMS teria três
+campos mortos. Gaveta sem linha é "não sei"; gaveta com cor nula é
+"vazia" — só uma das duas é pergunta pro Rafael.
+
+**A cor de cada parte** (patch 45): peça dividida por cor precisa de
+TODAS as cores carregadas ao mesmo tempo, e `project_parts` não tinha
+cor nenhuma. Fica na parte porque é a parte que é de uma cor só.
+
+**A conta**, em minutos: cor já carregada = 0; cor faltando com gaveta
+livre = 3 min por rolo; cor faltando com AMS cheio = 12 min por rolo,
+porque é preciso tirar um pra pôr o outro. Peça que pede mais cores do
+que a máquina tem gavetas fica bloqueada, com o motivo escrito.
+
+### Isso é conta, e NÃO é IA — decidido em 28/08
+
+O dono pediu "uma IA bem inteligente" pra sugerir a ordem. Ordenar por
+cor carregada e prazo é aritmética, não julgamento: precisa ser
+instantânea, de graça e **dar sempre o mesmo resultado**. Uma lista que
+muda de ordem sozinha entre duas visitas é pior que lista nenhuma pra
+quem tem 10 anos — e uma IA não garante a frase "comece por estas
+porque o preto já está na gaveta 1" sempre certa. A IA fica onde ela é
+boa: a colinha, que é julgamento sobre a peça.
+
+## O relógio de parede saiu de vez — 28/08
+
+**"Comecei" foi removido** (viveu um dia) e **o "Terminei" parou de
+perguntar quantas horas a impressora ficou ligada.**
+
+O motivo é do dono, e é definitivo: ele aperta "comecei", sai de casa, e
+só volta quatro horas depois de a peça ficar pronta. Marcar relógio ali
+grava quatro horas a mais — e daí em diante toda venda daquela peça sai
+com o custo errado, **com toda a cara de número medido**.
+
+O tempo de impressão é o que o **fatiador** calcula, digitado uma vez na
+tela de dar preço ("o fatiador mostra em horas e minutos"). O "Terminei"
+só pergunta o que o fatiador não sabe: qual rolo saiu do estoque e
+quantos gramas gastou. As horas continuam indo pra receita — o que mudou
+foi a **fonte** do número, não o destino.
+
+**Não reintroduza medição por relógio**, em nenhuma tela.
+
 ## A tela fala o que fazer, não o que o banco guarda — 27/08
 
 Três rodadas de "ainda está confuso" até chegar aqui. O que mudou de

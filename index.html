@@ -3882,6 +3882,201 @@ function cartaoUrgentesFila(items) {
   return html;
 }
 
+/* ============================================================
+   DÁ PRA IMPRIMIR ESTA PEÇA AGORA? — patches 44 e 45
+
+   Trocar filamento custa 10 a 15 minutos na mão, e a Fila até agora
+   ignorava isso: mandava imprimir preto, amarelo, preto, amarelo e
+   jogava meia hora fora sem ninguém contar.
+
+   Três coisas decidem:
+
+   1. QUAIS CORES A PEÇA PRECISA. Peça de uma cor só é a cor pedida.
+      Peça dividida (Hi3D) precisa de TODAS as cores das partes ao
+      mesmo tempo — uma peça de 4 cores ocupa as 4 gavetas do AMS.
+   2. O QUE ESTÁ CARREGADO em cada impressora (as gavetas do patch 44).
+   3. SE SOBRA GAVETA. Encaixar num slot vazio é rápido; com as 4
+      cheias, é preciso tirar um rolo pra pôr o outro — e é aí que os
+      10 a 15 minutos aparecem.
+   ============================================================ */
+
+// Encaixar num slot vazio é quase só o tempo de carregar o filamento.
+const MINUTOS_PRA_ENCAIXAR = 3;
+// Tirar um rolo pra pôr outro: o que o dono mediu na prática.
+const MINUTOS_PRA_TROCAR = 12;
+
+// As cores que esta peça exige, todas ao mesmo tempo.
+function coresNecessarias(it, partesPorItem) {
+  const partes = (partesPorItem && partesPorItem[it.id]) || [];
+  if (partes.length) {
+    // Parte sem cor definida é "não sei", e não "qualquer cor": chutar
+    // faria a sugestão mandar imprimir algo que na hora não dá.
+    const cores = partes.map((p) => p.filament_color_id);
+    return { cores: [...new Set(cores.filter(Boolean))], temDesconhecida: cores.some((c) => !c) };
+  }
+  if (it.requested_filament_color_id) {
+    return { cores: [it.requested_filament_color_id], temDesconhecida: false };
+  }
+  return { cores: [], temDesconhecida: true };
+}
+
+// O que custa pôr esta peça pra rodar NESTA impressora, agora.
+function custoDeMontagem(it, impressora, slots, partesPorItem) {
+  const { cores, temDesconhecida } = coresNecessarias(it, partesPorItem);
+  const meus = slots.filter((s) => s.printer_id === impressora.id);
+  const carregadas = meus.filter((s) => s.filament_color_id).map((s) => s.filament_color_id);
+  const totalGavetas = impressora.slots_count || 4;
+  // Gaveta vazia é a que existe e está sem rolo, mais as que nunca
+  // foram preenchidas — as duas dão onde encaixar.
+  const ocupadas = carregadas.length;
+  const livres = Math.max(0, totalGavetas - ocupadas);
+
+  const faltando = cores.filter((c) => carregadas.indexOf(c) === -1);
+
+  if (cores.length > totalGavetas) {
+    return { possivel: false, motivo: 'precisa de ' + cores.length + ' cores e a máquina só tem ' + totalGavetas + ' gavetas' };
+  }
+  if (temDesconhecida) {
+    return { possivel: false, motivo: 'ainda não sei de que cor é' };
+  }
+  if (!faltando.length) {
+    return { possivel: true, minutos: 0, encaixar: 0, trocar: 0, faltando: [] };
+  }
+  const encaixar = Math.min(faltando.length, livres);
+  const trocar = faltando.length - encaixar;
+  return {
+    possivel: true,
+    minutos: encaixar * MINUTOS_PRA_ENCAIXAR + trocar * MINUTOS_PRA_TROCAR,
+    encaixar: encaixar, trocar: trocar, faltando: faltando,
+  };
+}
+
+/* O PLANO DO DIA — a ordem sugerida de impressão.
+
+   O que ela resolve: a Fila listava por prazo e ignorava que trocar cor
+   custa 10 a 15 minutos. Imprimir preto, amarelo, preto, amarelo joga
+   meia hora fora — e ninguém percebe, porque o tempo perdido não
+   aparece em lugar nenhum.
+
+   Feito em conta e NÃO em IA, de propósito. Ordenar por cor carregada e
+   prazo é aritmética, não julgamento: precisa ser instantânea, de graça
+   e — o que mais importa aqui — dar sempre o MESMO resultado. Uma lista
+   que muda de ordem sozinha entre duas visitas é pior que lista nenhuma
+   pra quem tem 10 anos. A IA continua onde ela é boa, que é a colinha.
+
+   A regra, em três linhas:
+   1. O que imprime sem trocar nada vem primeiro (é de graça).
+   2. Prazo manda: peça que precisa começar hoje passa na frente mesmo
+      custando troca — e a tela diz isso com todas as letras, senão a
+      sugestão parece que se contradiz.
+   3. Entre iguais, a mais curta primeiro: cabe mais coisa no dia. */
+
+function cartaoPlanoDoDia(items, impressoras, slots, partesPorItem) {
+  const ativas = (impressoras || []).filter((p) => p.active !== false);
+  if (!ativas.length || !items.length) return '';
+
+  let html = '';
+  ativas.forEach((imp) => {
+    // Só as peças mandadas pra esta impressora, mais as que ninguém
+    // destinou ainda — essas podem ir pra qualquer uma.
+    const minhas = items.filter((it) => !it.printer_id || it.printer_id === imp.id);
+    if (!minhas.length) return;
+
+    const avaliadas = minhas.map((it) => ({
+      it: it,
+      custo: custoDeMontagem(it, imp, slots, partesPorItem),
+    }));
+
+    const agora = avaliadas.filter((a) => a.custo.possivel && a.custo.minutos === 0);
+    const depois = avaliadas.filter((a) => a.custo.possivel && a.custo.minutos > 0);
+    const travadas = avaliadas.filter((a) => !a.custo.possivel);
+
+    const porPrazoEDepoisCurta = (a, b) => {
+      const pa = a.it._prazo.comecarAte ? a.it._prazo.comecarAte.getTime() : Infinity;
+      const pb = b.it._prazo.comecarAte ? b.it._prazo.comecarAte.getTime() : Infinity;
+      if (pa !== pb) return pa - pb;
+      return (a.it._horas.total || Infinity) - (b.it._horas.total || Infinity);
+    };
+    agora.sort(porPrazoEDepoisCurta);
+    depois.sort((a, b) => (a.custo.minutos - b.custo.minutos) || porPrazoEDepoisCurta(a, b));
+
+    const carregadas = slots.filter((s) => s.printer_id === imp.id && s.filament_color_id)
+      .map((s) => { const c = corDoFilamento(s.filament_color_id); return c ? c.name : '?'; });
+
+    html += '<div class="card">';
+    html += '<div style="display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:6px;">';
+    html += '<strong>🖨️ ' + escapeHtml(imp.name) + ' — o que fazer primeiro</strong>';
+    html += '<span style="color:var(--muted); font-size:11.5px;">carregado agora: '
+      + (carregadas.length ? escapeHtml(carregadas.join(', ')) : 'nada — diga em Impressoras') + '</span>';
+    html += '</div>';
+
+    // Aviso de prazo vem ANTES da lista, não depois: se uma peça
+    // atrasada só sai trocando cor, seguir a ordem "de graça" perde a
+    // data. A sugestão precisa dizer quando ela mesma deve ser furada.
+    const urgenteQueCustaTroca = depois.find((a) =>
+      a.it._prazo.nivel === 'atrasado' || a.it._prazo.nivel === 'urgente');
+    if (urgenteQueCustaTroca) {
+      html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:8px 12px; margin-top:10px; font-size:12.5px; color:#8a5b00; line-height:1.55;">'
+        + '⏰ <strong>' + escapeHtml(nomeDaPecaNaFila(urgenteQueCustaTroca.it)) + '</strong> tem prazo apertado e precisa de troca de cor. '
+        + 'Vale trocar por ela primeiro, mesmo custando ' + urgenteQueCustaTroca.custo.minutos + ' min.</div>';
+    }
+
+    if (agora.length) {
+      const horas = agora.reduce((s, a) => s + (a.it._horas.total || 0), 0);
+      html += '<div style="margin-top:12px; font-size:12.5px; color:#1f6b3b; font-weight:600;">'
+        + '👉 Sem trocar nada' + (horas ? ' — ' + fmtHoras(horas) + ' de impressão' : '') + '</div>';
+      html += listaDoPlano(agora);
+    }
+    if (depois.length) {
+      html += '<div style="margin-top:12px; font-size:12.5px; color:#8a5b00; font-weight:600;">🔄 Só depois de mexer no filamento</div>';
+      html += listaDoPlano(depois);
+    }
+    if (travadas.length) {
+      html += '<div style="margin-top:12px; font-size:12.5px; color:var(--muted); font-weight:600;">⛔ Estas ainda não dá</div>';
+      html += listaDoPlano(travadas);
+    }
+    html += '</div>';
+  });
+  return html;
+}
+
+function nomeDaPecaNaFila(it) {
+  return (it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description) || '—';
+}
+
+function listaDoPlano(avaliadas) {
+  let html = '<div class="tabela-rola" style="margin-top:6px;"><table>';
+  avaliadas.forEach((a, i) => {
+    const it = a.it;
+    const c = a.custo;
+    let oQueFazer;
+    if (!c.possivel) oQueFazer = '<span style="color:var(--muted);">' + escapeHtml(c.motivo) + '</span>';
+    else if (c.minutos === 0) oQueFazer = '<span style="color:#1f6b3b;">a cor já está na máquina</span>';
+    else if (c.trocar === 0) oQueFazer = 'encaixar ' + pluralRolo(c.encaixar) + ' — uns ' + c.minutos + ' min';
+    else oQueFazer = 'trocar ' + pluralRolo(c.trocar) + ' — uns ' + c.minutos + ' min';
+
+    html += '<tr>';
+    html += '<td style="width:26px; color:var(--muted);">' + (i + 1) + '</td>';
+    html += '<td><strong>' + (it.quantity > 1 ? it.quantity + '× ' : '') + escapeHtml(nomeDaPecaNaFila(it)) + '</strong>'
+      + '<br><span style="color:var(--muted); font-size:11px;">' + escapeHtml(coresEmTexto(it)) + '</span></td>';
+    html += '<td style="white-space:nowrap;">' + (it._horas.total ? fmtHoras(it._horas.total) : '—') + '</td>';
+    html += '<td style="font-size:12px;">' + oQueFazer + '</td>';
+    html += '</tr>';
+  });
+  html += '</table></div>';
+  return html;
+}
+
+function pluralRolo(n) { return n + (n === 1 ? ' rolo' : ' rolos'); }
+
+function coresEmTexto(it) {
+  const nomes = (it._coresNecessarias || []).map((id) => {
+    const c = corDoFilamento(id);
+    return c ? c.name : '?';
+  });
+  return nomes.length ? nomes.join(' + ') : 'cor ainda não definida';
+}
+
 // Como a Fila está ordenada agora. Fica numa variável (e não no
 // localStorage) de propósito: a tela se redesenha a cada mudança de
 // status, e a escolha precisa sobreviver a isso — mas amanhã o certo é
@@ -3968,9 +4163,26 @@ async function renderFila() {
     }
   });
 
+  // Gavetas do AMS e partes coloridas: é o que o plano do dia usa pra
+  // saber se a peça imprime agora ou pede troca de filamento.
+  await getFilamentos();
+  await getSlots(true);
+  const idsDeItem = items.map((it) => it.id);
+  let partes = [];
+  if (idsDeItem.length) {
+    partes = await q(SUPA.from('project_parts')
+      .select('order_line_item_id, filament_color_id')
+      .in('order_line_item_id', idsDeItem)) || [];
+  }
+  const partesPorItem = {};
+  partes.forEach((p) => {
+    (partesPorItem[p.order_line_item_id] = partesPorItem[p.order_line_item_id] || []).push(p);
+  });
+
   items.forEach((it) => {
     it._prazo = calcularPrazoFila(it, receitasPorProduto);
     it._horas = horasDeImpressao(it, receitasPorProduto);
+    it._coresNecessarias = coresNecessarias(it, partesPorItem).cores;
   });
 
   // ---- agrupa por CLIENTE -------------------------------------------
@@ -4014,7 +4226,11 @@ async function renderFila() {
   });
   ordenarGruposFila(grupos);
 
-  let html = seletorDeOrdemFila();
+  // O plano vem PRIMEIRO na tela: é a resposta pra "o que eu faço
+  // agora?". A lista por cliente continua embaixo, pra conferir se a
+  // encomenda de alguém está inteira antes de mandar.
+  let html = cartaoPlanoDoDia(items, impressoras, slotsCache || [], partesPorItem);
+  html += seletorDeOrdemFila();
   html += resumoImpressorasFila(items, impressoras);
   html += cartaoUrgentesFila(items);
 
@@ -4275,9 +4491,12 @@ function renderGrupoCliente(g, impressoras, totalDoPedido, prontasDoPedido) {
           : 'solicitarAbrirFatiadorProjeto(\'' + it.id + '\', \'fila\')') + '">🖥️ Abrir no fatiador</button>';
       }
     }
-    if (it.line_status === 'fila_impressao') {
-      html += '<button class="btn" onclick="mudarStatusFilaItem(\'' + it.id + '\', \'imprimindo\')">▶️ Comecei</button>';
-    }
+    // "Comecei" saiu, e a ideia por trás dele estava errada: marcar a
+    // hora de começar e a de terminar transforma o relógio em medida da
+    // impressão — e o dono aperta "comecei", sai de casa e só volta 4h
+    // depois que a peça ficou pronta. O tempo de impressão é o que o
+    // FATIADOR disse, guardado no cadastro; relógio de parede aqui só
+    // produziria número errado com cara de número medido.
     // Depois do "Terminei" a peça vira "Dando o acabamento" de propósito
     // (nem toda peça sai pronta da impressora) — mas sem um botão daqui
     // pra frente ela ficava encalhada na Fila pra sempre, e "Terminei"
@@ -4390,18 +4609,27 @@ async function openConcluirImpressao(itemId) {
     options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + fmtKg(s.remaining_weight_g) + ' restantes</option>';
   });
   const rotuloGramas = qtd > 1 ? 'Quantos gramas gastou NO TOTAL, pras ' + qtd + ' peças?' : 'Quantos gramas ela gastou?';
-  const rotuloHoras = qtd > 1 ? 'Quantas horas a impressora ficou ligada, no total?' : 'Quantas horas a impressora ficou ligada?';
+  // A pergunta "quantas horas a impressora ficou ligada?" SAIU, e é
+  // importante que não volte. Ela media relógio de parede, e relógio de
+  // parede não é tempo de impressão: quem aperta "terminei" quatro horas
+  // depois de a peça ficar pronta grava quatro horas a mais — e daí em
+  // diante toda venda daquela peça sai com o custo errado, com toda a
+  // cara de número medido.
+  //
+  // O tempo verdadeiro é o que o fatiador calcula, e ele é guardado uma
+  // vez no cadastro da peça. Aqui só se pergunta o que o fatiador NÃO
+  // sabe: qual rolo saiu do estoque, e quanto ele gastou de verdade.
+  const horasQueFicamValendo = horasEstimado || 0;
   openModal(
     '<h3>Terminei de imprimir' + (qtd > 1 ? ' (' + qtd + ' peças)' : ' essa peça') + '</h3>' +
     '<input type="hidden" id="ccQtd" value="' + qtd + '">' +
+    '<input type="hidden" id="ccHoras" value="' + horasQueFicamValendo + '">' +
     '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>' +
     '<label class="pergunta">' + rotuloGramas + '</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
-    '<label class="pergunta">' + rotuloHoras + '</label>' +
-    dicaCampo('Se souber, ajuda a manter o custo dessa peça sempre certo — mas dá pra terminar sem preencher.') +
-    '<div style="display:flex; gap:8px;">' +
-      '<div style="flex:1;"><input id="ccHorasH" type="number" step="1" min="0" placeholder="horas" value="' + horasParteInteira(horasEstimado) + '"></div>' +
-      '<div style="flex:1;"><input id="ccHorasM" type="number" step="1" min="0" max="59" placeholder="minutos" value="' + horasParteMinutos(horasEstimado) + '"></div>' +
-    '</div>' +
+    (horasQueFicamValendo
+      ? '<div style="color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5;">⏱️ O tempo de impressão desta peça continua sendo <strong>'
+        + fmtHoras(horasQueFicamValendo) + '</strong>, como está no cadastro. Não precisa cronometrar nada.</div>'
+      : '') +
     '<div class="modal-actions">' +
       '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
       '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Pronto, terminei</button>' +
@@ -4413,8 +4641,10 @@ async function salvarConclusaoImpressao(itemId) {
   const spoolId = document.getElementById('ccSpool').value;
   const qtd = parseInt(document.getElementById('ccQtd').value, 10) || 1;
   const gramasTotal = parseFloat(document.getElementById('ccGramas').value);
-  const horasTotal = (parseFloat(document.getElementById('ccHorasH').value) || 0) +
-    (parseFloat(document.getElementById('ccHorasM').value) || 0) / 60;
+  // Vem do cadastro, não de um campo digitado agora — ver o comentário
+  // em openConcluirImpressao. Continua sendo gravado na receita pra que
+  // o custo da peça siga fechando; o que mudou é a fonte do número.
+  const horasTotal = parseFloat(document.getElementById('ccHoras').value) || 0;
   if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
   if (isNaN(gramasTotal) || gramasTotal <= 0) { toast('Preenche as gramas usadas.'); return; }
   const { error: e1 } = await SUPA.rpc('consume_filament', {
