@@ -208,6 +208,33 @@ livre = 3 min por rolo; cor faltando com AMS cheio = 12 min por rolo,
 porque é preciso tirar um pra pôr o outro. Peça que pede mais cores do
 que a máquina tem gavetas fica bloqueada, com o motivo escrito.
 
+### E dá pra contrariar a sugestão — patch 46
+
+A primeira versão do plano era **só leitura**, e o dono ficou (palavra
+dele) *engessado*: viu a sugestão, decidiu imprimir outra peça, e não
+tinha como contar isso pro sistema — a lista continuava afirmando outra
+coisa. **Sugestão que não pode ser contrariada não é sugestão, é
+ordem.**
+
+- **"Na máquina agora"** é seção própria no topo, e sai da sugestão.
+- **Cada linha age**: `▶️ Pus pra imprimir`, `✅ Terminei`, `Deu errado`.
+- **`⬆️` fixa a peça** numa seção *"Você escolheu fazer estas primeiro"*,
+  acima das automáticas; `✖️` devolve pra ordem sugerida.
+
+⚠️ **O `⬆️` precisa levar a peça pra seção de cima, não só pro primeiro
+lugar da seção dela.** Foi o primeiro jeito que fiz e não resolvia: a
+peça fixada precisava de troca de cor, caía na seção de baixo e
+continuava aparecendo embaixo — que é exatamente a sensação de não
+conseguir mexer em nada.
+
+Sem arrastar, de propósito: arrastar no celular, numa lista que se
+redesenha a cada mudança de status, erra mais do que acerta.
+
+**E o "Comecei" voltou** — eu tinha removido demais. O dono reclamou do
+controle de HORÁRIO, não do botão: marcar o que está na máquina é
+informação que todo mundo precisa; medir duração pelo relógio é que
+estragava o custo. O tempo continua vindo do fatiador, sempre.
+
 ### Isso é conta, e NÃO é IA — decidido em 28/08
 
 O dono pediu "uma IA bem inteligente" pra sugerir a ordem. Ordenar por
