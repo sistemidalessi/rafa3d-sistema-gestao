@@ -1056,7 +1056,12 @@ function alternarProjetosFinalizados() {
 async function renderProjetos() {
   const el = document.getElementById('tab-projetos');
   const scrollY = window.scrollY;
-  const todosProjetos = await q(SUPA.from('order_line_items').select('*, orders(order_number)').eq('line_type', 'custom').order('created_at', { ascending: false }));
+  const tudo = await q(SUPA.from('order_line_items').select('*, orders(order_number)').eq('line_type', 'custom').order('created_at', { ascending: false }));
+  // Arquivado sai da lista sem sair do sistema (patch-48): o pedido
+  // continua em Pedidos, na Fila e no Financeiro. É arrumação de tela,
+  // não mudança de estado do trabalho.
+  const arquivados = tudo.filter((li) => li.projeto_arquivado_em);
+  const todosProjetos = tudo.filter((li) => !li.projeto_arquivado_em);
   const projetosFechados = todosProjetos.filter((li) => LINE_STATUS_ENCERRADO.indexOf(li.line_status) !== -1);
   const projetos = mostrarProjetosFinalizados ? todosProjetos : todosProjetos.filter((li) => LINE_STATUS_ENCERRADO.indexOf(li.line_status) === -1);
 
@@ -1067,6 +1072,9 @@ async function renderProjetos() {
   if (projetosFechados.length > 0) {
     html += '<button class="btn ghost" onclick="alternarProjetosFinalizados()">' +
       (mostrarProjetosFinalizados ? 'Esconder os já finalizados' : 'Ver os ' + projetosFechados.length + ' já finalizados') + '</button>';
+  }
+  if (arquivados.length > 0) {
+    html += '<button class="btn ghost" onclick="abrirArquivados()">📥 Ver os ' + arquivados.length + ' que saíram da lista</button>';
   }
   html += '<button class="btn" onclick="abrirNovoProjeto()">+ Novo Projeto</button>';
   html += '</div></div>';
@@ -1335,7 +1343,7 @@ async function abrirGerenciarProjeto(lineItemId) {
   // número na aba Pedidos, sem saber nem qual é.
   html += '</div><div class="modal-actions">' +
     '<button class="btn ghost" onclick="verProjetoComoPedido(\'' + (li.order_id || '') + '\')">🧾 Ver como pedido (pagamento, cartinha...)</button>' +
-    '<button class="btn ghost" style="color:var(--text-danger, #c0392b); border-color:#f0c9c9;" onclick="excluirProjeto(\'' + li.id + '\', \'' + (li.order_id || '') + '\')">🗑️ Excluir Projeto</button>' +
+    '<button class="btn ghost" style="color:var(--text-danger, #c0392b); border-color:#f0c9c9;" onclick="abrirExcluirProjeto(\'' + li.id + '\', \'' + (li.order_id || '') + '\')">🗑️ Tirar da lista / Excluir</button>' +
     '<button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
 
   openModal(html, { wide: true });
@@ -2022,6 +2030,95 @@ async function restaurarDaLixeira(lixeiraId) {
   await renderPedidos();
 }
 
+/* "Excluir projeto" virou uma PERGUNTA, não uma regra.
+
+   Projeto e pedido são a mesma linha no banco, e por isso apagar um
+   apagava o outro. Mas o trabalho de projeto acaba: quando a peça foi
+   desenhada, aprovada e virou pedido, não há mais o que fazer naquela
+   tela — e sem um jeito de tirar da vista, a aba vira uma lista de
+   centenas de coisas terminadas.
+
+   Antes eu tinha resolvido isso proibindo apagar projeto que já virou
+   pedido. Estava errado dos dois lados: prendia o dono numa tela
+   entulhada E não explicava a diferença. Agora ele escolhe:
+
+     arquivar = sai da tela de Projetos, o pedido continua inteiro
+     excluir  = some tudo, e vai pra lixeira (patch 47)  */
+async function abrirExcluirProjeto(lineItemId, orderId) {
+  const it = await q(SUPA.from('order_line_items')
+    .select('line_status, custom_description').eq('id', lineItemId).maybeSingle());
+  if (!it) return;
+  const nome = it.custom_description || 'esse projeto';
+  const virouPedido = ['fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir',
+    'embalado', 'enviado', 'entregue'].indexOf(it.line_status) !== -1;
+
+  let html = '<h3 style="margin:0 0 2px;">Tirar "' + escapeHtml(nome) + '" da tela?</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:14px;">'
+    + 'São duas coisas diferentes. Escolha com calma.</div>';
+
+  const opcao = (icone, titulo, texto, botao, cor) =>
+    '<div style="border:1px solid var(--border); border-radius:12px; padding:12px 14px; margin-bottom:10px;">'
+    + '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14px;">' + icone + ' ' + titulo + '</div>'
+    + '<div style="color:var(--muted); font-size:12px; margin:4px 0 10px; line-height:1.55;">' + texto + '</div>'
+    + botao + '</div>';
+
+  html += opcao('📥', 'Só tirar da lista de Projetos',
+    'O pedido do cliente <strong>continua inteiro</strong> — em Pedidos, na Fila, no Financeiro. Some só daqui, porque o trabalho de projeto acabou.'
+    + (virouPedido ? ' <strong>É o que você quer neste caso:</strong> esta peça já virou pedido e está como "' + escapeHtml(LINE_STATUS_LABELS[it.line_status] || it.line_status) + '".' : ''),
+    '<button class="btn full" onclick="arquivarProjeto(\'' + lineItemId + '\')">📥 Tirar da lista</button>');
+
+  html += opcao('🗑️', 'Apagar o projeto E o pedido',
+    'Some tudo: a peça, o pedido do cliente e os pagamentos anotados. Fica guardado em <strong>Coisas apagadas</strong>, dá pra trazer de volta.'
+    + (virouPedido ? ' <strong>Cuidado:</strong> esta peça já está em produção.' : ''),
+    '<button class="btn ghost full" style="color:#c0392b; border-color:#f0c4bd;" onclick="excluirProjeto(\'' + lineItemId + '\', \'' + orderId + '\')">🗑️ Apagar tudo</button>');
+
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
+  openModal(html);
+}
+
+async function abrirArquivados() {
+  const lista = await q(SUPA.from('order_line_items')
+    .select('id, custom_description, line_status, projeto_arquivado_em, orders(order_number)')
+    .eq('line_type', 'custom').not('projeto_arquivado_em', 'is', null)
+    .order('projeto_arquivado_em', { ascending: false })) || [];
+  let html = '<h3 style="margin:0 0 2px;">Projetos que saíram da lista</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:12px;">'
+    + 'Eles continuam existindo como pedido — saíram só desta tela.</div>';
+  if (!lista.length) {
+    html += '<div class="empty">Nenhum.</div>';
+  } else {
+    html += '<div class="tabela-rola"><table><tr><th>Peça</th><th>Como está</th><th></th></tr>';
+    lista.forEach((li) => {
+      html += '<tr><td><strong>' + escapeHtml(li.custom_description || '—') + '</strong>'
+        + '<br><span style="color:var(--muted); font-size:10.5px;">' + escapeHtml(li.orders ? (li.orders.order_number || '') : '') + '</span></td>';
+      html += '<td>' + selo(li.line_status, LINE_STATUS_LABELS[li.line_status]) + '</td>';
+      html += '<td><button class="btn ghost" onclick="desarquivarProjeto(\'' + li.id + '\'); closeModal();">↩️ Voltar pra lista</button></td></tr>';
+    });
+    html += '</table></div>';
+  }
+  html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Fechar</button></div>';
+  openModal(html);
+}
+
+async function arquivarProjeto(lineItemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ projeto_arquivado_em: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  closeModal();
+  toast('Tirei da lista. O pedido continua lá em Pedidos.');
+  await renderProjetos();
+}
+
+async function desarquivarProjeto(lineItemId) {
+  const { error } = await SUPA.from('order_line_items')
+    .update({ projeto_arquivado_em: null, updated_at: new Date().toISOString() })
+    .eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast('Voltou pra lista.');
+  await renderProjetos();
+}
+
 async function excluirProjeto(lineItemId, orderId) {
   // Projeto que já baixou filamento do estoque (já imprimiu de verdade)
   // ou já tem pagamento registrado não pode ser apagado — excluir o
@@ -2045,14 +2142,10 @@ async function excluirProjeto(lineItemId, orderId) {
   // o PEDIDO INTEIRO junto, porque esta função apagava `orders`.
   // Pagamento e estoque não são as únicas coisas que doem: uma peça na
   // fila é uma promessa feita pra um cliente.
+  // A proibição saiu: quem escolheu "apagar tudo" na tela anterior já
+  // leu o que isso significa, e prender o dono numa lista entulhada era
+  // pior do que o risco. A rede de segurança agora é a lixeira.
   const eu = await q(SUPA.from('order_line_items').select('line_status, custom_description').eq('id', lineItemId).maybeSingle());
-  const jaEhTrabalho = eu && ['fila_impressao', 'imprimindo', 'pos_processamento', 'falhou_reimprimir',
-    'embalado', 'enviado', 'entregue'].indexOf(eu.line_status) !== -1;
-  if (jaEhTrabalho) {
-    alert('Esse projeto já virou pedido de verdade — ele está como "' + (LINE_STATUS_LABELS[eu.line_status] || eu.line_status) + '".\n\n'
-      + 'Apagar sumiria com o pedido do cliente. Se a encomenda foi desfeita, mude o status pra "Cancelado": ele some da lista principal e o histórico fica.');
-    return;
-  }
 
   // Nunca apaga o PEDIDO quando ele tem outras peças. Antes apagava
   // sempre, e uma peça arrastava as irmãs do mesmo pedido junto.
