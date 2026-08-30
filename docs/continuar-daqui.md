@@ -626,6 +626,14 @@ Foi o dia que ligou **preço, custo e produção** de ponta a ponta.
 
 ## Pendências que são do Anderson, não do agente
 
+0. **Cadastrar os rolos** (opcional, mas é o que falta pro estoque
+   andar). Hoje existem 35 **cores** cadastradas — nome e material — mas
+   nenhum **rolo** de verdade, com peso. Por isso o "Terminei" avisa que
+   não mexeu no estoque: não tem de onde descontar.
+   Basta os 4 que estão na impressora: **Filamentos → a cor → + Rolo →
+   "quantos quilos tem esse rolo?" (rolo novo = 1)**. Feito isso, o
+   estoque desconta sozinho e avisa quando um rolo estiver acabando.
+   Nada mais depende disso — fila, plano do dia e pedidos funcionam sem.
 1. **Testar o "Sugerir categoria e tamanho" logado de verdade** — a
    função foi testada por fora, o caminho navegador→função não.
 2. **Testar o botão de copiar o PIX num celular.**
