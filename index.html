@@ -7412,7 +7412,11 @@ async function salvarCadastroProduto() {
     }
     const { error } = await SUPA.from('products').update(dados).eq('id', id);
     if (error) { toast('Erro: ' + error.message); return; }
-    toast('Produto salvo.');
+    // Diz se a foto entrou ou não. Sem isso, "Produto salvo." aparecia
+    // igual nos dois casos — e quando a foto não trocava (cache, ou
+    // arquivo que nem chegou a ser escolhido) não havia como saber qual
+    // dos dois tinha acontecido.
+    toast(file ? 'Produto salvo, com a foto nova.' : 'Produto salvo.');
     produtoCadastroAberto = null;
     await renderProdutos();
   }
@@ -7424,7 +7428,21 @@ async function enviarFotoProduto(productId, catalog_code, file) {
   const { error: upErr } = await SUPA.storage.from('produtos-fotos').upload(path, file, { upsert: true });
   if (upErr) { toast('Erro no envio da foto: ' + upErr.message); return false; }
   const { data } = SUPA.storage.from('produtos-fotos').getPublicUrl(path);
-  const { error: dbErr } = await SUPA.from('products').update({ image_path: data.publicUrl }).eq('id', productId);
+
+  // O ?v= é o que faz TROCAR a foto funcionar.
+  //
+  // O caminho é fixo por produto ("11.03/foto.jpg"), então trocar uma
+  // foto por outra da mesma extensão substitui o arquivo mas devolve a
+  // MESMA URL. O navegador (e o CDN) continuam servindo a imagem velha
+  // do cache, e a tela parece que não salvou — foi exatamente o que
+  // aconteceu em 30/08 com o Regador de Garrafa: o dono trocou, salvou,
+  // e a foto errada continuou lá.
+  //
+  // Com um número diferente a cada envio, a URL muda e a imagem nova
+  // aparece na hora. Não polui o Storage: o arquivo continua sendo um
+  // só, o "?v=" existe só na URL guardada no banco.
+  const url = data.publicUrl + '?v=' + Date.now();
+  const { error: dbErr } = await SUPA.from('products').update({ image_path: url }).eq('id', productId);
   if (dbErr) { toast('Erro: ' + dbErr.message); return false; }
   return true;
 }
