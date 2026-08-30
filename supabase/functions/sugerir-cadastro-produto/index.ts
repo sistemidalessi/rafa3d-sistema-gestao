@@ -27,6 +27,7 @@ const CATEGORIAS: Record<string, string> = {
   deskOrganizers: "Organizadores de Mesa",
   books: "Livros & Leitura",
   minis: "Miniaturas & Personagens",
+  garden: "Jardim & Externos",
 };
 
 const listaCategorias = Object.entries(CATEGORIAS)
