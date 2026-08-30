@@ -264,6 +264,16 @@ sai dali.
   Falta cor, gramas ou rolo? A peça avança do mesmo jeito, e a tela diz
   por que não mexeu no estoque — **terminar de imprimir é fato
   consumado, a tela não pode recusar por falta de cadastro.**
+- **O catálogo é sempre o link, nunca PDF — e por isso renumerar é
+  seguro.** Decidido pelo dono em 30/08: nada de mandar catálogo em
+  arquivo, justamente porque muda muito. Quem recebe o link vê o
+  atualizado na hora. Então mover produto de categoria **deve** trocar o
+  código dele e fechar o buraco na antiga (as categorias não têm buraco
+  nenhum hoje, e o padrão é esse). Os pedidos não quebram: eles ligam
+  por `product_id`, e o `catalog_code` só é montado na hora de gerar o
+  link do formulário e a mensagem de WhatsApp. **Ordem importa** ao
+  renumerar: tire o que sai primeiro, senão dois produtos disputam o
+  mesmo código.
 - **Categoria do catálogo vive em CINCO lugares.** Esta nota já disse
   "dois" e estava errada — em 30/08, criando `garden` (11 · Jardim &
   Externos), a seção desenhou vazia com tudo aparentemente certo.
