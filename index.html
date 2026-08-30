@@ -5195,8 +5195,21 @@ async function openConcluirImpressao(itemId) {
   }
   const cores = await getFilamentosSafe();
   const spools = await getSpools(true);
+  // A lista mostrava SÓ rolos da cor pedida. Quando não existia nenhum
+  // — cor sem rolo cadastrado, ou nenhum rolo cadastrado ainda — ela
+  // ficava vazia, sem dizer nada, e não dava pra terminar a peça: a
+  // pessoa ficava presa numa janela que só sabia recusar.
+  //
+  // Agora ela sempre oferece uma saída: sem rolo da cor certa, mostra
+  // todos os outros e explica; sem rolo nenhum, deixa terminar sem
+  // baixar estoque. Terminar de imprimir é fato consumado — a tela não
+  // pode fingir que não aconteceu porque falta cadastro.
   const corAlvo = item.requested_filament_color_id;
-  const spoolsDaCor = spools.filter((s) => (!corAlvo || s.color_id === corAlvo) && s.status !== 'empty');
+  const disponiveis = spools.filter((s) => s.status !== 'empty');
+  const daCor = corAlvo ? disponiveis.filter((s) => s.color_id === corAlvo) : disponiveis;
+  const semRoloDaCor = corAlvo && daCor.length === 0 && disponiveis.length > 0;
+  const semRoloNenhum = disponiveis.length === 0;
+  const spoolsDaCor = daCor.length ? daCor : disponiveis;
   let options = '<option value="">— escolhe o rolo —</option>';
   spoolsDaCor.forEach((s) => {
     const cor = cores.find((c) => c.id === s.color_id);
@@ -5218,8 +5231,19 @@ async function openConcluirImpressao(itemId) {
     '<h3>Terminei de imprimir' + (qtd > 1 ? ' (' + qtd + ' peças)' : ' essa peça') + '</h3>' +
     '<input type="hidden" id="ccQtd" value="' + qtd + '">' +
     '<input type="hidden" id="ccHoras" value="' + horasQueFicamValendo + '">' +
-    '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>' +
-    '<label class="pergunta">' + rotuloGramas + '</label><input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">' +
+    (semRoloNenhum
+      ? '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:11px 13px; font-size:12.5px; color:#8a5b00; line-height:1.6;">'
+        + '<strong>Nenhum rolo cadastrado ainda.</strong> Sem rolo não dá pra baixar do estoque — mas dá pra marcar a peça como pronta assim mesmo.'
+        + '<br>Pra cadastrar depois: aba <strong>Filamentos</strong>, botão <strong>+ Rolo</strong>.</div>'
+      : '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>'
+        + (semRoloDaCor
+          ? '<div style="color:#8a5b00; font-size:11.5px; margin-top:4px; line-height:1.5;">'
+            + '⚠️ Não tem nenhum rolo cadastrado da cor que este pedido pede. Estão aparecendo todos os outros — escolha o que você usou de verdade.</div>'
+          : '')) +
+    (semRoloNenhum ? '' :
+      '<label class="pergunta">' + rotuloGramas + '</label>'
+      + dicaCampo('É isto que baixa o filamento do estoque — por isso ainda é perguntado. O tempo, não: esse vem do fatiador.')
+      + '<input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">') +
     (horasQueFicamValendo
       ? '<div style="color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5;">⏱️ O tempo de impressão desta peça continua sendo <strong>'
         + fmtHoras(horasQueFicamValendo) + '</strong>, como está no cadastro. Não precisa cronometrar nada.</div>'
@@ -5232,22 +5256,30 @@ async function openConcluirImpressao(itemId) {
 }
 
 async function salvarConclusaoImpressao(itemId) {
-  const spoolId = document.getElementById('ccSpool').value;
+  // Os dois campos podem não existir: quando não há rolo nenhum
+  // cadastrado, a janela só marca a peça como pronta.
+  const campoSpool = document.getElementById('ccSpool');
+  const campoGramas = document.getElementById('ccGramas');
+  const semEstoque = !campoSpool || !campoGramas;
+  const spoolId = campoSpool ? campoSpool.value : '';
   const qtd = parseInt(document.getElementById('ccQtd').value, 10) || 1;
-  const gramasTotal = parseFloat(document.getElementById('ccGramas').value);
+  const gramasTotal = campoGramas ? parseFloat(campoGramas.value) : NaN;
   // Vem do cadastro, não de um campo digitado agora — ver o comentário
   // em openConcluirImpressao. Continua sendo gravado na receita pra que
   // o custo da peça siga fechando; o que mudou é a fonte do número.
   const horasTotal = parseFloat(document.getElementById('ccHoras').value) || 0;
-  if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
-  if (isNaN(gramasTotal) || gramasTotal <= 0) { toast('Preenche as gramas usadas.'); return; }
-  const { error: e1 } = await SUPA.rpc('consume_filament', {
-    p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramasTotal, p_reason: 'print_job_consumption',
-  });
-  if (e1) { toast('Erro: ' + e1.message); return; }
-  const { data: item, error: e2 } = await SUPA.from('order_line_items').update({
-    filament_spool_id: spoolId, grams_used_actual: gramasTotal, line_status: 'pos_processamento', updated_at: new Date().toISOString(),
-  }).eq('id', itemId).select('product_id').maybeSingle();
+  if (!semEstoque) {
+    if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
+    if (isNaN(gramasTotal) || gramasTotal <= 0) { toast('Preenche as gramas usadas.'); return; }
+    const { error: e1 } = await SUPA.rpc('consume_filament', {
+      p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramasTotal, p_reason: 'print_job_consumption',
+    });
+    if (e1) { toast('Erro: ' + e1.message); return; }
+  }
+  const mudanca = { line_status: 'pos_processamento', updated_at: new Date().toISOString() };
+  if (!semEstoque) { mudanca.filament_spool_id = spoolId; mudanca.grams_used_actual = gramasTotal; }
+  const { data: item, error: e2 } = await SUPA.from('order_line_items').update(mudanca)
+    .eq('id', itemId).select('product_id').maybeSingle();
   if (e2) { toast('Erro: ' + e2.message); return; }
 
   // Número real da impressão vira a nova estimativa de custo do produto —
@@ -5255,7 +5287,10 @@ async function salvarConclusaoImpressao(itemId) {
   // acaba lendo. Só roda pra item de catálogo (produto tem receita própria;
   // projeto guarda custo direto no pedido, aprovado antes de imprimir).
   // A receita guarda o custo de UMA peça — divide o total pela quantidade.
-  if (item && item.product_id) {
+  // Sem rolo não há gramas medidas, e gravar a receita com NaN
+  // estragaria o custo do produto pra sempre — vale mais deixar a
+  // receita como estava.
+  if (item && item.product_id && !semEstoque) {
     const spools = await getSpools();
     const spoolUsado = spools.find((s) => s.id === spoolId);
     const gramasPorPeca = gramasTotal / qtd;
