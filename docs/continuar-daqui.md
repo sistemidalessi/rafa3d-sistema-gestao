@@ -372,6 +372,27 @@ foi a **fonte** do número, não o destino.
 
 **Não reintroduza medição por relógio**, em nenhuma tela.
 
+### E o "Terminei" virou um clique — 29/08
+
+Ele perguntava **qual rolo** e **quantas gramas**. As duas perguntas
+estavam erradas desde o começo, e a peça de quatro cores deixou óbvio:
+não existe "o rolo" nem "a gramatura" — cada cor gastou um pouco.
+Responder aquilo era inventar número.
+
+Agora o sistema resolve com o que já sabe: as cores da peça, os gramas
+do cadastro (que vieram do fatiador no passo 4) e o rolo aberto de cada
+cor. A tela mostra o que vai baixar antes de confirmar.
+
+Em peça multicor ele **divide igual entre as cores e diz que dividiu**.
+Estimativa honesta e visível vale mais que uma pergunta que produz
+número inventado. A precisão vem de pesar o rolo e usar "Corrigir rolo".
+
+⚠️ **Falta cor, gramas ou rolo? A peça avança do mesmo jeito**, e a tela
+diz por que não mexeu no estoque. Terminar de imprimir é fato
+consumado — a tela não pode recusar por falta de cadastro. Foi assim que
+o dono ficou preso: a lista de rolos vinha vazia (ele não tem nenhum
+cadastrado) e o botão só sabia negar.
+
 ### E o número entra onde ele aparece: passo 4 do preparo
 
 "Preparar pra imprimir" ganhou um quarto passo — **"Anotar o que o
