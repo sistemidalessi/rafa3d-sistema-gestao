@@ -141,6 +141,24 @@ Aprendizados do dia, todos já anotados no `CLAUDE.md`:
   caminho no Storage é fixo por produto, então a URL não mudava. Agora
   leva `?v=` com a hora do envio.
 
+### Como conferir preço de item novo (funcionou bem)
+
+Cadastrando os 12 Porta Joias, três peças estavam com preço de peça
+pequena tendo o dobro do tamanho — cacto, árvore e a bandeja de flor. O
+padrão que apareceu: **a palavra "simples" no nome puxava o preço pra
+baixo**, mas "simples" descreve o desenho, não o custo. A bandeja da
+rosa de 28 cm com detalhe fino estava a R$ 19,90, abaixo de bandejas
+menores a R$ 34,90.
+
+O método que pegou isso: **olhar a foto pra estimar tamanho e
+dificuldade, e comparar com as peças do próprio catálogo naquele
+porte** — não com a internet. Depois dos ajustes, a curva ficou
+monotônica (14,90 pra caixinha de 8 cm até 79,90 pra torre de 30 cm),
+sem peça grande abaixo de peça pequena.
+
+Vale repetir isso a cada lote novo: listar tudo, marcar os que fogem da
+curva, e decidir junto antes de gravar.
+
 ### Sobre pesquisar preço na internet
 
 O dono pediu sugestão de preço com base em pesquisa. **Tentei duas vezes
