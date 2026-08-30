@@ -4631,11 +4631,19 @@ async function abrirCorDaPeca(itemId) {
   const servem = precisa ? ativas.filter((c) => familiaDoMaterial(c.material) === precisa) : ativas;
   const naoServem = precisa ? ativas.filter((c) => familiaDoMaterial(c.material) !== precisa) : [];
 
+  // Cor de outro material NÃO é mais um beco. Antes ela só avisava
+  // "essa é PETG e a peça é PLA" e parava aí — e não havia lugar nenhum
+  // no sistema pra mudar o material da peça, então quem tinha anotado
+  // errado ficava presa com a peça travada pra sempre.
+  //
+  // Agora clicar nela pergunta qual dos dois está certo. Quase sempre é
+  // a peça que está desatualizada: a cor foi escolhida agora, olhando o
+  // rolo.
   const botao = (c, ok) => '<button onclick="' + (ok
     ? 'salvarCorDaPeca(\'' + itemId + '\', \'' + c.id + '\')'
-    : 'toast(\'Essa é ' + escapeHtml(c.material) + ' e a peça é ' + (precisa || '').toUpperCase() + '.\')')
+    : 'trocarMaterialDaPeca(\'' + itemId + '\', \'' + c.id + '\')')
     + '" style="display:flex; align-items:center; gap:8px; padding:6px 12px 6px 6px; border-radius:999px; cursor:pointer; font:inherit;'
-    + ' opacity:' + (ok ? '1' : '.4') + '; background:#fff; border:'
+    + ' opacity:' + (ok ? '1' : '.55') + '; background:#fff; border:'
     + (it.requested_filament_color_id === c.id ? '2px solid var(--accent)' : '1px solid var(--border)') + ';">'
     + '<span style="width:26px; height:26px; border-radius:50%; background:' + (c.hex_or_gradient || '#ccc').replace(/"/g, '') + '; border:1px solid rgba(0,0,0,0.12);"></span>'
     + '<span style="font-size:13px;">' + escapeHtml(rotuloDaCor(c)) + '</span></button>';
@@ -4644,13 +4652,59 @@ async function abrirCorDaPeca(itemId) {
   servem.forEach((c) => { html += botao(c, true); });
   html += '</div>';
   if (naoServem.length) {
-    html += '<div style="color:var(--muted); font-size:11.5px; margin:12px 0 6px;">Estas são de outro material e não servem pra esta peça:</div>';
+    html += '<div style="color:var(--muted); font-size:11.5px; margin:12px 0 6px;">'
+      + 'Estas são de <strong>outro material</strong>. Se a peça é que está anotada errada, clique numa delas que eu corrijo os dois:</div>';
     html += '<div style="display:flex; flex-wrap:wrap; gap:8px; max-height:20vh; overflow-y:auto;">';
     naoServem.forEach((c) => { html += botao(c, false); });
     html += '</div>';
   }
   html += '<div class="modal-actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button></div>';
   openModal(html);
+}
+
+// Clicaram numa cor de material diferente do que a peça diz. Pergunta
+// qual dos dois está certo, em vez de só recusar.
+async function trocarMaterialDaPeca(itemId, corId) {
+  const cor = corDoFilamento(corId);
+  if (!cor) return;
+  const it = await q(SUPA.from('order_line_items')
+    .select('id, line_type, product_id, custom_description, material, products(name, material)')
+    .eq('id', itemId).maybeSingle());
+  if (!it) return;
+  await getReceitas();
+  const atual = (familiaDoMaterial(materialDaPeca(it, {})) || '?').toUpperCase();
+  const nova = familiaDoMaterial(cor.material);
+  const nomePeca = it.line_type === 'catalog' ? (it.products ? it.products.name : '—') : it.custom_description;
+
+  const ondeMuda = it.line_type === 'catalog'
+    ? '\n\nAtenção: esta peça é do catálogo, então o material muda pro PRODUTO — vale pras próximas vendas dele também.'
+    : '';
+  if (!confirm('O ' + cor.name + ' é ' + cor.material + ', e "' + nomePeca + '" está anotada como ' + atual + '.\n\n'
+    + 'Quer dizer que a peça é ' + nova.toUpperCase() + ' e usar essa cor?' + ondeMuda)) return;
+
+  // Grava a FAMÍLIA: products.material e order_line_items.material têm
+  // check que só aceita pla|petg|tpu|abs (patch 33).
+  let erro = null;
+  if (it.line_type === 'catalog' && it.product_id) {
+    const r1 = await SUPA.from('products').update({ material: nova }).eq('id', it.product_id);
+    erro = r1.error;
+    // A receita guarda o nome comercial e mandaria mais que o produto —
+    // sem limpar, ela continuaria dizendo o material antigo.
+    if (!erro) {
+      const rec = (receitasCache || []).find((x) => x.product_id === it.product_id);
+      if (rec && rec.filament_material_media) {
+        const r2 = await SUPA.from('product_recipes')
+          .update({ filament_material_media: cor.material }).eq('id', rec.id);
+        erro = r2.error;
+      }
+    }
+    if (!erro) await getReceitas(true);
+  } else {
+    const r = await SUPA.from('order_line_items').update({ material: nova }).eq('id', itemId);
+    erro = r.error;
+  }
+  if (erro) { toast('Erro: ' + erro.message); return; }
+  await salvarCorDaPeca(itemId, corId);
 }
 
 async function salvarCorDaPeca(itemId, corId) {
