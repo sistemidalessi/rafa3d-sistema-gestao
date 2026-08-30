@@ -264,10 +264,24 @@ sai dali.
   Falta cor, gramas ou rolo? A peça avança do mesmo jeito, e a tela diz
   por que não mexeu no estoque — **terminar de imprimir é fato
   consumado, a tela não pode recusar por falta de cadastro.**
-- **As 10 categorias do catálogo vivem em DOIS lugares:** `CATEGORY_LABELS`
-  no [`index.html`](index.html) e a lista dentro da Edge Function
-  [`sugerir-cadastro-produto`](supabase/functions/sugerir-cadastro-produto/index.ts).
-  Categoria nova exige mexer nos dois — a IA nunca inventa uma.
+- **Categoria do catálogo vive em CINCO lugares.** Esta nota já disse
+  "dois" e estava errada — em 30/08, criando `garden` (11 · Jardim &
+  Externos), a seção desenhou vazia com tudo aparentemente certo.
+  1. `CATEGORY_LABELS` no [`index.html`](index.html);
+  2. a lista da Edge Function
+     [`sugerir-cadastro-produto`](supabase/functions/sugerir-cadastro-produto/index.ts)
+     — **e ela precisa de deploy**, senão a IA nunca sugere a nova;
+  3. `CATALOG_CATEGORY_KEYS` + o estado inicial em
+     [`catalogo/index.html`](catalogo/index.html);
+  4. as variáveis do render (`const x = this.state.x`), o `sectionCodes`
+     e a seção HTML própria (clone de outra, trocando id, número,
+     título, subtítulo e as variáveis do template);
+  5. **o `return` do render** — ele lista explicitamente o que o
+     template enxerga. Faltando ali, a grade vem vazia e nada acusa
+     erro: sem CSS quebrado, sem erro no console, sem falha de consulta.
+  Pra diagnosticar rápido: compare o DOM da seção nova com o de uma que
+  funciona. Mesma casca e zero cards significa que a lista não chegou ao
+  template, não que a consulta falhou.
 - **Fundo colorido some na impressão sem `print-color-adjust: exact`.** O
   navegador apaga fundo "pra economizar tinta", e a cartinha saía branca.
   Vale pra qualquer coisa desenhada pra imprimir.
