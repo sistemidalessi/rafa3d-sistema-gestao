@@ -834,7 +834,7 @@ class Component extends DCLogic {
       let filamentosDoBanco = null;
       try {
         const r = await sb.from('filament_colors')
-          .select('id, name, hex_or_gradient, active').eq('active', true).order('name');
+          .select('id, name, material, hex_or_gradient, active').eq('active', true).order('name');
         if (r.error) throw r.error;
         if (r.data && r.data.length) filamentosDoBanco = r.data;
       } catch (e) {
@@ -976,7 +976,15 @@ class Component extends DCLogic {
     const filaments = doBanco
       ? doBanco.map(function (c) {
           const v = c.hex_or_gradient || '#cccccc';
-          return { name: c.name, bg: v.indexOf('gradient') === -1 ? gloss(v) : v };
+          // Nome + FAMÍLIA do material ("Verde (PETG)"), nunca a cor
+          // sozinha: existem dois "Verde", um PLA Silk e um PETG
+          // Basic, e sem isso o cliente vê duas bolinhas iguais uma do
+          // lado da outra. Família e não nome comercial pra não virar
+          // "Verde (PETG Basic)", que é técnico demais pra vitrine.
+          const fam = String(c.material || '').trim().toLowerCase();
+          const familia = ['petg', 'pla', 'tpu', 'abs'].find(function (x) { return fam.indexOf(x) === 0; });
+          const rotulo = familia ? c.name + ' (' + familia.toUpperCase() + ')' : c.name;
+          return { name: rotulo, bg: v.indexOf('gradient') === -1 ? gloss(v) : v };
         })
       : filamentosReserva;
 
