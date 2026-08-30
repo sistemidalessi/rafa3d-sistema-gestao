@@ -254,12 +254,16 @@ sai dali.
   preso em "Vendo o preço" desde a criação. Quem sabe o estado de verdade
   é o `line_status` de cada peça, e é nele que a lista de Pedidos e a Fila
   se baseiam. Não escreva lógica nova em cima de `orders.status`.
-- **"Terminei" mistura duas contas que só são iguais quando a quantidade
-  é 1.** O peso baixado do estoque é o TOTAL impresso; o peso guardado na
-  receita do produto tem que ser de UMA peça, porque é reaproveitado em
-  qualquer pedido futuro. Num pedido de 60, guardar o total multiplicaria
-  o custo por 60 na próxima venda. A divisão é feita antes de gravar na
-  receita — se mexer ali, mantenha.
+- **"Terminei" não pergunta mais nada, e não grava receita.** Ele baixa o
+  estoque sozinho: pega as cores da peça, os gramas do cadastro (que
+  vieram do fatiador) e o rolo aberto de cada cor. Perguntar "qual rolo"
+  e "quantas gramas" era pedir número inventado — peça de 4 cores gasta
+  um pouco de cada, e não existe "o rolo". Em peça multicor ele divide
+  igual entre as cores **e diz que dividiu**; a precisão vem de pesar o
+  rolo e usar "Corrigir rolo" em Filamentos.
+  Falta cor, gramas ou rolo? A peça avança do mesmo jeito, e a tela diz
+  por que não mexeu no estoque — **terminar de imprimir é fato
+  consumado, a tela não pode recusar por falta de cadastro.**
 - **As 10 categorias do catálogo vivem em DOIS lugares:** `CATEGORY_LABELS`
   no [`index.html`](index.html) e a lista dentro da Edge Function
   [`sugerir-cadastro-produto`](supabase/functions/sugerir-cadastro-produto/index.ts).

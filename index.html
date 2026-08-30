@@ -5171,152 +5171,127 @@ async function marcarAcabamentoPronto(itemId) {
 // verdade. Achado testando um pedido de 60 peças — com quantidade 1 (o
 // caso mais comum até agora) as duas contas davam o mesmo número, e por
 // isso essa conta errada nunca tinha aparecido.
-let _receitaDaConclusao = null;
+/* ============================================================
+   "TERMINEI" — um clique, e o estoque se vira sozinho
+
+   Antes esta janela perguntava QUAL ROLO e QUANTAS GRAMAS. As duas
+   perguntas estavam erradas desde o começo, e a peça de quatro cores
+   deixou isso óbvio: não existe "o rolo" nem "a gramatura" — cada cor
+   gastou um pouco. Responder aquilo era inventar um número.
+
+   Agora o sistema faz sozinho, com o que já sabe:
+     - as cores da peça (a cor pedida, ou as cores das partes)
+     - quantos gramas ela gasta (do fatiador, guardado no preparo)
+     - qual rolo de cada cor está aberto
+
+   O que ele NÃO sabe é quanto de cada cor foi em peça multicor —
+   ninguém sabe sem o fatiador abrir. Divide igual entre as cores e
+   DIZ que dividiu. Estimativa honesta e visível vale mais que uma
+   pergunta que produz número inventado.
+
+   A precisão continua existindo, onde ela é fácil: pesar o rolo na
+   balança e usar "Corrigir rolo" em Filamentos.
+   ============================================================ */
+
 async function openConcluirImpressao(itemId) {
-  const item = await q(SUPA.from('order_line_items').select('*').eq('id', itemId).maybeSingle());
-  _receitaDaConclusao = null;
-  const qtd = item.quantity || 1;
-  let gramasEstimado = '';
-  let horasEstimado = '';
-  if (item.product_id) {
-    _receitaDaConclusao = await q(SUPA.from('product_recipes').select('*').eq('product_id', item.product_id).maybeSingle());
-    if (_receitaDaConclusao) {
-      gramasEstimado = _receitaDaConclusao.estimated_grams * qtd;
-      horasEstimado = _receitaDaConclusao.estimated_print_hours * qtd;
-    }
-  } else if (item.estimated_grams || item.estimated_print_hours) {
-    // Projeto personalizado não tem product_recipes (não tem product_id
-    // pra ligar nela) — mas a gramatura e as horas por peça já foram
-    // digitadas lá em "Aprovar esse pedido" (patch-39), então dá pra
-    // puxar sozinho igual acontece pra item de catálogo, em vez de pedir
-    // tudo de novo do zero.
-    gramasEstimado = (item.estimated_grams || 0) * qtd;
-    horasEstimado = (item.estimated_print_hours || 0) * qtd;
-  }
-  const cores = await getFilamentosSafe();
+  const item = await q(SUPA.from('order_line_items')
+    .select('*, products(name)').eq('id', itemId).maybeSingle());
+  if (!item) return;
+  await getReceitas();
+  await getFilamentos();
   const spools = await getSpools(true);
-  // A lista mostrava SÓ rolos da cor pedida. Quando não existia nenhum
-  // — cor sem rolo cadastrado, ou nenhum rolo cadastrado ainda — ela
-  // ficava vazia, sem dizer nada, e não dava pra terminar a peça: a
-  // pessoa ficava presa numa janela que só sabia recusar.
-  //
-  // Agora ela sempre oferece uma saída: sem rolo da cor certa, mostra
-  // todos os outros e explica; sem rolo nenhum, deixa terminar sem
-  // baixar estoque. Terminar de imprimir é fato consumado — a tela não
-  // pode fingir que não aconteceu porque falta cadastro.
-  const corAlvo = item.requested_filament_color_id;
-  const disponiveis = spools.filter((s) => s.status !== 'empty');
-  const daCor = corAlvo ? disponiveis.filter((s) => s.color_id === corAlvo) : disponiveis;
-  const semRoloDaCor = corAlvo && daCor.length === 0 && disponiveis.length > 0;
-  const semRoloNenhum = disponiveis.length === 0;
-  const spoolsDaCor = daCor.length ? daCor : disponiveis;
-  let options = '<option value="">— escolhe o rolo —</option>';
-  spoolsDaCor.forEach((s) => {
-    const cor = cores.find((c) => c.id === s.color_id);
-    options += '<option value="' + s.id + '">' + (cor ? escapeHtml(cor.name) : 'Rolo') + ' — ' + fmtKg(s.remaining_weight_g) + ' restantes</option>';
-  });
-  const rotuloGramas = qtd > 1 ? 'Quantos gramas gastou NO TOTAL, pras ' + qtd + ' peças?' : 'Quantos gramas ela gastou?';
-  // A pergunta "quantas horas a impressora ficou ligada?" SAIU, e é
-  // importante que não volte. Ela media relógio de parede, e relógio de
-  // parede não é tempo de impressão: quem aperta "terminei" quatro horas
-  // depois de a peça ficar pronta grava quatro horas a mais — e daí em
-  // diante toda venda daquela peça sai com o custo errado, com toda a
-  // cara de número medido.
-  //
-  // O tempo verdadeiro é o que o fatiador calcula, e ele é guardado uma
-  // vez no cadastro da peça. Aqui só se pergunta o que o fatiador NÃO
-  // sabe: qual rolo saiu do estoque, e quanto ele gastou de verdade.
-  const horasQueFicamValendo = horasEstimado || 0;
-  openModal(
-    '<h3>Terminei de imprimir' + (qtd > 1 ? ' (' + qtd + ' peças)' : ' essa peça') + '</h3>' +
-    '<input type="hidden" id="ccQtd" value="' + qtd + '">' +
-    '<input type="hidden" id="ccHoras" value="' + horasQueFicamValendo + '">' +
-    (semRoloNenhum
-      ? '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:11px 13px; font-size:12.5px; color:#8a5b00; line-height:1.6;">'
-        + '<strong>Nenhum rolo cadastrado ainda.</strong> Sem rolo não dá pra baixar do estoque — mas dá pra marcar a peça como pronta assim mesmo.'
-        + '<br>Pra cadastrar depois: aba <strong>Filamentos</strong>, botão <strong>+ Rolo</strong>.</div>'
-      : '<label class="pergunta">Qual rolo você usou?</label><select id="ccSpool">' + options + '</select>'
-        + (semRoloDaCor
-          ? '<div style="color:#8a5b00; font-size:11.5px; margin-top:4px; line-height:1.5;">'
-            + '⚠️ Não tem nenhum rolo cadastrado da cor que este pedido pede. Estão aparecendo todos os outros — escolha o que você usou de verdade.</div>'
-          : '')) +
-    (semRoloNenhum ? '' :
-      '<label class="pergunta">' + rotuloGramas + '</label>'
-      + dicaCampo('É isto que baixa o filamento do estoque — por isso ainda é perguntado. O tempo, não: esse vem do fatiador.')
-      + '<input id="ccGramas" type="number" step="0.1" value="' + gramasEstimado + '">') +
-    (horasQueFicamValendo
-      ? '<div style="color:var(--muted); font-size:12px; margin-top:8px; line-height:1.5;">⏱️ O tempo de impressão desta peça continua sendo <strong>'
-        + fmtHoras(horasQueFicamValendo) + '</strong>, como está no cadastro. Não precisa cronometrar nada.</div>'
-      : '') +
-    '<div class="modal-actions">' +
-      '<button class="btn ghost" onclick="closeModal()">Cancelar</button>' +
-      '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Pronto, terminei</button>' +
-    '</div>'
-  );
+  const partes = await q(SUPA.from('project_parts')
+    .select('order_line_item_id, filament_color_id, material').eq('order_line_item_id', itemId)) || [];
+
+  const qtd = item.quantity || 1;
+  const nome = item.line_type === 'catalog' ? (item.products ? item.products.name : 'essa peça') : item.custom_description;
+  const medidas = medidasDaPeca(item);
+  const gramasTotal = medidas.gramas ? medidas.gramas * qtd : null;
+  const cores = coresNecessarias(item, { [itemId]: partes }).cores;
+
+  // Um rolo por cor: o que está em uso na frente, senão qualquer um com
+  // filamento. Rolo vazio nunca.
+  const roloDaCor = (corId) => {
+    const candidatos = spools.filter((s) => s.color_id === corId && s.status !== 'empty');
+    return candidatos.find((s) => s.status === 'in_use') || candidatos[0] || null;
+  };
+
+  const baixas = cores.map((corId) => ({
+    corId: corId,
+    rolo: roloDaCor(corId),
+    gramas: gramasTotal ? gramasTotal / cores.length : null,
+  }));
+  _baixasDaConclusao = baixas.filter((b) => b.rolo && b.gramas);
+
+  let html = '<h3 style="margin:0 0 2px;">Terminei de imprimir</h3>';
+  html += '<div style="color:var(--muted); font-size:12.5px; margin-bottom:14px;">'
+    + escapeHtml(nome || '') + (qtd > 1 ? ' — ' + qtd + ' peças' : '') + '</div>';
+
+  if (!_baixasDaConclusao.length) {
+    // Sem o que baixar, a peça avança do mesmo jeito. Terminar de
+    // imprimir é fato consumado: a tela não pode recusar por falta de
+    // cadastro.
+    let motivo;
+    if (!cores.length) motivo = 'esta peça ainda não tem cor definida';
+    else if (!gramasTotal) motivo = 'ainda não sei quantos gramas ela gasta';
+    else motivo = 'não tem rolo cadastrado da cor dela';
+    html += '<div style="background:var(--bg); border-radius:10px; padding:11px 13px; font-size:12.5px; line-height:1.6;">'
+      + 'Não vou mexer no estoque desta vez, porque ' + motivo + '.<br>'
+      + '<span style="color:var(--muted);">A peça é marcada como pronta do mesmo jeito.</span></div>';
+  } else {
+    html += '<div style="font-size:12.5px; margin-bottom:6px;">Vou dar baixa sozinho no estoque:</div>';
+    html += '<div style="background:var(--bg); border-radius:10px; padding:10px 13px;">';
+    _baixasDaConclusao.forEach((b) => {
+      const c = corDoFilamento(b.corId);
+      html += '<div style="display:flex; justify-content:space-between; font-size:13px; padding:3px 0;">'
+        + '<span>' + escapeHtml(rotuloDaCor(c)) + '</span>'
+        + '<strong>' + Math.round(b.gramas) + ' g</strong></div>';
+    });
+    html += '</div>';
+    if (_baixasDaConclusao.length > 1) {
+      html += '<div style="color:var(--muted); font-size:11.5px; margin-top:8px; line-height:1.55;">'
+        + 'São ' + _baixasDaConclusao.length + ' cores, e ninguém sabe quanto foi de cada uma sem abrir o fatiador — '
+        + 'então dividi igual. Se quiser exato, pese o rolo e use <strong>Corrigir rolo</strong> em Filamentos.</div>';
+    }
+  }
+
+  html += '<input type="hidden" id="ccItem" value="' + itemId + '">';
+  html += '<div class="modal-actions">'
+    + '<button class="btn ghost" onclick="closeModal()">Cancelar</button>'
+    + '<button class="btn" onclick="salvarConclusaoImpressao(\'' + itemId + '\')">Pronto, terminei</button>'
+    + '</div>';
+  openModal(html);
 }
 
+let _baixasDaConclusao = [];
+
 async function salvarConclusaoImpressao(itemId) {
-  // Os dois campos podem não existir: quando não há rolo nenhum
-  // cadastrado, a janela só marca a peça como pronta.
-  const campoSpool = document.getElementById('ccSpool');
-  const campoGramas = document.getElementById('ccGramas');
-  const semEstoque = !campoSpool || !campoGramas;
-  const spoolId = campoSpool ? campoSpool.value : '';
-  const qtd = parseInt(document.getElementById('ccQtd').value, 10) || 1;
-  const gramasTotal = campoGramas ? parseFloat(campoGramas.value) : NaN;
-  // Vem do cadastro, não de um campo digitado agora — ver o comentário
-  // em openConcluirImpressao. Continua sendo gravado na receita pra que
-  // o custo da peça siga fechando; o que mudou é a fonte do número.
-  const horasTotal = parseFloat(document.getElementById('ccHoras').value) || 0;
-  if (!semEstoque) {
-    if (!spoolId) { toast('Seleciona o rolo usado.'); return; }
-    if (isNaN(gramasTotal) || gramasTotal <= 0) { toast('Preenche as gramas usadas.'); return; }
-    const { error: e1 } = await SUPA.rpc('consume_filament', {
-      p_spool_id: spoolId, p_order_line_item_id: itemId, p_grams: gramasTotal, p_reason: 'print_job_consumption',
+  // Baixa cada cor no seu rolo. Uma que falhe não impede as outras nem
+  // impede a peça de avançar — o trabalho já foi feito.
+  const falhas = [];
+  for (const b of _baixasDaConclusao) {
+    const { error } = await SUPA.rpc('consume_filament', {
+      p_spool_id: b.rolo.id, p_order_line_item_id: itemId,
+      p_grams: b.gramas, p_reason: 'print_job_consumption',
     });
-    if (e1) { toast('Erro: ' + e1.message); return; }
+    if (error) falhas.push((corDoFilamento(b.corId) || {}).name + ': ' + error.message);
   }
+
   const mudanca = { line_status: 'pos_processamento', updated_at: new Date().toISOString() };
-  if (!semEstoque) { mudanca.filament_spool_id = spoolId; mudanca.grams_used_actual = gramasTotal; }
-  const { data: item, error: e2 } = await SUPA.from('order_line_items').update(mudanca)
-    .eq('id', itemId).select('product_id').maybeSingle();
-  if (e2) { toast('Erro: ' + e2.message); return; }
-
-  // Número real da impressão vira a nova estimativa de custo do produto —
-  // é mais confiável que qualquer chute, e é ele que a aba "Quanto sobrou"
-  // acaba lendo. Só roda pra item de catálogo (produto tem receita própria;
-  // projeto guarda custo direto no pedido, aprovado antes de imprimir).
-  // A receita guarda o custo de UMA peça — divide o total pela quantidade.
-  // Sem rolo não há gramas medidas, e gravar a receita com NaN
-  // estragaria o custo do produto pra sempre — vale mais deixar a
-  // receita como estava.
-  if (item && item.product_id && !semEstoque) {
-    const spools = await getSpools();
-    const spoolUsado = spools.find((s) => s.id === spoolId);
-    const gramasPorPeca = gramasTotal / qtd;
-    const horasPorPeca = horasTotal > 0 ? horasTotal / qtd : (_receitaDaConclusao ? _receitaDaConclusao.estimated_print_hours : 0.1);
-    const payload = {
-      product_id: item.product_id,
-      estimated_grams: gramasPorPeca,
-      estimated_print_hours: horasPorPeca,
-      filament_color_id: (spoolUsado && spoolUsado.color_id) || (_receitaDaConclusao ? _receitaDaConclusao.filament_color_id : null),
-      // Rolo de verdade usado agora sempre vence uma "média" que
-      // porventura tivesse sido escolhida antes — depois de imprimir, a
-      // cor exata é fato, não estimativa.
-      filament_material_media: spoolUsado ? null : (_receitaDaConclusao ? _receitaDaConclusao.filament_material_media : null),
-      printer_id: (_receitaDaConclusao && _receitaDaConclusao.printer_id) || null,
-      has_painting: _receitaDaConclusao ? _receitaDaConclusao.has_painting : false,
-      extra_cost: _receitaDaConclusao ? _receitaDaConclusao.extra_cost : 0,
-    };
-    const { error: e3 } = _receitaDaConclusao
-      ? await SUPA.from('product_recipes').update(payload).eq('id', _receitaDaConclusao.id)
-      : await SUPA.from('product_recipes').insert([payload]);
-    if (e3) { toast('Estoque atualizado, mas não consegui guardar o custo real: ' + e3.message); closeModal(); await renderFila(); return; }
-    await getReceitas(true);
+  // Guarda o rolo principal só quando é peça de uma cor — com várias,
+  // apontar um rolo só seria mentira.
+  if (_baixasDaConclusao.length === 1) {
+    mudanca.filament_spool_id = _baixasDaConclusao[0].rolo.id;
+    mudanca.grams_used_actual = _baixasDaConclusao[0].gramas;
   }
+  const { error } = await SUPA.from('order_line_items').update(mudanca).eq('id', itemId);
+  if (error) { toast('Erro: ' + error.message); return; }
 
+  _baixasDaConclusao = [];
   closeModal();
-  toast('Impressão concluída, estoque atualizado' + (item && item.product_id ? ' e o custo real dessa peça, guardado.' : '.'));
+  if (falhas.length) alert('A peça foi marcada como pronta, mas o estoque não baixou:\n\n' + falhas.join('\n'));
+  else toast('Pronto! Peça terminada.');
+  await getSpools(true);
   await renderFila();
 }
 
