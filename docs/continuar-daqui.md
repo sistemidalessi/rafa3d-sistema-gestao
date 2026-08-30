@@ -290,6 +290,33 @@ escolhida fica em "⛔ ainda não dá", com o motivo por extenso. Peça sem
 material declarado não trava — a maioria do catálogo não tem ficha, e
 travar tudo deixaria a Fila vazia.
 
+#### A mesma cor em materiais diferentes — patch 49
+
+`filament_colors` tinha `unique(name)`, criado no `import-filamentos.sql`
+quando as 30 cores entraram de uma vez e **todas eram PLA**. Isso passou
+a proibir o cadastro certo: "Verde" em PETG foi recusado porque já
+existia "Verde" em PLA Silk. Agora o único é `(name, material)` — a
+identidade de verdade, que é o que corresponde a um rolo comprável.
+
+#### Cor de outro material não é beco sem saída
+
+Depois do patch 49 apareceu o próximo nó: o *Descanso de panela* estava
+anotado como `pla` e a cor certa era `Verde (PETG Basic)`. A janela de
+escolher cor mostrava essa cor apagada, dizendo "não serve" — e **não
+existia lugar nenhum no sistema pra mudar o material de uma peça**. A
+única cor certa era a única que não dava pra escolher.
+
+Agora clicar numa cor de outro material pergunta qual dos dois está
+certo e corrige os dois. Item personalizado grava em
+`order_line_items.material`; item de catálogo muda o **produto** (avisa
+que vale pras próximas vendas) e alinha a receita junto. Sempre a
+FAMÍLIA, por causa do `check` do patch 33.
+
+> **A regra que se repetiu o dia todo:** quando a tela recusa, ela
+> precisa oferecer a saída. Recusar sem caminho é o que prendeu o dono
+> no "Terminei" sem rolo, no projeto que não dava pra tirar da lista, e
+> aqui.
+
 #### ⚠️ São DOIS vocabulários de material — compare a família
 
 ```
