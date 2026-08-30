@@ -141,6 +141,22 @@ Aprendizados do dia, todos já anotados no `CLAUDE.md`:
   caminho no Storage é fixo por produto, então a URL não mudava. Agora
   leva `?v=` com a hora do envio.
 
+### Peça multicor custa bem mais — e o selo 🚫AMS avisa
+
+Cadastrando os Action Figures apareceu um custo que não se vê na peça:
+**a purga do AMS**. A cada troca de cor a máquina descarta filamento pra
+limpar o bico, e numa peça de 5 cores isso pode passar da metade do
+peso — o dobro de material pro mesmo boneco.
+
+Por isso Heihei e Mickey (5 cores cada) saíram a R$ 59,90 e não R$ 39,90
+como os de cor única.
+
+**Atalho útil:** muitas fotos de modelo trazem um selo **🚫AMS**, que
+quer dizer "imprime em partes, sem troca de cor". Peça com esse selo
+cabe na faixa de cor única; peça colorida sem o selo provavelmente
+precisa de AMS — e custa mais. Foi o que separou Olaf e Hollow Knight
+(com selo, R$ 39,90) de Heihei e Mickey (sem, R$ 59,90).
+
 ### Como conferir preço de item novo (funcionou bem)
 
 Cadastrando os 12 Porta Joias, três peças estavam com preço de peça
