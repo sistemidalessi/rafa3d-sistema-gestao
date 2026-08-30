@@ -126,7 +126,7 @@
       <a href="#sec-minis" style="text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0061f7; padding:8px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(0,97,247,0.30); cursor:pointer;">10 · Miniaturas &amp; Personagens</a>
 <span style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#8a94a6; background:#fff; border:1px solid #dde1e8; padding:8px 16px; border-radius:999px;">Personalizados <span style="color:#aeb6c4; font-weight:500;">· sob encomenda</span></span>
       <span style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#8a94a6; background:#fff; border:1px solid #dde1e8; padding:8px 16px; border-radius:999px;">Luminárias <span style="color:#aeb6c4; font-weight:500;">· em breve</span></span>
-      <span style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#8a94a6; background:#fff; border:1px solid #dde1e8; padding:8px 16px; border-radius:999px;">Placas &amp; Quadros <span style="color:#aeb6c4; font-weight:500;">· em breve</span></span>
+      <a href="#sec-placas" style="text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0061f7; padding:8px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(0,97,247,0.30); cursor:pointer;">13 · Placas &amp; Quadros</a>
       <span style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#8a94a6; background:#fff; border:1px solid #dde1e8; padding:8px 16px; border-radius:999px;">Pet Shop <span style="color:#aeb6c4; font-weight:500;">· em breve</span></span>
       <a href="#sec-jardim" style="text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0061f7; padding:8px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(0,97,247,0.30); cursor:pointer;">11 · Jardim &amp; Externos</a>
       <a href="#sec-portajoias" style="text-decoration:none; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#fff; background:#0061f7; padding:8px 16px; border-radius:999px; box-shadow:0 4px 12px rgba(0,97,247,0.30); cursor:pointer;">12 · Porta Joias</a>
@@ -621,6 +621,45 @@
     </div>
   </div>
 
+  <!-- ===================== SEÇÃO 13 · PLACAS & QUADROS ===================== -->
+  <div id="sec-placas" style="margin-top:18px; background:#000817; padding:22px clamp(14px,4vw,40px); display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden;">
+    <div style="position:absolute; top:-90px; right:-60px; width:360px; height:240px; background:radial-gradient(circle, rgba(0,97,247,0.30), rgba(0,97,247,0) 65%); pointer-events:none;"></div>
+    <div style="position:relative; display:flex; align-items:center; gap:18px;">
+      <div style="width:54px; height:54px; border-radius:14px; background:#0061f7; display:flex; align-items:center; justify-content:center; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:22px; color:#fff; box-shadow:0 6px 16px rgba(0,97,247,0.45);">13</div>
+      <div>
+        <div style="font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:28px; color:#fff; line-height:1; letter-spacing:-0.4px;">Placas &amp; Quadros</div>
+        <div style="font-size:13px; color:#8ea0c0; margin-top:5px;">Letreiros, placas e quadros pra parede e prateleira</div>
+      </div>
+    </div>
+    <div style="position:relative; font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:13px; color:#cdd9ee; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.16); padding:7px 16px; border-radius:999px;">{{ signsCount }} modelos</div>
+  </div>
+
+  <div style="padding:22px clamp(14px,4vw,40px) 8px;">
+    <div style="display:grid; grid-template-columns:{{ colsCss }}; gap:14px;">
+      <sc-for list="{{ signs }}" as="q" hint-placeholder-count="0">
+        <div style="background:#ffffff; border:1px solid #e7e9ef; border-radius:16px; overflow:hidden; box-shadow:0 8px 20px rgba(11,23,51,0.09); display:flex; flex-direction:column;">
+          <div style="position:relative; width:100%; aspect-ratio:3/2; background:#eef0f3;">
+            <div role="img" aria-label="{{ q.name }}" style="position:absolute; inset:0; background-image:url('{{ q.img }}'); background-size:contain; background-repeat:no-repeat; background-position:center;"></div>
+            <sc-if value="{{ showNumbers }}" hint-placeholder-val="{{ true }}">
+              <div style="position:absolute; top:0; left:0; width:{{ q.badgeSize }}px; height:{{ q.badgeSize }}px; border-radius:0 0 15px 0; background:#0061f7; color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:{{ q.badgeFont }}px; display:flex; align-items:center; justify-content:center; padding:0 {{ q.badgePad }}px {{ q.badgePad }}px 0; box-shadow:2px 2px 7px rgba(0,0,0,0.28);">{{ q.n }}</div>
+            </sc-if>
+          </div>
+          <div style="padding:11px 13px 13px; display:flex; flex-direction:column; gap:7px; flex:1; font-size:{{ q.cardFontBase }}px;">
+            <div style="font-family:'Space Grotesk',sans-serif; font-weight:600; font-size:0.91em; line-height:1.12; color:#0b1733; min-height:2.3em;">{{ q.name }}</div>
+            <div style="flex:1;"></div>
+            <sc-if value="{{ showPrices }}" hint-placeholder-val="{{ true }}">
+              <div style="display:flex; align-items:center; gap:7px;">
+                <span style="background:linear-gradient(135deg,#0a6bff,#0846d4); color:#fff; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:1em; padding:0.44em 0.85em; border-radius:9px; letter-spacing:0.2px; white-space:nowrap; box-shadow:0 4px 10px rgba(0,97,247,0.30);">{{ q.price }}</span>
+                <span style="font-size:0.69em; color:#13348f; font-weight:600; font-style:italic;">{{ q.per }}</span>
+              </div>
+            </sc-if>
+            <button onClick="{{ q.addToCart }}" style="margin-top:6px; width:100%; text-align:center; border:none; cursor:pointer; font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:0.85em; color:#fff; background:#0b1733; padding:0.7em 0.6em; border-radius:8px;">+ Adicionar Produto</button>
+          </div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
   <!-- ===================== FILAMENTS ===================== -->
   <div style="padding:26px clamp(14px,4vw,40px) 30px;">
     <div style="display:flex; align-items:center; gap:14px; margin-bottom:18px;">
@@ -758,13 +797,13 @@
 // expor aqui, a proteção real é a RLS (só produto ativo, só leitura).
 const SB_URL = 'https://zaoyqjzvwuhsqcgigppu.supabase.co';
 const SB_ANON = 'sb_publishable_UPFqlHbmOH84eYiF6ZRfsw_L_31GOqy';
-const CATALOG_CATEGORY_KEYS = ['products', 'cars', 'holders', 'utils', 'wines', 'keychains', 'phoneStands', 'deskOrganizers', 'books', 'minis', 'garden', 'jewelry'];
+const CATALOG_CATEGORY_KEYS = ['products', 'cars', 'holders', 'utils', 'wines', 'keychains', 'phoneStands', 'deskOrganizers', 'books', 'minis', 'garden', 'jewelry', 'signs'];
 
 class Component extends DCLogic {
   state = {
     cart: {}, cartOpen: false, scrollY: 0, viewportH: (typeof window !== 'undefined' ? window.innerHeight : 800),
     viewportW: (typeof window !== 'undefined' ? window.innerWidth : 1200),
-    products: [], cars: [], holders: [], utils: [], wines: [], keychains: [], phoneStands: [], deskOrganizers: [], books: [], minis: [], garden: [], jewelry: [],
+    products: [], cars: [], holders: [], utils: [], wines: [], keychains: [], phoneStands: [], deskOrganizers: [], books: [], minis: [], garden: [], jewelry: [], signs: [],
     catalogLoaded: false, catalogError: false,
   };
 
@@ -964,6 +1003,8 @@ class Component extends DCLogic {
     const deskOrganizerCount = deskOrganizers.length;
     const wines = this.state.wines || [];
     const wineCount = wines.length;
+    const signs = this.state.signs || [];
+    const signsCount = signs.length;
     const jewelry = this.state.jewelry || [];
     const jewelryCount = jewelry.length;
     const garden = this.state.garden || [];
@@ -999,7 +1040,7 @@ class Component extends DCLogic {
     const badgeFont = cols >= 5 ? 17 : cols === 4 ? 15 : cols === 3 ? 11 : 10;
     const badgePad = cols >= 5 ? 8 : cols === 4 ? 6 : cols === 3 ? 4 : 3;
 
-    const sectionCodes = [["01", products], ["02", cars], ["03", holders], ["04", utils], ["05", wines], ["06", keychains], ["07", phoneStands], ["08", deskOrganizers], ["09", books], ["10", minis], ["11", garden], ["12", jewelry]];
+    const sectionCodes = [["01", products], ["02", cars], ["03", holders], ["04", utils], ["05", wines], ["06", keychains], ["07", phoneStands], ["08", deskOrganizers], ["09", books], ["10", minis], ["11", garden], ["12", jewelry], ["13", signs]];
     sectionCodes.forEach(([sec, list]) => list.forEach((item, idx) => {
       // code já vem do banco (catalog_code), congelado — não recalcula mais pela posição
       item.code = item.code || (sec + "." + String(idx + 1).padStart(2, '0'));
@@ -1059,6 +1100,8 @@ class Component extends DCLogic {
       gardenCount,
       jewelry,
       jewelryCount,
+      signs,
+      signsCount,
       filaments,
       colsCss: "repeat(" + cols + ", minmax(0,1fr))",
       showPrices:  this.props.showPrices  ?? true,

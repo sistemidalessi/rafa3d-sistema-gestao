@@ -32,6 +32,7 @@ const CATEGORIAS: Record<string, string> = {
   minis: "Miniaturas & Personagens",
   garden: "Jardim & Externos",
   jewelry: "Porta Joias",
+  signs: "Placas & Quadros",
 };
 
 const listaCategorias = Object.entries(CATEGORIAS)
