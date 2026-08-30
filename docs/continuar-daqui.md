@@ -120,6 +120,39 @@ código uma vez só, ao iniciar** — depois de um `git pull` ele segue
 rodando a versão velha sem avisar nada, e o sintoma é um defeito já
 consertado voltando do túmulo.
 
+## Duas categorias novas e 9 produtos — 30/08
+
+**11 · Jardim & Externos** (8 produtos, todos com foto) e **12 · Porta
+Joias** (1). O catálogo tinha um chip "Jardim & Externos · em breve" que
+era só promessa — nenhuma seção por trás.
+
+Sobraram três chips assim: **Luminárias**, **Placas & Quadros** e **Pet
+Shop**. Quando virarem categoria de verdade, é o mesmo caminho (o
+checklist dos cinco lugares está no `CLAUDE.md`).
+
+Aprendizados do dia, todos já anotados no `CLAUDE.md`:
+
+- **Categoria vive em CINCO lugares**, não dois. O quinto — o `return`
+  do render do catálogo — fez a seção Jardim desenhar vazia com tudo
+  aparentemente certo.
+- **Renumerar ao mover produto de categoria é o certo**, porque o
+  catálogo é sempre link, nunca PDF (decisão do dono).
+- **Trocar foto de produto não pegava**: era cache, não gravação. O
+  caminho no Storage é fixo por produto, então a URL não mudava. Agora
+  leva `?v=` com a hora do envio.
+
+### Sobre pesquisar preço na internet
+
+O dono pediu sugestão de preço com base em pesquisa. **Tentei duas vezes
+e não funciona**: a busca devolve links de marketplace, não valores, e
+pra peça 3D nichada os resultados não são comparáveis (aparece máquina
+agrícola quando se procura furador de plantio).
+
+O que serve, e foi o que passei a usar: **comparar com o próprio
+catálogo dele** (mediana R$ 39,90, piso R$ 9,90, teto R$ 139,90, e a
+faixa de itens do mesmo porte). Isso revelou coisa útil de verdade — o
+Socador de Semente estava no preço de um chaveiro sendo dez vezes maior.
+
 ## ✔️ DECIDIDO: o catálogo fica como está, com os 155 sem arquivo
 
 **Decisão do Anderson em 28/08: não mexer.** O catálogo continua
