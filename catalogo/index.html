@@ -1008,6 +1008,13 @@ class Component extends DCLogic {
       bookCount,
       minis,
       miniCount,
+      // Sem estas duas linhas a seção desenha vazia, mesmo com os
+      // produtos carregados: o template só enxerga o que este `return`
+      // entrega. Foi o que aconteceu com Jardim — a categoria estava
+      // certa no estado, no agrupamento e no sectionCodes, e a grade
+      // vinha vazia mesmo assim.
+      garden,
+      gardenCount,
       filaments,
       colsCss: "repeat(" + cols + ", minmax(0,1fr))",
       showPrices:  this.props.showPrices  ?? true,
