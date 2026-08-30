@@ -5586,7 +5586,21 @@ async function saveFilamento(id) {
   const { error } = id
     ? await SUPA.from('filament_colors').update(payload).eq('id', id)
     : await SUPA.from('filament_colors').insert([payload]);
-  if (error) { toast('Erro: ' + error.message); return; }
+  if (error) {
+    // A recusa por repetido vinha como erro cru do banco, que não
+    // ensina nada — e ainda por cima costumava estar errada, porque o
+    // banco só olhava o NOME (índice antigo, do tempo em que todo
+    // filamento era PLA). Agora o par certo é nome + material, e a
+    // mensagem diz qual é o repetido.
+    if (error.code === '23505') {
+      alert('Você já tem "' + name + '" em ' + material + ' cadastrado.\n\n'
+        + 'A mesma cor em OUTRO material pode, sim — "' + name + '" em PLA e em PETG são rolos diferentes. '
+        + 'Confere se o material está certo aí em cima.');
+      return;
+    }
+    toast('Erro: ' + error.message);
+    return;
+  }
   closeModal();
   toast('Cor salva.');
   await renderFilamentos();
