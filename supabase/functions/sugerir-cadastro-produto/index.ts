@@ -1,18 +1,21 @@
 // Olha a foto (e o nome) de um produto novo e sugere duas coisas que
 // hoje ficam por conta do Rafael decidir sozinho, com 10 anos: em qual
-// das 10 categorias fixas do catálogo ela entra, e como descrever o
-// tamanho dela — nem toda peça tem "altura" como medida que importa
-// (um porta-anel baixo e largo, por exemplo, é melhor descrito pela
-// largura ou pelo diâmetro).
+// categoria do catálogo ela entra, e como descrever o tamanho dela —
+// nem toda peça tem "altura" como medida que importa (um porta-anel
+// baixo e largo, por exemplo, é melhor descrito pela largura ou pelo
+// diâmetro).
 //
 // Não mexe no banco — só recebe a foto, chama a IA, devolve a
 // sugestão. Quem decide o que fazer com ela é a tela (o Rafael
 // continua podendo trocar tudo).
 //
-// As 10 categorias são fixas no código do admin (CATEGORY_LABELS em
-// index.html), não vêm do banco — por isso a lista abaixo tem que ser
-// mantida igual à de lá. Se um dia crescer, tem que mexer nos dois
-// lugares.
+// As categorias são fixas no código, não vêm do banco. A lista abaixo
+// precisa ficar igual à de CATEGORY_LABELS no index.html — e ela é só
+// UM dos CINCO lugares onde uma categoria vive (o resto está no
+// CLAUDE.md, em "Categoria do catálogo vive em CINCO lugares").
+//
+// ⚠️ E esta aqui só vale depois de `supabase functions deploy` — não
+// sobe com git push. Sem o deploy, a IA nunca sugere a categoria nova.
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 
@@ -28,6 +31,7 @@ const CATEGORIAS: Record<string, string> = {
   books: "Livros & Leitura",
   minis: "Miniaturas & Personagens",
   garden: "Jardim & Externos",
+  jewelry: "Porta Joias",
 };
 
 const listaCategorias = Object.entries(CATEGORIAS)
@@ -44,8 +48,8 @@ const PROMPT = `Você ajuda a cadastrar um produto novo numa loja de peças impr
   `  "tamanho_sugerido": "uma descrição curta e concreta do tamanho, tipo \\"18cm de altura\\" ou \\"9 × 9cm\\" ou \\"12cm de diâmetro\\" — escolha a MEDIDA QUE MAIS AJUDA o cliente a entender o tamanho real dessa peça específica, não sempre a altura. Se a peça for baixa e larga, largura ou diâmetro importam mais que altura. Não invente um número exato — se não der pra estimar direito pela foto, deixe uma faixa aproximada ou o formato sem número (ex: \\"cabe na palma da mão\\")."\n` +
   `}\n\n` +
   `Categorias disponíveis:\n${listaCategorias}\n\n` +
-  `"boa_correspondencia" é false quando a peça realmente não se parece com nada da lista (ex: joia, utensílio de cozinha, ` +
-  `brinquedo de montar) — nesse caso ainda escolha a categoria mais parecida em "categoria", mas avise em "nota_categoria" ` +
+  `"boa_correspondencia" é false quando a peça realmente não se parece com nada da lista (ex: utensílio de cozinha, ` +
+  `luminária, peça para pet) — nesse caso ainda escolha a categoria mais parecida em "categoria", mas avise em "nota_categoria" ` +
   `que talvez valha criar uma categoria nova pra esse tipo de peça.`;
 
 function extrairJSON(texto: string): any {
