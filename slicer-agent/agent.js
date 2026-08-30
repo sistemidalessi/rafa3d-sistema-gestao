@@ -126,22 +126,25 @@ async function destravarPresos() {
 const VERSAO_DO_CODIGO = (() => {
   const { execFileSync } = require('child_process');
   try {
-    // O `-- .` limita ao que o agente REALMENTE roda (esta pasta), em
-    // vez do commit do repositório inteiro.
+    // Os arquivos que o processo do agente REALMENTE carrega — agent.js
+    // exige gerar3mf, que exige zip3mf; package.json entra porque troca
+    // de dependência também muda o que roda.
     //
-    // Sem isso, todo commit no index.html — que é a maior parte deles —
-    // marcava os agentes como "programa antigo" sem nada ter mudado pra
-    // eles. Aconteceu em 28/08: uma correção só de tela deixou a
-    // máquina do Anderson "2,2h atrasada", e o aviso apontava um risco
-    // que não existia. Aviso que grita à toa é aviso que ninguém lê —
-    // e o dia inteiro foi sobre não perder o aviso de verdade.
-    const alvo = ['-1', '--format=%h', '--', '.'];
-    const commit = execFileSync('git', ['log'].concat(alvo), {
-      cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
-    const quando = execFileSync('git', ['log', '-1', '--format=%cI', '--', '.'], {
-      cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'],
-    }).trim();
+    // A conta já foi errada duas vezes, sempre pro lado de gritar à toa:
+    // primeiro usando o commit do repositório inteiro (todo commit no
+    // index.html marcava os agentes como antigos), depois usando a pasta
+    // slicer-agent inteira — e em 29/08 um conserto no script do vigia,
+    // que o agente nem carrega, marcou a máquina do Anderson como
+    // atrasada sem nada ter mudado pra ela.
+    //
+    // Aviso que grita à toa é aviso que ninguém lê, e este existe pra
+    // pegar o caso raro em que o agente roda código velho de verdade.
+    const ARQUIVOS = ['agent.js', 'gerar3mf.js', 'zip3mf.js', 'package.json'];
+    const gitLog = (formato) => execFileSync('git',
+      ['log', '-1', '--format=' + formato, '--'].concat(ARQUIVOS),
+      { cwd: __dirname, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+    const commit = gitLog('%h');
+    const quando = gitLog('%cI');
     if (!commit || !quando) throw new Error('git nao respondeu');
     return { code_commit: commit, code_date: quando };
   } catch (e) {
