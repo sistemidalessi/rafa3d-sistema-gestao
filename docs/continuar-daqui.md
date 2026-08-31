@@ -1,26 +1,46 @@
 # Continuar daqui
 
-Onde as coisas pararam em **27/08/2026**.
+Onde as coisas pararam em **31/08/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ Pendente: gerar os arquivos 3D que faltam — 31/08
+## ✔️ DECIDIDO: não gerar os arquivos 3D em lote — 31/08
 
-O Anderson pediu pra retomar isso **sentado junto** (não é trabalho pra
-fazer sozinho, produto por produto): usar o "🚀 Gerar por IA" (Meshy/
-Hi3D) nos produtos do catálogo que ainda não têm arquivo 3D. É a
-maioria — 155 de 166, decisão registrada mais abaixo neste arquivo
-("DECIDIDO: o catálogo fica como está").
+**Decisão do Anderson: gerar conforme a necessidade surgir**, peça a
+peça, quando a venda acontecer. **Não proponha o lote de novo** — a
+pergunta foi feita e respondida, igual à de desativar produto ("o
+catálogo fica como está", mais abaixo). É a mesma filosofia: o catálogo
+vende tudo, e a peça se prepara quando é vendida.
+
+Fica o levantamento, que custou tempo e não precisa ser refeito:
+
+- São **193 de 207** produtos ativos sem arquivo 3D. Os **14** que têm
+  são todos `manual_upload` — arquivo de verdade, baixado pelo Anderson.
+  **Nenhum produto do catálogo foi gerado por IA até hoje.**
+- **O botão "🧬 Gerar por IA" NÃO existe na tela de produto.** Ele só
+  existe em projeto (`order_line_items`) e em parte de projeto
+  (`project_parts`). A tela do produto (`openModelo3DForm`) tem só
+  Enviar / Baixar / Remover, e a tabela `products` nem tem as colunas de
+  fila (`meshy_status`, `hi3d_status`) — não há onde enfileirar.
+  Quem escrever "é só clicar em Gerar por IA nos produtos" está errado:
+  antes disso vem um patch novo + botão + `tickX()` no agente, o padrão
+  de três lugares do CLAUDE.md.
+- **O risco que decidiu a coisa:** gerar por IA a partir da foto do
+  catálogo devolve uma imitação da silhueta, não a peça. Pra vaso talvez
+  sirva; pra peça com encaixe e tolerância — organizador de controle,
+  porta card, suporte de celular — sai algo que não encaixa. E são
+  justamente as categorias mais cheias (39 chaveiros, 21 suportes, 8
+  porta cards). Mesmo aprendizado da foto do Blender: funciona, mas não
+  é a coisa que ele vende.
 
 De passagem, testamos o Blender conectado ao sistema (MCP) pra
 renderizar foto de produto que já TEM arquivo 3D mas não tem foto boa
 — funciona (testado com o Vaso Moderno, 01.29), mas é foto técnica de
 estúdio, sem o estilo/decoração que vende. Não confundir os dois: um
-gera o arquivo 3D a partir da foto (falta fazer, é o pendente aqui);
-o outro gera uma foto a partir do arquivo 3D (já funciona, uso
-pontual).
+gera o arquivo 3D a partir da foto; o outro gera uma foto a partir do
+arquivo 3D (esse já funciona, uso pontual).
 
 ## ✅ As duas máquinas em dia, e as duas com vigia — 28/08 à noite
 
