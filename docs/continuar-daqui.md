@@ -6,6 +6,22 @@ Onde as coisas pararam em **27/08/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
+## ⚠️ Pendente: gerar os arquivos 3D que faltam — 31/08
+
+O Anderson pediu pra retomar isso **sentado junto** (não é trabalho pra
+fazer sozinho, produto por produto): usar o "🚀 Gerar por IA" (Meshy/
+Hi3D) nos produtos do catálogo que ainda não têm arquivo 3D. É a
+maioria — 155 de 166, decisão registrada mais abaixo neste arquivo
+("DECIDIDO: o catálogo fica como está").
+
+De passagem, testamos o Blender conectado ao sistema (MCP) pra
+renderizar foto de produto que já TEM arquivo 3D mas não tem foto boa
+— funciona (testado com o Vaso Moderno, 01.29), mas é foto técnica de
+estúdio, sem o estilo/decoração que vende. Não confundir os dois: um
+gera o arquivo 3D a partir da foto (falta fazer, é o pendente aqui);
+o outro gera uma foto a partir do arquivo 3D (já funciona, uso
+pontual).
+
 ## ✅ As duas máquinas em dia, e as duas com vigia — 28/08 à noite
 
 O computador do Rafa foi atualizado (estava com o prompt velho da
