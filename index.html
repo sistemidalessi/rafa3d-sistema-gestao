@@ -7424,10 +7424,48 @@ async function salvarCadastroProduto() {
   }
 }
 
+// Encolhe a foto no navegador antes de subir: no máximo 1200 px no lado
+// maior, em JPEG. Foto de celular vem em PNG de 2 a 3 MB, e em JPEG
+// fica com uns 150 KB — a mesma imagem, 15 vezes menor.
+//
+// Isso importa porque o Supabase cobra pelo que SAI do servidor, e o
+// catálogo é público: cada pessoa que abre o link baixa todas as fotos.
+// Em 02/09/2026 as 46 fotos que estavam no Supabase somavam 52 MB, e
+// uns 100 acessos estouraram a cota do plano grátis — o sistema, o
+// catálogo e o agente ficaram fora do ar até o plano subir. As 46 foram
+// encolhidas por script no mesmo dia (originais em originais/); esta
+// função é o que impede a conta de crescer de novo.
+//
+// Se o navegador não conseguir abrir o arquivo (formato estranho, HEIC
+// de iPhone), a foto sobe como veio — antes subir grande do que não
+// subir.
+async function encolherFoto(file) {
+  const MAX = 1200;
+  try {
+    const img = await createImageBitmap(file, { imageOrientation: 'from-image' });
+    const escala = Math.min(1, MAX / Math.max(img.width, img.height));
+    const w = Math.round(img.width * escala), h = Math.round(img.height * escala);
+    const canvas = document.createElement('canvas');
+    canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    // JPEG não tem transparência: onde a foto era transparente vira branco,
+    // que é o fundo do card do catálogo.
+    ctx.fillStyle = '#ffffff'; ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise((ok) => canvas.toBlob(ok, 'image/jpeg', 0.85));
+    if (!blob) return file;
+    return new File([blob], 'foto.jpg', { type: 'image/jpeg' });
+  } catch (e) {
+    console.warn('Não consegui encolher a foto, subindo como veio:', e.message);
+    return file;
+  }
+}
+
 async function enviarFotoProduto(productId, catalog_code, file) {
+  file = await encolherFoto(file);
   const ext = file.name.split('.').pop();
   const path = catalog_code + '/foto.' + ext;
-  const { error: upErr } = await SUPA.storage.from('produtos-fotos').upload(path, file, { upsert: true });
+  const { error: upErr } = await SUPA.storage.from('produtos-fotos').upload(path, file, { upsert: true, contentType: file.type || undefined });
   if (upErr) { toast('Erro no envio da foto: ' + upErr.message); return false; }
   const { data } = SUPA.storage.from('produtos-fotos').getPublicUrl(path);
 

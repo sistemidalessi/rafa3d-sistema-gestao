@@ -299,6 +299,27 @@ sai dali.
   é ver se o arquivo de saída existe.
 
 
+- **Supabase cobra pelo que SAI do servidor, e o catálogo é público.** Em
+  02/09/2026 a cota de 5 GB/mês do plano grátis estourou e o projeto
+  INTEIRO foi bloqueado — sistema, catálogo e agente de uma vez, com
+  `exceed_egress_quota` na tela de login (parece senha errada, não é).
+  Eram 46 fotos de produto em PNG de 2 MB, e cada pessoa que abria o
+  link baixava todas: uns 100 acessos gastaram o mês. Desde então a foto
+  é encolhida no navegador antes de subir (`encolherFoto()`: JPEG, 1200
+  px, ~15× menor) e o plano é o Pro (US$ 25/mês, 250 GB). Se o erro
+  voltar: site do Supabase → organização → **Billing / Usage**. Fotos de
+  projeto e os `.3mf` de 20 MB que o agente baixa a cada tarefa também
+  contam, só que muito menos.
+- **Renumerar produto NÃO move a pasta dele no Storage.** `image_path` e
+  `model_file_path` são caminhos completos gravados no banco, então
+  continuam funcionando depois de trocar o código — mas a pasta fica com
+  o código VELHO. Script que casa pasta com `catalog_code` troca a foto
+  de um produto pela de outro: em 02/09 fiz exatamente isso e a Cesta
+  Suspensa ficou com a foto do Porta Joias por alguns minutos. **Sempre
+  parta do `image_path` do produto, nunca do nome da pasta.** (Hoje as
+  fotos do Supabase estão na pasta do código atual; as originais em
+  PNG ficaram em `produtos-fotos/originais/<código da época>/`.)
+
 ## Abrir o fatiador já configurado: por que é delicado
 
 O [`gerar3mf.js`](slicer-agent/gerar3mf.js) converte o `.stl` da Meshy num

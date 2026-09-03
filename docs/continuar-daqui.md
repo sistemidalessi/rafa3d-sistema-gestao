@@ -1,10 +1,43 @@
 # Continuar daqui
 
-Onde as coisas pararam em **31/08/2026**.
+Onde as coisas pararam em **02/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## ⚠️ 02/09 à noite: o Supabase bloqueou o projeto — plano subiu pro Pro
+
+Às 20:49 tudo parou de uma vez: a tela de login mostrava
+`exceed_egress_quota`, o catálogo não abria, e o `agent.log` encheu de
+erro a cada 5 segundos. Não era senha nem bug: o plano grátis dá 5 GB
+por mês de saída, e o catálogo público estava servindo **46 fotos em PNG
+de 2 MB (52 MB por visita)** — uns 100 acessos gastam o mês.
+
+O Anderson subiu o plano pro **Pro (US$ 25/mês, 250 GB de saída)** e o
+serviço voltou na hora. No Pro o "spend cap" vem LIGADO: ao passar de
+250 GB ele bloqueia de novo em vez de cobrar a mais — bom pra não ter
+surpresa na fatura, mas é o mesmo sintoma se um dia acontecer.
+
+O que foi feito pra não voltar (tudo no mesmo dia):
+
+- **As 46 fotos foram encolhidas** por script: PNG → JPEG de 1200 px,
+  **52 MB → 3,4 MB** (15× menor). As originais estão em
+  `produtos-fotos/originais/`. Os outros 161 produtos usam foto do
+  GitHub Pages, que não conta.
+- **`encolherFoto()` no `index.html`**: toda foto de produto passa a ser
+  reduzida no navegador antes de subir. Testado com página de teste:
+  3000×2000 de 1,9 MB vira 1200×800 de 250 KB em 111 ms; arquivo que o
+  navegador não abre sobe como veio.
+- **Um erro meu no meio, já consertado e conferido foto a foto:** o
+  script casou pasta do Storage com código atual, e três produtos
+  renumerados em 30/08 (Cesta 04.26, Ninho 04.27, Porta Joias 12.01)
+  ainda moravam nas pastas dos códigos velhos. Ficou registrado no
+  CLAUDE.md ("Renumerar produto NÃO move a pasta").
+
+Não foi feito: trocar o `background-image` do catálogo por
+`<img loading="lazy">`. Com as fotos 15× menores não precisa, e mexer
+no template do catálogo tem seu risco próprio (ver "cinco lugares").
 
 ## ✔️ DECIDIDO: não gerar os arquivos 3D em lote — 31/08
 
