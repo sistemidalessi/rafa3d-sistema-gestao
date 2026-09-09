@@ -6,6 +6,54 @@ Onde as coisas pararam em **09/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
+## ✅ A colinha passou a decidir primeira camada, velocidade e suporte de verdade — 09/09 (patch 53)
+
+**O incidente:** a colinha da "Vovó Rosana" (árvore com folhas finas e
+bonecos num balanço) saiu genérica — camada 0,12, brim de 4 mm, suporte
+árvore a 35°, mesa a 40°C — e a peça soltou nas primeiras camadas. O
+Anderson levou a foto pra um chat externo, que devolveu a receita que
+funcionou: primeira camada a 15 mm/s e 220°C, ventoinha desligada nas 2
+primeiras, brim de 10-12 mm gap 0, árvore orgânica a 20° com "só regiões
+críticas" e "remover saliências pequenas" desligados, e um teste de 1 mm
+antes da peça inteira. **Nada disso a nossa colinha tinha como escrever
+no arquivo** — não existiam os campos.
+
+**O que mudou:**
+
+1. O gerador (`gerar3mf.js`) ganhou 16 chaves novas — primeira camada
+   (altura, bico, velocidade, preenchimento, aceleração, ventoinha
+   desligada em N camadas), velocidades (parede externa/interna, pequenos
+   perímetros), suporte em detalhe (estilo, só regiões críticas, remover
+   saliências pequenas, só na mesa, camadas de interface, distâncias Z/XY)
+   e gap do brim. Categorias conferidas nos perfis reais do Bambu
+   instalado; **"organic" não existe no Bambu 2.8.2** (ele avisou e trocou
+   por default) — a árvore orgânica é `tree_hybrid`. Detalhes no CLAUDE.md.
+2. O prompt classifica a peça em (A) simples ou (B) "coleção de saliências
+   pequenas" antes de qualquer número, e em (B) prioriza a primeira
+   camada. A ficha ganhou "## Primeira camada" e "## Antes de imprimir"
+   (limpar a placa, cortar a 1 mm e imprimir só a base, olhar as 2-3
+   primeiras camadas). Modelo: `claude-opus-5`, raciocínio adaptativo,
+   `effort: high` (~1 min por colinha, centavos).
+3. **Placa nova: "Placa lisa de outra marca"** (`smooth_other`) — a
+   holográfica Stellar/Chameleon do Anderson. PLA a 55-60°C, no Bambu
+   escolher "Textured PEI Plate". Patch 53 solta o CHECK de `bed_plate`
+   nas três tabelas (sem ele, gravar dá erro 23514).
+
+**Resultado, medido:** a colinha nova da Vovó Rosana (na placa certa)
+saiu com 0,2/220-215°C/58°C, ventoinha off 2 camadas, 15/25 mm/s, aceleração
+500, brim 12 mm gap 0, árvore a 22° com os dois "só/remover" desligados,
+interface 3, Z 0,16, XY 0,35, e o teste de 1 mm — ponto a ponto a receita
+que funcionou. Abri no Bambu de verdade: entrou tudo (só o "organic" foi
+substituído, já corrigido pra `tree_hybrid`).
+
+**Pra usar:** peça a colinha de novo nas peças delicadas que já existem
+(a antiga continua salva até isso) e, na Vovó Rosana, escolha a placa
+"lisa de outra marca" antes de pedir. A colinha dela já está regravada
+com a placa certa.
+
+⚠️ **Computador do Rafa:** mais um motivo pro `atualizar-agente.ps1`
+(mexeu em `agent.js` e `gerar3mf.js`).
+
 ## ✅ O que foi salvo no Bambu agora volta pro sistema — 09/09 (patch 52)
 
 **O incidente:** o Anderson abriu o projeto "Vovó Rosana" pelo sistema,

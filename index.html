@@ -6547,6 +6547,11 @@ const CHAVE_PLACA = 'rafa3d_placa';
 const PLACAS_DA_LOJA = [
   { id: 'cool', nome: 'Placa fria', dica: 'a lisa e clara — PLA a uns 35°C', cor: '#dbe6f5' },
   { id: 'textured', nome: 'Placa texturizada', dica: 'a áspera dourada — PLA a uns 60°C, deixa textura na base', cor: '#c9a227' },
+  // A placa holográfica (Stellar/Chameleon) não é da Bambu e não é nem
+  // "fria" nem "texturizada": é lisa e quer 55°C. Sem esta opção a
+  // colinha da Vovó Rosana saiu com mesa a 40°C (regra da placa fria) e
+  // a peça soltou. No Bambu, escolha "Textured PEI Plate" pra ela.
+  { id: 'smooth_other', nome: 'Placa lisa de outra marca', dica: 'holográfica, Stellar, Chameleon… — PLA a uns 55°C; no Bambu escolha "Textured PEI Plate"', cor: '#b9a7d6' },
 ];
 
 function placaEscolhida() {

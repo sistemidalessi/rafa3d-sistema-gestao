@@ -28,7 +28,13 @@ const AGENT_NAME = (process.env.AGENT_NAME || os.hostname() || 'computador')
 const BUCKET = 'modelos-3d';
 const FOTOS_BUCKET = 'projetos-fotos';
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
-const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-5';
+// Opus 5 com raciocínio adaptativo (09/09/2026): a colinha do Sonnet
+// saiu genérica pra peça delicada (Vovó Rosana) e a peça soltou; o que
+// funcionou foi uma análise que olhou a peça como coleção de detalhes
+// finos e tratou a primeira camada como o ponto crítico. Isso é
+// julgamento, e é onde o modelo maior paga o custo: são poucas colinhas
+// por dia, centavos cada.
+const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-opus-5';
 const MESHY_API_KEY = process.env.MESHY_API_KEY;
 const HI3D_API = 'https://api.hitem3d.ai';
 const HI3D_ACCESS_KEY = process.env.HI3D_ACCESS_KEY;
@@ -353,6 +359,10 @@ const PLACAS_PRA_IA = {
     'Deixa marca de textura na base da peça — o que costuma ser bonito em peça decorativa.',
   engineering: 'Placa de engenharia. PLA entre 55 e 65°C, ABS/ASA entre 90 e 100°C.',
   high_temp: 'Placa de alta temperatura. PLA entre 55 e 65°C, materiais técnicos acima disso.',
+  smooth_other: 'Placa LISA de outra marca (holográfica/espelhada, tipo Stellar ou Chameleon). PLA entre 55 e 60°C. ' +
+    'Superfície muito lisa: a aderência depende da placa estar limpa (lavar com água morna e detergente neutro, ' +
+    'secar sem tocar na área de impressão) e de uma primeira camada lenta e quente — NÃO recomende cola, ela ' +
+    'estraga o efeito holográfico. Nesta placa, ilhas pequenas e pontos de suporte são o que solta primeiro.',
 };
 
 // Material muda quase tudo, e não só a temperatura: PETG quer ventoinha
@@ -396,6 +406,38 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   'Olhe a imagem desta peça (miniatura renderizada de dentro do arquivo de projeto) e responda em DUAS partes, ' +
   'NESSA ORDEM (o bloco de números primeiro é importante — se sua resposta for cortada por tamanho, o que mais ' +
   'importa precisa ter saído primeiro):\n\n' +
+  'ANTES DE DECIDIR QUALQUER NÚMERO, classifique a peça em uma de duas famílias, e diga qual na primeira linha ' +
+  'da ficha:\n' +
+  '(A) PEÇA SIMPLES — blocos, caixas, vasos, suportes maciços: poucas saliências, base larga, paredes grossas.\n' +
+  '(B) PEÇA DELICADA — na prática uma COLEÇÃO DE SALIÊNCIAS PEQUENAS: folhas, galhos, cordas, dedos, cabelos, ' +
+  'letras finas, orelhas, ilhas soltas que começam na mesa separadas do corpo principal, muitos pontos pequenos ' +
+  'de contato com a mesa. Uma árvore decorativa, um bonequinho num balanço, uma silhueta recortada, um chaveiro ' +
+  'com texto vazado: tudo isso é (B). Em (B) o fatiador vai colocar dezenas de pontos pequenos de suporte, e a ' +
+  'impressão morre quase sempre do mesmo jeito: um desses pontos ou uma ilha pequena solta da mesa nas primeiras ' +
+  'camadas, o bico arrasta ela, e vira uma bola de filamento. Por isso em (B) a prioridade número um é a ' +
+  'PRIMEIRA CAMADA, não o suporte lá em cima.\n\n' +
+  'RECEITA DE PRIMEIRA CAMADA PRA PEÇA (B) — use estes valores, não "o padrão do perfil": primeira camada com ' +
+  '0.20 mm de altura mesmo que as demais sejam mais finas; bico da primeira camada 5°C acima das demais; ' +
+  'ventoinha DESLIGADA nas 2 primeiras camadas (fan_off_first_layers: 2); velocidade da primeira camada ' +
+  '15 mm/s e do preenchimento da primeira camada 25 mm/s; aceleração da primeira camada 500 mm/s²; brim ' +
+  'externo LARGO (10 a 12 mm) com gap 0 — não é pelo corpo principal, é pra dar base às ilhas pequenas e aos pés ' +
+  'dos suportes. Em peça (A) esses valores podem ficar mais soltos (primeira camada 30-50 mm/s, brim 3-5 mm), ' +
+  'mas ventoinha desligada na primeira camada e aceleração baixa continuam valendo.\n\n' +
+  'RECEITA DE SUPORTE PRA PEÇA (B): support_type "tree", support_style "tree_hybrid" (é a árvore orgânica nesta ' +
+  'versão do Bambu — "organic" não existe nela), ângulo limite BAIXO (20 a 25°, ' +
+  'nunca 40+ numa peça dessas), support_critical_regions_only FALSE e support_remove_small_overhang FALSE — ' +
+  'esses dois ligados fazem o fatiador ser econômico justamente nas folhas e pontas de galho, que é onde a peça ' +
+  'quebra; support_on_build_plate_only FALSE (as folhas de cima nascem sobre outros galhos, não sobre a mesa); ' +
+  '3 camadas de interface no topo, distância Z do topo 0.16 mm (face de baixo melhor sustentada), distância XY ' +
+  '0.30 a 0.35 mm. É mais filamento, mais tempo e mais trabalho pra tirar — e é preferível a perder a peça ' +
+  'inteira depois de horas. Não exagere na direção oposta: suporte árvore trabalha por pontos de contato, não ' +
+  'precisa virar uma parede colada em cada folha (isso quebra as folhas na remoção). Em peça (A) sem saliência ' +
+  'relevante, support_enable false e os campos de suporte com qualquer valor.\n\n' +
+  'VELOCIDADES pra peça (B): parede externa 40 mm/s, parede interna 80 mm/s, pequenos perímetros 30 mm/s. Peça ' +
+  '(A) pode ir a 60/100/40.\n\n' +
+  'SE O HISTÓRICO ABAIXO DISSER QUE JÁ DEU PROBLEMA COM ESSA PEÇA: identifique ONDE a impressão morreu (soltou ' +
+  'da mesa nas primeiras camadas? suporte quebrou lá em cima? ponte caiu?) e ataque essa causa primeiro — uma ' +
+  'peça que soltou junto à mesa não se resolve mexendo em suporte. Diga isso com todas as letras na ficha.\n\n' +
   'REGRA DE SEGURANÇA PRA "brim_type" (leia antes de decidir): brim sem necessidade custa quase nada — um pouco ' +
   'de filamento e um corte a mais na base. Peça que solta da mesa no meio da impressão perde a peça inteira e todo ' +
   'o filamento já gasto até aquele ponto — é o pior desfecho possível, muito pior que um brim desnecessário. Na ' +
@@ -421,10 +463,31 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '  "brim_type": "outer_brim_only",\n' +
   '  "brim_width_mm": 3,\n' +
   '  "ironing_type": "no ironing",\n' +
-  '  "nozzle_temp_c": 220,\n' +
-  '  "bed_temp_c": 55\n' +
+  '  "nozzle_temp_c": 215,\n' +
+  '  "nozzle_temp_first_layer_c": 220,\n' +
+  '  "bed_temp_c": 55,\n' +
+  '  "first_layer_height_mm": 0.2,\n' +
+  '  "first_layer_speed_mms": 15,\n' +
+  '  "first_layer_infill_speed_mms": 25,\n' +
+  '  "first_layer_acceleration_mms2": 500,\n' +
+  '  "fan_off_first_layers": 2,\n' +
+  '  "outer_wall_speed_mms": 40,\n' +
+  '  "inner_wall_speed_mms": 80,\n' +
+  '  "small_perimeter_speed_mms": 30,\n' +
+  '  "support_style": "tree_hybrid",\n' +
+  '  "support_critical_regions_only": false,\n' +
+  '  "support_remove_small_overhang": false,\n' +
+  '  "support_on_build_plate_only": false,\n' +
+  '  "support_interface_top_layers": 3,\n' +
+  '  "support_top_z_distance_mm": 0.16,\n' +
+  '  "support_xy_distance_mm": 0.35,\n' +
+  '  "brim_gap_mm": 0\n' +
   '}\n' +
   '```\n\n' +
+  'Os valores acima são só exemplo do FORMATO (são os de uma peça delicada) — decida cada um pra esta peça. ' +
+  'Booleanos como true/false de verdade, números sem unidade, support_style só entre: default, grid, snug, ' +
+  'tree_slim, tree_strong, tree_hybrid (não escreva "organic" — nesta versão do Bambu esse nome não existe e ele ' +
+  'troca por "default" sem avisar direito; a árvore orgânica é tree_hybrid).\n\n' +
   'Sobre "ironing_type": alisa a superfície de cima passando o bico de novo quase sem extrudar — deixa mais lento ' +
   'de imprimir, então só vale usar "top" (ou "topmost", se só o topo mais alto importar) quando aquela superfície ' +
   'de cima vai ficar À MOSTRA numa peça decorativa/de venda e uma textura de linha visível seria um problema ' +
@@ -433,11 +496,16 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '2) Depois do bloco JSON, a ficha técnica pra humano ler, nesta estrutura exata, preenchendo cada campo com um ' +
   'valor concreto (pode marcar "não se aplica" só quando genuinely não fizer sentido pra essa peça, nunca por ' +
   'preguiça de decidir):\n\n' +
+  '## Que tipo de peça é\nUma linha: (A) simples ou (B) delicada, e o que na imagem decidiu isso\n\n' +
   '## Perfil\nAltura de camada (mm) — Número de paredes/contornos — Padrão e % de preenchimento\n\n' +
+  '## Primeira camada\nAltura da primeira camada — Bico na primeira camada e nas demais — Mesa — Ventoinha ' +
+  '(quantas camadas desligada) — Velocidade da primeira camada e do preenchimento dela — Aceleração — Por que ' +
+  'esses números pra ESTA peça (quantas ilhas pequenas nascem na mesa, quantos pés de suporte)\n\n' +
   '## Temperatura e velocidade\nBico e mesa (°C, considerando PLA salvo se a peça pedir PETG) — Velocidade parede ' +
-  'externa/interna/preenchimento (mm/s) — Velocidade reduzida em algum trecho específico da peça, se aplicável\n\n' +
-  '## Suporte\nPrecisa? (sim/não) — Tipo (normal ou árvore) e por quê — Densidade (%) — Distância Z do topo/base ' +
-  '(mm) — Ângulo limite de overhang (°) — Onde exatamente na peça (descreva a região)\n\n' +
+  'externa/interna/pequenos perímetros (mm/s) — Velocidade reduzida em algum trecho específico da peça, se aplicável\n\n' +
+  '## Suporte\nPrecisa? (sim/não) — Tipo e estilo (árvore orgânica etc.) e por quê — Ângulo limite (°) — Só regiões ' +
+  'críticas? Remover saliências pequenas? Só na mesa? (sim/não pra cada, e por quê) — Camadas de interface e ' +
+  'distâncias Z/XY (mm) — Onde exatamente na peça (descreva a região)\n\n' +
   '## Aderência à mesa\nBrim, raft ou nenhum — Largura/altura (mm) e número de loops se for brim — Por quê, dado o ' +
   'formato de contato da peça com a mesa, e se tem alguma parede fina/divisória que nasce sozinha da base (essas ' +
   'soltam primeiro e puxam o resto — nesse caso não vale "sem brim" mesmo com a base geral parecendo estável)\n\n' +
@@ -446,6 +514,12 @@ const PROMPT_ANALISE = 'Você é um engenheiro de aplicação sênior especializ
   '## Riscos específicos desta peça\nLista curta do que pode dar errado (parede fina, ponte longa sem suporte, ' +
   'seção fina que quebra, peça alta e estreita que tomba, troca excessiva de filamento em AMS, etc.) e a mitigação ' +
   'pra cada um\n\n' +
+  '## Antes de imprimir\nO que fazer com a mão antes de apertar Imprimir — nesta ordem quando fizer sentido: limpar ' +
+  'a placa (água morna e detergente neutro, secar sem tocar na área de impressão; sem cola em placa holográfica); ' +
+  'nivelamento automático; em peça (B) grande, cortar o modelo a 1 mm de altura no Bambu e imprimir SÓ a base ' +
+  'primeiro — são 5-6 camadas, alguns minutos, e provam se as ilhas pequenas e os pés de suporte ficam presos ' +
+  'antes de gastar horas na peça inteira; acompanhar as 2-3 primeiras camadas e parar na hora se algo levantar, ' +
+  'antes de o bico começar a arrastar. O que o arquivo não consegue fazer sozinho entra aqui.\n\n' +
   'A ficha usa títulos ## e itens com traço, sem introdução nem conclusão — é pra colar direto num sistema interno ' +
   'e ser lido rápido antes de fatiar de verdade.';
 
@@ -499,10 +573,19 @@ async function chamarClaude(imagemBuf, mediaType, historico, bedPlate, material)
       'content-type': 'application/json',
       'x-api-key': ANTHROPIC_API_KEY,
       'anthropic-version': '2023-06-01',
+      // Se o modelo recusar (não acontece com peça de impressão, mas o
+      // caminho existe), a própria API refaz no modelo reserva.
+      'anthropic-beta': 'server-side-fallback-2026-07-01',
     },
     body: JSON.stringify({
       model: ANTHROPIC_MODEL,
-      max_tokens: 8000,
+      // Com raciocínio ligado, o que o modelo pensa também conta aqui —
+      // 8000 cortava a ficha no meio.
+      max_tokens: 16000,
+      // Raciocínio adaptativo é o padrão no Opus 5; "high" é o esforço
+      // certo pra uma decisão que, errada, perde a peça inteira.
+      output_config: { effort: 'high' },
+      fallbacks: 'default',
       messages: [{
         role: 'user',
         content: [
@@ -517,6 +600,10 @@ async function chamarClaude(imagemBuf, mediaType, historico, bedPlate, material)
     throw new Error('API da Anthropic respondeu ' + res.status + ': ' + body.slice(0, 300));
   }
   const json = await res.json();
+  if (json.stop_reason === 'refusal') {
+    const det = json.stop_details || {};
+    throw new Error('a IA recusou analisar esta peça' + (det.explanation ? ': ' + det.explanation : '.'));
+  }
   const texto = (json.content || []).filter((b) => b.type === 'text').map((b) => b.text).join('\n').trim();
   if (!texto) throw new Error('resposta da IA veio vazia.');
   return texto;

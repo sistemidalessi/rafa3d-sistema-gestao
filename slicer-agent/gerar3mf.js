@@ -211,6 +211,23 @@ const LISTAS_DO_BAMBU = {
     brim_ears: 'brim_ears', orelhas: 'brim_ears',
     no_brim: 'no_brim', nenhum: 'no_brim', sem: 'no_brim',
   },
+  // Estilo do suporte. Tokens conferidos no Bambu Studio 2.8.2 de
+  // verdade (09/09/2026): "organic" NÃO existe nesta versão — o Bambu
+  // abriu avisando "'organic' foi substituído por 'default'" (a string
+  // aparece no .dll, mas é texto de tela, não valor). A árvore orgânica
+  // aqui é "tree_hybrid"; por isso todo sinônimo de orgânico cai nele.
+  // Se o Bambu um dia ganhar "organic", basta trocar o alvo destas
+  // linhas.
+  support_style: {
+    default: 'default', padrao: 'default', 'padrão': 'default', automatico: 'default', 'automático': 'default',
+    grid: 'grid', grade: 'grid',
+    snug: 'snug', justo: 'snug',
+    organic: 'tree_hybrid', organico: 'tree_hybrid', 'orgânico': 'tree_hybrid', 'árvore orgânica': 'tree_hybrid',
+    'arvore organica': 'tree_hybrid', tree_organic: 'tree_hybrid',
+    tree_slim: 'tree_slim', 'árvore fina': 'tree_slim',
+    tree_strong: 'tree_strong', 'árvore forte': 'tree_strong',
+    tree_hybrid: 'tree_hybrid', 'árvore híbrida': 'tree_hybrid', 'arvore hibrida': 'tree_hybrid',
+  },
   sparse_infill_pattern: {
     grid: 'grid', grade: 'grid', gyroid: 'gyroid', giroide: 'gyroid', 'giróide': 'gyroid',
     crosshatch: 'crosshatch', cubic: 'cubic', cubico: 'cubic', 'cúbico': 'cubic',
@@ -237,7 +254,19 @@ const CATEGORIA = {
   layer_height: 0, wall_loops: 0, sparse_infill_density: 0, sparse_infill_pattern: 0,
   enable_support: 0, support_type: 0, support_threshold_angle: 0, brim_type: 0, brim_width: 0,
   ironing_type: 0,
+  // Primeira camada, velocidades e detalhes de suporte (09/09/2026):
+  // era o que faltava pra colinha conseguir dizer "primeira camada a
+  // 15 mm/s, ventoinha desligada nas duas primeiras, suporte em tudo,
+  // não só nas regiões críticas" — a receita que salvou a Vovó Rosana.
+  initial_layer_print_height: 0, initial_layer_speed: 0, initial_layer_infill_speed: 0,
+  initial_layer_acceleration: 0, outer_wall_speed: 0, inner_wall_speed: 0, small_perimeter_speed: 0,
+  support_style: 0, support_critical_regions_only: 0, support_remove_small_overhang: 0,
+  support_interface_top_layers: 0, support_top_z_distance: 0, support_object_xy_distance: 0,
+  support_on_build_plate_only: 0, brim_object_gap: 0,
   nozzle_temperature: 1, nozzle_temperature_initial_layer: 1,
+  // Ventoinha é configuração de FILAMENTO no Bambu (está nos perfis de
+  // filament/, não nos de process/), por isso categoria 1.
+  close_fan_the_first_x_layers: 1,
   // Cada placa tem o seu campo de temperatura, e o Bambu só lê o da
   // placa que está selecionada em curr_bed_type. Todos entram na lista
   // porque a peça pode ir em qualquer uma.
@@ -261,6 +290,11 @@ const PLACAS = {
   textured: { bambu: 'Textured PEI Plate', campo: 'textured_plate_temp', nome: 'placa texturizada' },
   engineering: { bambu: 'Engineering Plate', campo: 'eng_plate_temp', nome: 'placa de engenharia' },
   high_temp: { bambu: 'High Temp Plate', campo: 'hot_plate_temp', nome: 'placa de alta temperatura' },
+  // Placa lisa de outra marca (holográfica, Stellar, Chameleon): não é
+  // da Bambu, então não tem campo próprio. Quem usa uma dessas escolhe
+  // "Textured PEI Plate" no Bambu (é o perfil de ~55-60°C), e é nesse
+  // campo que a temperatura precisa ser gravada pra valer.
+  smooth_other: { bambu: 'Textured PEI Plate', campo: 'textured_plate_temp', nome: 'placa lisa de outra marca' },
 };
 
 // Material -> o que gravar no arquivo.
@@ -362,6 +396,28 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
     brim_type: (v) => escolha('brim_type', v),
     brim_width_mm: (v) => gravar('brim_width', String(v)),
     ironing_type: (v) => escolha('ironing_type', v),
+    // --- primeira camada: onde a peça de verdade dá certo ou não -------
+    first_layer_height_mm: (v) => gravar('initial_layer_print_height', String(v)),
+    first_layer_speed_mms: (v) => gravar('initial_layer_speed', String(v)),
+    first_layer_infill_speed_mms: (v) => gravar('initial_layer_infill_speed', String(v)),
+    first_layer_acceleration_mms2: (v) => gravar('initial_layer_acceleration', String(v)),
+    // Ventoinha desligada nas primeiras camadas: campo de filamento, um
+    // valor por slot (peça de 4 cores tem 4).
+    fan_off_first_layers: (v) => gravar('close_fan_the_first_x_layers', Array(numFilamentos).fill(String(v))),
+    // --- velocidades ------------------------------------------------------
+    outer_wall_speed_mms: (v) => gravar('outer_wall_speed', String(v)),
+    inner_wall_speed_mms: (v) => gravar('inner_wall_speed', String(v)),
+    small_perimeter_speed_mms: (v) => gravar('small_perimeter_speed', String(v)),
+    // --- suporte em detalhe -------------------------------------------------
+    support_style: (v) => escolha('support_style', v),
+    // Booleanos no Bambu são "0"/"1" em texto.
+    support_critical_regions_only: (v) => gravar('support_critical_regions_only', v ? '1' : '0'),
+    support_remove_small_overhang: (v) => gravar('support_remove_small_overhang', v ? '1' : '0'),
+    support_on_build_plate_only: (v) => gravar('support_on_build_plate_only', v ? '1' : '0'),
+    support_interface_top_layers: (v) => gravar('support_interface_top_layers', String(v)),
+    support_top_z_distance_mm: (v) => gravar('support_top_z_distance', String(v)),
+    support_xy_distance_mm: (v) => gravar('support_object_xy_distance', String(v)),
+    brim_gap_mm: (v) => gravar('brim_object_gap', String(v)),
     nozzle_temp_c: (v) => {
       gravar('nozzle_temperature', Array(numFilamentos).fill(String(v)));
       gravar('nozzle_temperature_initial_layer', Array(numFilamentos).fill(String(v)));
@@ -377,6 +433,16 @@ function aplicarAjustesColinha(ajustes, settingsBase) {
     if (mapa[chave] && ajustes[chave] !== null && ajustes[chave] !== undefined) {
       try { mapa[chave](ajustes[chave]); } catch (e) { /* ignora um campo ruim, não derruba o resto */ }
     }
+  }
+
+  // Bico da primeira camada em separado (ex: 220°C na primeira, 215°C
+  // depois — mais quente gruda melhor em placa lisa). Fica FORA do laço
+  // de propósito: "nozzle_temp_c" grava as duas temperaturas iguais, e a
+  // ordem das chaves no JSON da IA não é garantida — aplicado depois,
+  // este sempre vence quando vier preenchido.
+  const bico1 = Number(ajustes.nozzle_temp_first_layer_c);
+  if (bico1 && !isNaN(bico1)) {
+    gravar('nozzle_temperature_initial_layer', Array(numFilamentos).fill(String(bico1)));
   }
 
   // Junta o que já vinha marcado no template com o que a colinha mexeu.

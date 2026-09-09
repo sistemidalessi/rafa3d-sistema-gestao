@@ -255,6 +255,51 @@ sai dali.
   Testado de ponta a ponta em 09/09 com a própria "Vovó Rosana"
   (abrir → simular Ctrl+S → abrir de novo sem baixar → guardar de volta →
   abrir sem reaplicar).
+- **A colinha decide primeira camada, velocidades e suporte em detalhe —
+  e a placa lisa de outra marca existe (09/09/2026, patch 53).** A colinha
+  antiga só sabia camada/parede/infill/suporte-básico/brim/temperatura;
+  pra peça delicada (a "Vovó Rosana": árvore de folhas finas com bonecos
+  num balanço) ela saiu genérica e a peça soltou nas primeiras camadas. O
+  que funcionou foi a receita de um chat externo: primeira camada a 15
+  mm/s, ventoinha desligada nas 2 primeiras, bico +5°C na primeira, brim
+  de 10-12 mm gap 0, suporte árvore orgânica a 20° com "só regiões
+  críticas" e "remover saliências pequenas" DESLIGADOS, e um teste de
+  1 mm antes da peça inteira. Agora:
+  1. O JSON da colinha tem 16 chaves novas (`first_layer_*`,
+     `fan_off_first_layers`, `*_speed_mms`, `support_style`,
+     `support_critical_regions_only`, `support_remove_small_overhang`,
+     `support_on_build_plate_only`, `support_interface_top_layers`,
+     `support_*_distance_mm`, `brim_gap_mm`, `nozzle_temp_first_layer_c`).
+     Cada uma entra em `CATEGORIA` e no `mapa` de
+     `aplicarAjustesColinha()`. **Ventoinha é FILAMENTO** no Bambu
+     (`close_fan_the_first_x_layers` só existe em `profiles/BBL/filament`),
+     por isso categoria 1 e um valor por slot — conferido nos perfis da
+     instalação, não de memória. `support_style` é lista fechada
+     (`default|grid|snug|tree_slim|tree_strong|tree_hybrid`). **"organic"
+     NÃO existe no Bambu 2.8.2** — a string aparece no `.dll`, mas é texto
+     de tela: o Bambu abriu avisando *"'organic' foi substituído por
+     'default'"*. A árvore orgânica nesta versão é `tree_hybrid`, e todo
+     sinônimo de "orgânico" cai nele. Lição: token no `.dll` não prova
+     valor válido; só abrir o arquivo no Bambu prova (o aviso de
+     substituição aparece uma vez, e o resto da configuração entra).
+     `support_critical_regions_only` e
+     `support_remove_small_overhang` não aparecem em nenhum perfil de
+     process/ mas estão no `project_settings.config` do template — são
+     chaves de projeto, válidas.
+  2. O prompt classifica a peça em (A) simples ou (B) "coleção de
+     saliências pequenas" ANTES dos números, e em (B) prioriza a primeira
+     camada: é lá que essas peças morrem, não no suporte lá em cima. A
+     ficha ganhou "## Primeira camada" e "## Antes de imprimir" (limpar a
+     placa, cortar a 1 mm e imprimir só a base, olhar as 2-3 primeiras
+     camadas). O modelo passou a ser `claude-opus-5` com raciocínio
+     adaptativo e `effort: high` — é julgamento, e são centavos por colinha.
+  3. Placa `smooth_other` ("placa lisa de outra marca": holográfica,
+     Stellar, Chameleon). Vive em `PLACAS_DA_LOJA` (tela), `PLACAS_PRA_IA`
+     (prompt) e `PLACAS` (gerar3mf.js → `textured_plate_temp` + `curr_bed_type`
+     "Textured PEI Plate", o perfil que se escolhe no Bambu pra ela). **E
+     no CHECK das três tabelas** — o patch 32 travou `bed_plate` numa
+     lista, e gravar valor novo sem o patch 53 dá erro 23514, igual ao
+     `model_source` no patch 27. Placa nova = quatro lugares, não três.
 - **A adaptação do catálogo ao celular é feita em JavaScript, não em CSS.** O
   framework de template tem um prop `columns` que **vence qualquer media
   query** — ele foi pensado pra pré-visualizar em 1080px fixos. Por isso a
