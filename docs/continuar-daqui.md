@@ -1,10 +1,42 @@
 # Continuar daqui
 
-Onde as coisas pararam em **02/09/2026**.
+Onde as coisas pararam em **09/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## ✅ O que foi salvo no Bambu agora volta pro sistema — 09/09 (patch 52)
+
+**O incidente:** o Anderson abriu o projeto "Vovó Rosana" pelo sistema,
+passou a manhã mexendo no Bambu (separou partes, trocou parâmetros),
+salvou com Ctrl+S — e o próximo "Abrir no Fatiador" (11:22) baixou o
+original do Storage por cima do arquivo salvo. Procurei em Downloads, no
+Bambu (recentes e log) e no disco inteiro: **não sobrou cópia**. O
+trabalho dessa manhã se perdeu. O caminho do arquivo era só de ida.
+
+**O que mudou** (tudo testado de ponta a ponta com a própria Vovó Rosana):
+
+1. **O agente não passa mais por cima do que a pessoa salvou.** Cada
+   arquivo que ele grava em `slicer-agent/downloads/` ganha um rastro do
+   lado (`.origem.json`). Se o arquivo estiver mais novo que o rastro,
+   foi o Bambu que salvou — o agente abre esse e **nem baixa de novo**.
+2. **Botão "📥 Guardar o que eu mudei no Bambu"**, ao lado de todo
+   "Abrir no Fatiador" (produto, projeto, parte, e o passo 3 do Preparar).
+   Só aparece depois do primeiro "abrir". Manda o agente do computador
+   que abriu subir o arquivo salvo pro sistema, no lugar do original. A
+   partir daí a peça abre exatamente como foi salva, sem reaplicar a
+   colinha (ela já está dentro do arquivo).
+
+**Como usar, no dia a dia:** abre pelo sistema → mexe no Bambu → Ctrl+S
+(não "Salvar como") → volta no sistema e clica "Guardar o que eu mudei no
+Bambu" → espera o "✅ A versão do sistema é a que você salvou". Se
+esquecer de clicar, o item 1 ainda protege **neste computador** — mas o
+outro computador continua vendo o original até o botão ser clicado.
+
+⚠️ **Falta rodar no computador do Rafa**: `atualizar-agente.ps1` (mexeu
+no `agent.js`). Até lá, aquele computador ainda passa por cima do que
+for salvo nele.
 
 ## ⚠️ 02/09 à noite: o Supabase bloqueou o projeto — plano subiu pro Pro
 

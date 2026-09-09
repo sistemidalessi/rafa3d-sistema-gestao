@@ -611,9 +611,91 @@ async function tickAI() {
 //
 //   .stl cru — não tem configuração nenhuma, então monta um .3mf do
 //   zero com impressora, filamento e a colinha.
-function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSeguro, downloadsDir, nomeRef, bedPlate, material) {
+/* O ARQUIVO QUE A PESSOA SALVOU NO BAMBU NÃO PODE SER PERDIDO
+
+   Em 09/09/2026 o Anderson abriu "Vovó Rosana" pelo sistema, mexeu em
+   tudo no Bambu (separou partes, trocou parâmetros), salvou com Ctrl+S
+   — e o próximo "Abrir no Fatiador" baixou o original do Storage e
+   passou por cima do arquivo salvo. Perdeu a tarde. Não havia cópia em
+   lugar nenhum: o caminho era só de ida.
+
+   Dois cuidados, os dois aqui, porque este é o único lugar que grava o
+   arquivo local pra todas as três filas (produto, projeto, parte):
+
+   1. Do lado de cada arquivo fica um "rastro" (.origem.json) dizendo
+      quando o agente gravou. Se na hora de abrir de novo o arquivo está
+      MAIS NOVO que o rastro, foi o Bambu que salvou por cima — então o
+      agente não baixa nada, não reescreve nada, e abre o que a pessoa
+      salvou. (De brinde, economiza a saída de dados do Supabase, que é
+      o que a cota cobra.)
+
+   2. Quando o arquivo do Storage já é a versão que a pessoa salvou
+      (slicer_saved_at preenchido, patch 52), ele abre como está, sem
+      reaplicar a colinha: reaplicar trocaria o project_settings inteiro
+      e jogaria fora exatamente os parâmetros que a pessoa mudou. */
+function caminhoDoRastro(caminho) { return caminho + '.origem.json'; }
+
+function gravarRastro(caminho, modelFilePath) {
+  const st = fs.statSync(caminho);
+  fs.writeFileSync(caminhoDoRastro(caminho), JSON.stringify({
+    model_file_path: modelFilePath, escrito_em: st.mtimeMs, quando: new Date().toISOString(),
+  }));
+}
+
+// Verdadeiro se o arquivo em `caminho` foi salvo por alguém DEPOIS de o
+// agente ter gravado ele. Sem rastro (arquivo de antes deste código) não
+// dá pra saber — e aí vale a regra antiga, de baixar de novo.
+function foiSalvoPelaPessoa(caminho) {
+  try {
+    if (!fs.existsSync(caminho) || !fs.existsSync(caminhoDoRastro(caminho))) return false;
+    const rastro = JSON.parse(fs.readFileSync(caminhoDoRastro(caminho), 'utf8'));
+    const agora = fs.statSync(caminho).mtimeMs;
+    // 3 segundos de folga: o Windows arredonda mtime e o próprio write
+    // do agente pode terminar um instante depois do stat.
+    return agora > (Number(rastro.escrito_em) || 0) + 3000;
+  } catch (e) {
+    return false;
+  }
+}
+
+// Cuidado 1, e checado ANTES do download de propósito: o Supabase cobra
+// pelo que sai do servidor (ver CLAUDE.md), e um .3mf de 20 MB baixado à
+// toa a cada "abrir" é exatamente o tipo de gasto que estourou a cota em
+// 02/09. Vale pra qualquer extensão — o Bambu salva sempre .3mf, então um
+// .stl aberto e salvo vira .3mf do lado.
+function arquivoSalvoPelaPessoa(downloadsDir, nomeSeguro, ext, nomeRef) {
+  const e = String(ext || '').toLowerCase();
+  for (const candidato of [path.join(downloadsDir, nomeSeguro + '.3mf'), path.join(downloadsDir, nomeSeguro + e)]) {
+    if (foiSalvoPelaPessoa(candidato)) {
+      log('"' + nomeRef + '": abrindo o arquivo que VOCÊ salvou no Bambu (' +
+        new Date(fs.statSync(candidato).mtimeMs).toLocaleString('pt-BR') + ') — não baixei de novo, pra não passar por cima. ' +
+        'Pra guardar essa versão no sistema, use "Guardar o que eu mudei no Bambu".');
+      return candidato;
+    }
+  }
+  return null;
+}
+
+function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSeguro, downloadsDir, nomeRef, bedPlate, material, modelFilePath, salvoNoFatiador) {
   const e = String(ext || '').toLowerCase();
   const veioPronto = modelSource === 'hi3d_dividido' || modelSource === 'manual_upload';
+
+  // Rede de segurança: quem chama já checou antes de baixar, mas se um
+  // chamador novo esquecer, ainda assim nada é gravado por cima.
+  const jaSalvo = arquivoSalvoPelaPessoa(downloadsDir, nomeSeguro, e, nomeRef);
+  if (jaSalvo) return jaSalvo;
+
+  const gravar = (caminho, conteudo) => {
+    fs.writeFileSync(caminho, conteudo);
+    gravarRastro(caminho, modelFilePath || null);
+    return caminho;
+  };
+
+  // Cuidado 2: arquivo que já voltou do Bambu abre como está.
+  if (salvoNoFatiador) {
+    log('"' + nomeRef + '": abrindo do jeito que você salvou no Bambu (a colinha já está dentro, não reaplico).');
+    return gravar(path.join(downloadsDir, nomeSeguro + e), buf);
+  }
 
   // A placa não vem da IA — vem da escolha de quem mandou imprimir. Ela
   // entra junto da colinha porque é o gerador que sabe traduzir "placa
@@ -624,8 +706,7 @@ function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSegu
 
   if (veioPronto && e === '.3mf') {
     try {
-      const caminho = path.join(downloadsDir, nomeSeguro + '.3mf');
-      fs.writeFileSync(caminho, reconfigurarHi3d3mf(buf, ajustes));
+      const caminho = gravar(path.join(downloadsDir, nomeSeguro + '.3mf'), reconfigurarHi3d3mf(buf, ajustes));
       log('"' + nomeRef + '" (' + modelSource + ') com a impressora e a colinha já aplicadas.');
       return caminho;
     } catch (err) {
@@ -634,8 +715,7 @@ function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSegu
   } else if (e === '.stl' && ajustes) {
     try {
       const resultado = gerarModelo3mfConfigurado(buf, ajustes, nomeSeguro + '.stl', modelSource);
-      const caminho = path.join(downloadsDir, nomeSeguro + '.3mf');
-      fs.writeFileSync(caminho, resultado.buffer);
+      const caminho = gravar(path.join(downloadsDir, nomeSeguro + '.3mf'), resultado.buffer);
       logTamanhoConvertido(nomeRef, resultado);
       return caminho;
     } catch (err) {
@@ -643,27 +723,30 @@ function prepararArquivoPraFatiador(buf, ext, ajustesCrus, modelSource, nomeSegu
     }
   }
 
-  const caminho = path.join(downloadsDir, nomeSeguro + e);
-  fs.writeFileSync(caminho, buf);
-  return caminho;
+  return gravar(path.join(downloadsDir, nomeSeguro + e), buf);
 }
 
 async function abrirNoFatiador(product) {
   try {
     if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
 
-    log('Baixando modelo de "' + product.name + '" pra abrir no fatiador...');
-    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(product.model_file_path);
-    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
-
     const downloadsDir = path.join(__dirname, 'downloads');
     fs.mkdirSync(downloadsDir, { recursive: true });
     const ext = path.extname(product.model_file_path) || '.3mf';
     const nomeSeguro = (product.catalog_code + '-' + product.name).replace(/[^a-z0-9À-ÿ]+/gi, '_');
-    const localPath = prepararArquivoPraFatiador(
-      Buffer.from(await fileData.arrayBuffer()), ext,
-      product.ai_slicing_settings, product.model_source, nomeSeguro, downloadsDir, product.name, product.bed_plate, product.material
-    );
+    // Se a pessoa salvou por cima no Bambu, é esse arquivo que abre — e
+    // nem baixa de novo (patch 52).
+    let localPath = arquivoSalvoPelaPessoa(downloadsDir, nomeSeguro, ext, product.name);
+    if (!localPath) {
+      log('Baixando modelo de "' + product.name + '" pra abrir no fatiador...');
+      const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(product.model_file_path);
+      if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+      localPath = prepararArquivoPraFatiador(
+        Buffer.from(await fileData.arrayBuffer()), ext,
+        product.ai_slicing_settings, product.model_source, nomeSeguro, downloadsDir, product.name, product.bed_plate, product.material,
+        product.model_file_path, !!product.slicer_saved_at
+      );
+    }
 
     log('Abrindo "' + product.name + '" no fatiador...');
     // Abre via um script PowerShell em vez de spawn direto: o agente roda em
@@ -697,7 +780,7 @@ async function tickAbrirFatiador() {
     // ai_slicing_settings e model_source entram aqui porque é com eles
     // que a colinha é aplicada. Sem trazer as colunas, chegam vazias e o
     // arquivo abre cru — sem erro nenhum, que é o pior jeito de falhar.
-    .select('id, name, catalog_code, model_file_path, model_source, ai_slicing_settings, bed_plate, material')
+    .select('id, name, catalog_code, model_file_path, model_source, ai_slicing_settings, bed_plate, material, slicer_saved_at')
     .eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -1072,15 +1155,20 @@ async function abrirNoFatiadorProjeto(li) {
   try {
     if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
 
-    log('Baixando modelo do projeto de "' + nomeRef + '" pra abrir no fatiador...');
-    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(li.model_file_path);
-    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
-
     const downloadsDir = path.join(__dirname, 'downloads');
     fs.mkdirSync(downloadsDir, { recursive: true });
     const ext = path.extname(li.model_file_path) || '.stl';
     const nomeSeguro = ('projeto-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
-    const stlBuf = Buffer.from(await fileData.arrayBuffer());
+    // Se a pessoa salvou por cima no Bambu, é esse arquivo que abre — e
+    // nem baixa de novo (patch 52).
+    let localPath = arquivoSalvoPelaPessoa(downloadsDir, nomeSeguro, ext, nomeRef);
+    let stlBuf = null;
+    if (!localPath) {
+      log('Baixando modelo do projeto de "' + nomeRef + '" pra abrir no fatiador...');
+      const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(li.model_file_path);
+      if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+      stlBuf = Buffer.from(await fileData.arrayBuffer());
+    }
 
     // Se a colinha já tem os números certinhos e o arquivo é um .stl cru
     // (é o que a Meshy sempre gera), monta um .3mf com impressora,
@@ -1095,9 +1183,12 @@ async function abrirNoFatiadorProjeto(li) {
     // de quem gerou, não a nossa. Sem isso, "Analisar com IA" podia gerar
     // uma colinha ótima que nunca chegava a ser aplicada de verdade —
     // foi exatamente o que aconteceu com o chaveiro de cereja em 25/08.
-    const localPath = prepararArquivoPraFatiador(
-      stlBuf, ext, li.ai_slicing_settings, li.model_source, nomeSeguro, downloadsDir, nomeRef, li.bed_plate, li.material
-    );
+    if (!localPath) {
+      localPath = prepararArquivoPraFatiador(
+        stlBuf, ext, li.ai_slicing_settings, li.model_source, nomeSeguro, downloadsDir, nomeRef, li.bed_plate, li.material,
+        li.model_file_path, !!li.slicer_saved_at
+      );
+    }
 
     log('Abrindo projeto de "' + nomeRef + '" no fatiador...');
     const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
@@ -1125,7 +1216,7 @@ async function abrirNoFatiadorProjeto(li) {
 async function tickAbrirFatiadorProjeto() {
   const { data: queued, error } = await supabase
     .from('order_line_items')
-    .select('id, requester_name, model_file_path, ai_slicing_settings, model_source, bed_plate, material')
+    .select('id, requester_name, model_file_path, ai_slicing_settings, model_source, bed_plate, material, slicer_saved_at')
     .eq('line_type', 'custom').eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -1273,19 +1364,23 @@ async function abrirNoFatiadorParte(parte) {
   try {
     if (!fs.existsSync(SLICER_APP_PATH)) throw new Error('fatiador não encontrado em ' + SLICER_APP_PATH + ' — ajuste SLICER_APP_PATH no .env.');
 
-    log('Baixando modelo da "' + nomeRef + '" pra abrir no fatiador...');
-    const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(parte.model_file_path);
-    if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
-
     const downloadsDir = path.join(__dirname, 'downloads');
     fs.mkdirSync(downloadsDir, { recursive: true });
     const ext = path.extname(parte.model_file_path) || '.stl';
     const nomeSeguro = ('parte-' + nomeRef).replace(/[^a-z0-9À-ÿ]+/gi, '_');
-    const stlBuf = Buffer.from(await fileData.arrayBuffer());
-
-    const localPath = prepararArquivoPraFatiador(
-      stlBuf, ext, parte.ai_slicing_settings, parte.model_source, nomeSeguro, downloadsDir, nomeRef, parte.bed_plate, parte.material
-    );
+    // Se a pessoa salvou por cima no Bambu, é esse arquivo que abre — e
+    // nem baixa de novo (patch 52).
+    let localPath = arquivoSalvoPelaPessoa(downloadsDir, nomeSeguro, ext, nomeRef);
+    if (!localPath) {
+      log('Baixando modelo da "' + nomeRef + '" pra abrir no fatiador...');
+      const { data: fileData, error: dlErr } = await supabase.storage.from(BUCKET).download(parte.model_file_path);
+      if (dlErr) throw new Error('download do modelo falhou: ' + dlErr.message);
+      const stlBuf = Buffer.from(await fileData.arrayBuffer());
+      localPath = prepararArquivoPraFatiador(
+        stlBuf, ext, parte.ai_slicing_settings, parte.model_source, nomeSeguro, downloadsDir, nomeRef, parte.bed_plate, parte.material,
+        parte.model_file_path, !!parte.slicer_saved_at
+      );
+    }
 
     log('Abrindo a "' + nomeRef + '" no fatiador...');
     const psScript = path.join(__dirname, 'abrir-fatiador.ps1');
@@ -1313,7 +1408,7 @@ async function abrirNoFatiadorParte(parte) {
 async function tickAbrirFatiadorPartes() {
   const { data: queued, error } = await supabase
     .from('project_parts')
-    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source, bed_plate, material')
+    .select('id, order_line_item_id, nome, ordem, model_file_path, ai_slicing_settings, model_source, bed_plate, material, slicer_saved_at')
     .eq('open_slicer_status', 'queued')
     .or('open_slicer_agent.is.null,open_slicer_agent.eq.' + AGENT_NAME)
     .order('open_slicer_requested_at', { ascending: true })
@@ -1321,6 +1416,107 @@ async function tickAbrirFatiadorPartes() {
   if (error) { log('Erro consultando fila de abrir-no-fatiador (partes): ' + error.message); return; }
   if (!queued || queued.length === 0) return;
   await abrirNoFatiadorParte(queued[0]);
+}
+
+/* ============================================================
+   GUARDAR DE VOLTA — o que a pessoa salvou no Bambu sobe pro sistema
+   (patch 52). É a volta do caminho que até 09/09/2026 era só de ida.
+
+   Fila igual às outras (queued → done/error, sem 'processing': é um
+   upload só). Cada peça só pode estar salva no computador que abriu
+   ela, por isso a fila tem dono (save_back_agent), como a de abrir.
+
+   O agente acha o arquivo pelo rastro (.origem.json) que ele mesmo
+   deixou ao abrir — não pela regra de nome, que muda por tabela. E só
+   sobe se o arquivo foi salvo DEPOIS de o agente ter gravado: subir um
+   arquivo igual ao que já está lá só marcaria slicer_saved_at à toa.
+   ============================================================ */
+const FILAS_GUARDAR_DE_VOLTA = [
+  { tabela: 'products', colunas: 'id, name, model_file_path', nome: (r) => r.name },
+  { tabela: 'order_line_items', colunas: 'id, requester_name, model_file_path', nome: (r) => r.requester_name || r.id, soCustom: true },
+  { tabela: 'project_parts', colunas: 'id, nome, ordem, model_file_path', nome: (r) => r.nome || ('parte ' + r.ordem) },
+];
+
+// Todos os arquivos de downloads/ cujo rastro aponta pra este caminho do
+// Storage, do mais novo pro mais velho.
+function arquivosLocaisDe(modelFilePath) {
+  const downloadsDir = path.join(__dirname, 'downloads');
+  if (!fs.existsSync(downloadsDir)) return [];
+  const achados = [];
+  for (const nome of fs.readdirSync(downloadsDir)) {
+    if (!nome.endsWith('.origem.json')) continue;
+    try {
+      const rastro = JSON.parse(fs.readFileSync(path.join(downloadsDir, nome), 'utf8'));
+      if (rastro.model_file_path !== modelFilePath) continue;
+      const arquivo = path.join(downloadsDir, nome.replace(/\.origem\.json$/, ''));
+      if (fs.existsSync(arquivo)) achados.push(arquivo);
+    } catch (e) { /* rastro ilegível: ignora */ }
+  }
+  return achados.sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs);
+}
+
+async function guardarDeVoltaUm(fila, r) {
+  const nomeRef = fila.nome(r);
+  try {
+    if (!r.model_file_path) throw new Error('esta peça não tem arquivo 3D no sistema — anexe um primeiro.');
+    const locais = arquivosLocaisDe(r.model_file_path);
+    if (!locais.length) {
+      throw new Error('Não achei neste computador nenhum arquivo desta peça aberto pelo sistema. ' +
+        'Abra no fatiador, mexa, salve com Ctrl+S (não "Salvar como"), e clique aqui de novo.');
+    }
+    const salvo = locais.find(foiSalvoPelaPessoa);
+    if (!salvo) {
+      throw new Error('O arquivo desta peça neste computador está igual ao que o sistema mandou — nada foi salvo por cima ainda. ' +
+        'No Bambu, salve com Ctrl+S e clique aqui de novo.');
+    }
+
+    // O Bambu sempre salva .3mf. Se a peça era um .stl, o caminho no
+    // Storage troca de extensão — e model_file_path acompanha.
+    const extLocal = path.extname(salvo).toLowerCase();
+    const novoPath = r.model_file_path.replace(/\.[^./]+$/, extLocal || '.3mf');
+    const buf = fs.readFileSync(salvo);
+    log('Subindo pro sistema o que você salvou no Bambu pra "' + nomeRef + '" (' + (buf.length / 1048576).toFixed(1) + ' MB)...');
+    const { error: upErr } = await supabase.storage.from(BUCKET)
+      .upload(novoPath, buf, { upsert: true, contentType: extLocal === '.3mf' ? 'model/3mf' : 'application/octet-stream' });
+    if (upErr) throw new Error('upload falhou: ' + upErr.message);
+
+    // manual_upload de propósito: é um arquivo que uma pessoa fez, com
+    // escala real — a única origem que nunca é reescalada (escalaSegura).
+    const { error: dbErr } = await supabase.from(fila.tabela).update({
+      save_back_status: 'done', save_back_error: null, slicer_saved_at: new Date().toISOString(),
+      model_file_path: novoPath, model_source: 'manual_upload',
+    }).eq('id', r.id);
+    if (dbErr) throw new Error('gravar no banco falhou: ' + dbErr.message);
+
+    // Local e Storage agora são a mesma coisa: o rastro passa a apontar
+    // pro caminho novo e pra este instante.
+    gravarRastro(salvo, novoPath);
+    log('✅ "' + nomeRef + '": o que você salvou no Bambu agora é a versão do sistema.');
+  } catch (e) {
+    log('❌ Guardar de volta "' + nomeRef + '" falhou: ' + e.message);
+    await supabase.from(fila.tabela).update({
+      save_back_status: 'error', save_back_error: String(e.message).slice(0, 2000),
+    }).eq('id', r.id);
+  }
+}
+
+async function tickGuardarDeVolta() {
+  for (const fila of FILAS_GUARDAR_DE_VOLTA) {
+    let consulta = supabase.from(fila.tabela).select(fila.colunas)
+      .eq('save_back_status', 'queued')
+      .or('save_back_agent.is.null,save_back_agent.eq.' + AGENT_NAME)
+      .order('save_back_requested_at', { ascending: true })
+      .limit(1);
+    if (fila.soCustom) consulta = consulta.eq('line_type', 'custom');
+    const { data, error } = await consulta;
+    if (error) {
+      // Antes do patch 52 a coluna não existe: fica quieto em vez de
+      // encher o log a cada 5 segundos.
+      if (!/save_back/.test(error.message)) log('Erro consultando fila de guardar-de-volta (' + fila.tabela + '): ' + error.message);
+      continue;
+    }
+    if (data && data.length) await guardarDeVoltaUm(fila, data[0]);
+  }
 }
 
 async function main() {
@@ -1352,6 +1548,7 @@ async function main() {
     try { await tickAIPartes(); } catch (e) { log('Erro inesperado (análise IA - partes): ' + e.message); }
     try { await tickAbrirFatiadorPartes(); } catch (e) { log('Erro inesperado (abrir no fatiador - partes): ' + e.message); }
     try { await tickHi3d(); } catch (e) { log('Erro inesperado (Hi3D gerar e dividir): ' + e.message); }
+    try { await tickGuardarDeVolta(); } catch (e) { log('Erro inesperado (guardar de volta do fatiador): ' + e.message); }
     await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
   }
 }

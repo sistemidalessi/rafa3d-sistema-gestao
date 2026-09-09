@@ -98,9 +98,10 @@ sempre:
    **registrar essa `tickX()` no laço da `main()`**, que é onde é fácil
    esquecer.
 
-Hoje são **dez** filas: as mesmas três operações (gerar modelo, colinha de IA,
-abrir no fatiador) sobre `products`, `order_line_items` e `project_parts`, mais
-a do Hi3D (`tickHi3d`, patch-27), que gera a peça inteira e já divide em partes
+Hoje são **treze** filas: as mesmas quatro operações (gerar modelo, colinha de
+IA, abrir no fatiador, e guardar de volta o que foi salvo no fatiador — patch
+52) sobre `products`, `order_line_items` e `project_parts`, mais a do Hi3D
+(`tickHi3d`, patch-27), que gera a peça inteira e já divide em partes
 coloridas. Mexeu numa, confira se as irmãs precisam da mesma coisa.
 
 
@@ -229,6 +230,31 @@ sai dali.
   analisava, gerava uma ficha ótima, e ela nunca era aplicada no arquivo que de
   fato abria no fatiador. Sintoma: colinha linda na tela, fatiador com os
   valores do perfil. Origem nova precisa entrar nessa lista.
+- **O caminho do arquivo era só de ida — o "Salvar" do Bambu não voltava.**
+  Em 09/09/2026 o Anderson abriu "Vovó Rosana" pelo sistema, mexeu em tudo
+  no Bambu (separou partes, trocou parâmetros), salvou com Ctrl+S, e o
+  próximo "Abrir no Fatiador" baixou o original do Storage por cima do
+  arquivo salvo. Não havia cópia em lugar nenhum: perdeu a tarde. Desde o
+  patch 52 são duas proteções, as duas no agente:
+  1. Todo arquivo gravado em `downloads/` ganha um rastro
+     (`<nome>.origem.json`: caminho no Storage + hora da gravação). Se na
+     hora de abrir o arquivo estiver mais novo que o rastro, foi o Bambu
+     que salvou — o agente abre **esse**, e nem baixa (economiza a saída
+     do Supabase). Checado em `arquivoSalvoPelaPessoa()` ANTES do
+     download, nas três filas de abrir. Sem rastro (arquivo de antes do
+     patch) vale a regra antiga.
+  2. O botão **"📥 Guardar o que eu mudei no Bambu"** (produto, projeto,
+     parte e passo 3 do Preparar; só aparece depois do primeiro "abrir")
+     enfileira `save_back_status` pro computador que abriu a peça. O
+     agente sobe o arquivo salvo pro Storage no lugar do original, marca
+     `slicer_saved_at` e `model_source = 'manual_upload'` — e a partir daí
+     abre o arquivo **como está, sem reaplicar a colinha**: reaplicar
+     trocaria o `project_settings` inteiro e jogaria fora justamente o
+     que a pessoa mudou. Só sobe se o arquivo foi salvo DEPOIS de o
+     agente ter gravado; senão devolve erro dizendo pra salvar primeiro.
+  Testado de ponta a ponta em 09/09 com a própria "Vovó Rosana"
+  (abrir → simular Ctrl+S → abrir de novo sem baixar → guardar de volta →
+  abrir sem reaplicar).
 - **A adaptação do catálogo ao celular é feita em JavaScript, não em CSS.** O
   framework de template tem um prop `columns` que **vence qualquer media
   query** — ele foi pensado pra pré-visualizar em 1080px fixos. Por isso a

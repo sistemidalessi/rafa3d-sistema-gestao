@@ -1106,12 +1106,12 @@ async function renderProjetos() {
   // partes estavam trabalhando, parava de se atualizar, e elas ficavam
   // em "gerando…" pra sempre — mesmo já prontas no banco há minutos.
   const partesEmAndamento = await q(SUPA.from('project_parts').select('id').limit(1)
-    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued'));
+    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued,save_back_status.eq.queued'));
   const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
     li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
     li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
-    li.open_slicer_status === 'queued');
+    li.open_slicer_status === 'queued' || li.save_back_status === 'queued');
 
   // O aviso de computador desligado tem que aparecer AQUI também: é
   // desta aba que se manda projeto pro fatiador, e foi aqui que o Rafa
@@ -1293,6 +1293,14 @@ async function abrirGerenciarProjeto(lineItemId) {
     if (li.open_slicer_status === 'error' && li.open_slicer_error) {
       html += '<div style="font-size:11px; color:#c0392b; margin-top:-6px; padding-bottom:8px;">' + escapeHtml(li.open_slicer_error) + '</div>';
     }
+    // A volta do caminho (patch 52). Só faz sentido depois de ter aberto
+    // pelo menos uma vez — antes disso não existe arquivo salvo pra
+    // buscar. Sem este botão, o que a pessoa salvava no Bambu era
+    // apagado pelo próximo "Abrir no Fatiador" (foi assim que uma tarde
+    // inteira de trabalho na "Vovó Rosana" se perdeu em 09/09).
+    if (li.open_slicer_status === 'done' || li.slicer_saved_at || li.save_back_status) {
+      html += linhaGuardarDeVolta(li, 'solicitarGuardarDoFatiadorProjeto(\'' + li.id + '\')');
+    }
   }
 
   html += '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border); flex-wrap:wrap; gap:8px;">';
@@ -1359,11 +1367,11 @@ async function abrirGerenciarProjeto(lineItemId) {
   const partesRodando = partes.some((p) =>
     p.meshy_status === 'queued' || p.meshy_status === 'processing' ||
     p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing' ||
-    p.open_slicer_status === 'queued');
+    p.open_slicer_status === 'queued' || p.save_back_status === 'queued');
   const projetoRodando = li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
     li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
     li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
-    li.open_slicer_status === 'queued';
+    li.open_slicer_status === 'queued' || li.save_back_status === 'queued';
   if (projetoRodando || partesRodando) {
     _gerenciarProjetoPollTimer = setTimeout(() => {
       if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
@@ -1475,6 +1483,11 @@ async function renderParteHtml(parte) {
       html += '<button class="btn ghost" style="font-size:11px; padding:3px 8px;" onclick="solicitarAnaliseIAParte(\'' + parte.id + '\')">🤖 ' + (parte.ai_analysis_status === 'done' ? 'De novo' : 'Analisar') + '</button>';
     }
     html += '</span></div>';
+    // A volta do caminho (patch 52), por parte: cada parte abre numa
+    // janela própria do Bambu, então cada uma pode ter sido salva.
+    if (parte.open_slicer_status === 'done' || parte.slicer_saved_at || parte.save_back_status) {
+      html += linhaGuardarDeVolta(parte, 'solicitarGuardarDoFatiadorParte(\'' + parte.id + '\')', true);
+    }
   }
   html += '</div></div></div>';
   return html;
@@ -2910,9 +2923,18 @@ function botaoDoPasso(it, p) {
   // fatiador
   const p1 = passosDoPreparo(it)[0];
   if (!p1.pronto) return '<button class="btn ghost" disabled style="opacity:.5;">Abrir</button>';
-  return '<button class="btn' + (p.pronto ? ' ghost' : '') + '" onclick="' + (cat
+  let botoes = '<button class="btn' + (p.pronto ? ' ghost' : '') + '" onclick="' + (cat
     ? 'solicitarAbrirFatiador(\'' + alvo + '\', \'preparar\')'
     : 'solicitarAbrirFatiadorProjeto(\'' + alvo + '\')') + '">' + (p.pronto ? 'Abrir de novo' : 'Abrir') + '</button>';
+  // Depois que abriu, o que a pessoa salvar no Bambu tem que ter como
+  // voltar (patch 52) — senão "Abrir de novo" apaga o trabalho dela.
+  if (p.pronto) {
+    const f = fonteDoPreparo(it);
+    botoes += '<div style="margin-top:6px;">' + linhaGuardarDeVolta(f, cat
+      ? 'solicitarGuardarDoFatiador(\'' + alvo + '\', \'preparar\')'
+      : 'solicitarGuardarDoFatiadorProjeto(\'' + alvo + '\', \'preparar\')', true) + '</div>';
+  }
+  return botoes;
 }
 
 // Pergunta o tempo e as gramas com o Bambu ainda aberto do lado. Hora e
@@ -3250,6 +3272,7 @@ async function renderPedidoDetalhe(id) {
   const emAndamento = items.some((it) => {
     const p = it.products;
     return p && (p.open_slicer_status === 'queued' || p.open_slicer_status === 'processing'
+      || p.save_back_status === 'queued'
       || p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   });
 
@@ -6206,6 +6229,10 @@ function renderFatiamentoBtns(p) {
     out += '<button class="btn ghost" onclick="solicitarAbrirFatiador(\'' + p.id + '\')">' +
       (p.open_slicer_status === 'error' ? '🔁 Tentar de novo' : '🖥️ Abrir no Fatiador') + '</button>';
   }
+  // A volta do caminho (patch 52): só depois de ter aberto uma vez.
+  if (p.open_slicer_status === 'done' || p.slicer_saved_at || p.save_back_status) {
+    out += linhaGuardarDeVolta(p, 'solicitarGuardarDoFatiador(\'' + p.id + '\')', true);
+  }
   const emAndamentoIA = p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing';
   if (p.ai_analysis_status === 'done') {
     out += '<button class="btn ghost" onclick="verAnaliseIA(\'' + p.id + '\')">🤖 Ver colinha</button>';
@@ -6327,7 +6354,7 @@ function desenharProdutos() {
 
   clearTimeout(_fatiamentoPollTimer);
   const emAndamento = produtosCache.some((p) =>
-    p.open_slicer_status === 'queued' ||
+    p.open_slicer_status === 'queued' || p.save_back_status === 'queued' ||
     p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   if (emAndamento && !el.classList.contains('hidden')) {
     _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
@@ -6425,6 +6452,79 @@ async function solicitarAbrirFatiador(productId, voltarPara) {
   // aqui, no momento em que a janela vai abrir.
   toast(lembreteDaPlaca());
   await redesenharDepoisDaFila(voltarPara, productId);
+}
+
+/* GUARDAR O QUE FOI SALVO NO BAMBU — a volta do caminho (patch 52)
+
+   Até 09/09/2026 o caminho do arquivo era só de ida: sistema → Bambu.
+   O "Salvar" do Bambu gravava no arquivo local do computador, e o
+   próximo "Abrir no Fatiador" baixava o original por cima. Uma tarde
+   inteira de ajustes na "Vovó Rosana" se perdeu assim.
+
+   Este botão manda o agente (do computador que abriu a peça) subir o
+   arquivo salvo pro sistema, no lugar do original. A partir daí o
+   arquivo do sistema É a versão da pessoa, e abre como está — sem
+   reaplicar a colinha, que jogaria fora justamente o que ela mudou. */
+function linhaGuardarDeVolta(x, onclick, compacto) {
+  const estilo = compacto ? ' style="font-size:11px; padding:3px 8px;"' : '';
+  let html = '<div style="display:flex; justify-content:space-between; align-items:center; gap:10px; flex-wrap:wrap;' + (compacto ? ' margin-top:4px;' : ' padding:8px 0;') + '">';
+  html += '<span style="font-size:' + (compacto ? '11' : '12') + 'px;">';
+  if (x.save_back_status === 'queued') {
+    html += '<span class="badge andando">guardando o que você salvou…</span>';
+  } else if (x.save_back_status === 'error') {
+    html += '<span style="color:#c0392b;">' + escapeHtml(x.save_back_error || 'não deu pra guardar') + '</span>';
+  } else if (x.slicer_saved_at) {
+    html += '<span style="color:#1f8a3b;">✅ A versão do sistema é a que você salvou no Bambu em ' + fmtDataHora(new Date(x.slicer_saved_at)) + '.</span>';
+  } else if (!compacto) {
+    html += '<span style="color:var(--muted);">Mexeu no Bambu e salvou (Ctrl+S)? Clique pra o sistema ficar com essa versão — senão, na próxima vez ela abre do jeito antigo.</span>';
+  }
+  html += '</span>';
+  if (x.save_back_status !== 'queued') {
+    html += '<button class="btn ghost"' + estilo + ' onclick="' + onclick + '">📥 ' +
+      (x.save_back_status === 'error' ? 'Tentar guardar de novo' : 'Guardar o que eu mudei no Bambu') + '</button>';
+  }
+  html += '</div>';
+  return html;
+}
+
+function pedidoDeGuardarDeVolta(pc) {
+  return {
+    save_back_status: 'queued', save_back_requested_at: new Date().toISOString(),
+    save_back_error: null, save_back_agent: pc,
+  };
+}
+
+const AVISO_GUARDANDO = 'Vou buscar neste computador o arquivo que você salvou no Bambu e guardar no sistema — leva alguns segundos.';
+
+async function solicitarGuardarDoFatiador(productId, voltarPara) {
+  const pc = await garantirComputador(() => solicitarGuardarDoFatiador(productId, voltarPara));
+  if (!pc) return;
+  const { error } = await SUPA.from('products').update(pedidoDeGuardarDeVolta(pc)).eq('id', productId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(AVISO_GUARDANDO);
+  await getProdutos(true);
+  await redesenharDepoisDaFila(voltarPara, productId);
+}
+
+async function solicitarGuardarDoFatiadorProjeto(lineItemId, voltarPara) {
+  const pc = await garantirComputador(() => solicitarGuardarDoFatiadorProjeto(lineItemId, voltarPara));
+  if (!pc) return;
+  const { error } = await SUPA.from('order_line_items').update(pedidoDeGuardarDeVolta(pc)).eq('id', lineItemId);
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(AVISO_GUARDANDO);
+  if (voltarPara === 'preparar' && _prepararItemId) { await desenharPreparar(); return; }
+  await renderProjetos();
+  if (_projetoGerenciarAberto === lineItemId) abrirGerenciarProjeto(lineItemId);
+}
+
+async function solicitarGuardarDoFatiadorParte(parteId) {
+  const pc = await garantirComputador(() => solicitarGuardarDoFatiadorParte(parteId));
+  if (!pc) return;
+  const { data: parte, error } = await SUPA.from('project_parts').update(pedidoDeGuardarDeVolta(pc))
+    .eq('id', parteId).select('order_line_item_id').maybeSingle();
+  if (error) { toast('Erro: ' + error.message); return; }
+  toast(AVISO_GUARDANDO);
+  if (parte) abrirGerenciarProjeto(parte.order_line_item_id);
 }
 
 function lembreteDaPlaca() {
