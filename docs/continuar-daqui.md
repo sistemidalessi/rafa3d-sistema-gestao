@@ -6,6 +6,33 @@ Onde as coisas pararam em **09/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
+## ⚠️ HOJE À NOITE, no computador de casa (o "Rafa") — anotado em 10/09
+
+Pedido do Anderson. Nesta ordem, naquele computador:
+
+1. **Atualizar o agente** — ele está com código de 30/08 (`46f6f19`) e
+   sem os patches 52 e 53 (guardar de volta do Bambu, colinha nova,
+   placa lisa):
+   ```
+   powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
+   powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
+   ```
+   O segundo só confere (Node, .env, agente de pé, vigia instalado) e diz
+   se falta algo.
+2. **Resgatar o projeto "Chaveiro GT3 RS"**, que hoje só existe no disco
+   daquele computador (o Histórico de impressão da conta Bambu guarda só
+   os G-codes fatiados, não o projeto editável — foi isso que travou o
+   Anderson no escritório em 10/09). No Bambu Studio: abrir o projeto →
+   **Arquivo → Salvar projeto como…** → guardar o `.3mf` atual.
+3. **Cadastrar o GT3 RS no sistema** (produto ou projeto) e **anexar esse
+   `.3mf`** ("+ Anexar"). A partir daí ele vive no Storage e qualquer
+   computador abre a versão mais nova com "Abrir no Fatiador".
+4. **Daqui pra frente, em qualquer peça:** mexeu no Bambu → Ctrl+S →
+   volta no sistema → **"📥 Guardar o que eu mudei no Bambu"**. Sem isso,
+   a edição fica presa no computador onde foi feita.
+
+Quando tudo isso estiver feito, apague esta seção.
+
 ## ✅ A colinha passou a decidir primeira camada, velocidade e suporte de verdade — 09/09 (patch 53)
 
 **O incidente:** a colinha da "Vovó Rosana" (árvore com folhas finas e
