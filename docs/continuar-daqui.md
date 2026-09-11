@@ -75,10 +75,23 @@ pra ele. **Ordem obrigatória, senão o catálogo cai do ar:**
    (`catalogo/assets/qr_catalogo.png`). O QR e os links antigos não
    quebram: o GitHub redireciona `github.io` → domínio.
 
-**Já feito (11/09):** o `index.html` na raiz do domínio manda quem não
-está logado pro `/catalogo/` — cliente que digita `rafa3ddalessi.com.br`
-cai na vitrine, não na tela de login. Quem tem sessão fica no sistema;
-pra logar num aparelho novo pelo domínio, `rafa3ddalessi.com.br/?entrar`.
+**Estado em 11/09, 15h:** passos 1, 2 e 4 FEITOS — DNS na UOL (A ×4 +
+`www`) propagado e conferido no 8.8.8.8, `CNAME` no repo, GitHub já
+servindo `https://rafa3ddalessi.com.br/catalogo/` com certificado e
+redirecionando o `github.io` antigo. Links trocados (`CATALOGO_URL_PUBLICA`,
+`og:*` do catálogo, textos de divulgação) e QR refeito
+(`catalogo/assets/qr_catalogo.png`, agora 900×900 — o antigo apontava pro
+`github.io` e continuaria funcionando pelo redirecionamento).
+**Falta só o passo 3, que é um clique do Anderson:** GitHub → repositório
+→ Settings → Pages → marcar **Enforce HTTPS**.
+Detalhe: o resolver da rede do escritório (pfSense) guardou resposta
+negativa do domínio e por umas horas o computador de lá pode não abrir
+`rafa3ddalessi.com.br` — celular e outras redes abrem normal.
+
+O `index.html` na raiz do domínio manda quem não está logado pro
+`/catalogo/` — cliente que digita `rafa3ddalessi.com.br` cai na vitrine,
+não na tela de login. Quem tem sessão fica no sistema; pra logar num
+aparelho novo pelo domínio, `rafa3ddalessi.com.br/?entrar`.
 
 ## 📸 Instagram da Rafa 3D — começou em 11/09
 

@@ -381,6 +381,23 @@ sai dali.
   voltar: site do Supabase → organização → **Billing / Usage**. Fotos de
   projeto e os `.3mf` de 20 MB que o agente baixa a cada tarefa também
   contam, só que muito menos.
+- **O site tem domínio próprio, e a raiz dele é o CATÁLOGO por
+  redirecionamento (11/09/2026).** `rafa3ddalessi.com.br` (UOL Host, CPF do
+  Anderson; `rafa3d.com.br` já tinha dono) aponta pro GitHub Pages via os
+  quatro `A` do GitHub + `CNAME www`, e o arquivo `CNAME` na raiz do repo
+  liga o domínio. Como Pages serve o repositório inteiro, a raiz do
+  domínio é o `index.html` — o sistema de gestão. Por isso há um script
+  no topo do `<head>`: no domínio, na raiz, **sem sessão do Supabase no
+  `localStorage`**, ele manda pra `/catalogo/`. Quem está logado fica;
+  aparelho novo entra por `?entrar`. Se um dia "o domínio abre o
+  catálogo em vez do sistema" virar reclamação, é isso — e é de
+  propósito. O endereço antigo (`sistemidalessi.github.io/...`)
+  redireciona pro domínio, então link e QR antigos continuam valendo.
+  **Ordem ao mexer em domínio:** DNS primeiro, conferir com `nslookup`
+  em `8.8.8.8` (o resolver da rede do escritório guarda resposta negativa
+  por um tempo e mente), e só então o `CNAME` — o GitHub redireciona o
+  `github.io` no instante em que o arquivo entra, e se o DNS não resolve
+  o catálogo cai do ar.
 - **Renumerar produto NÃO move a pasta dele no Storage.** `image_path` e
   `model_file_path` são caminhos completos gravados no banco, então
   continuam funcionando depois de trocar o código — mas a pasta fica com

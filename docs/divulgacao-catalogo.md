@@ -8,7 +8,7 @@ arte vive no repositório e o texto não pode ficar só na cabeça de alguém.
 | | |
 |---|---|
 | Pra enviar como imagem | [`catalogo/assets/arte-catalogo.png`](../catalogo/assets/arte-catalogo.png) — 1080×1080 |
-| Pelo celular | https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/assets/arte-catalogo.png |
+| Pelo celular | https://rafa3ddalessi.com.br/catalogo/assets/arte-catalogo.png |
 | Cartão do link | `arte-catalogo-link.jpg` — a mesma arte em versão leve |
 
 São dois arquivos de propósito. O PNG é o que se manda como foto. O JPEG é
@@ -29,7 +29,7 @@ porta-treco e muito mais, a partir de R$ 9,90.
 Escolhe a peça e a cor, o site calcula o frete e você paga por PIX na
 hora — o código já vem pronto, é só copiar e colar no banco.
 
-👉 https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/
+👉 https://rafa3ddalessi.com.br/catalogo/
 
 "Tenho 10 anos e essa loja é minha: eu desenho, imprimo, embalo e mando.
 Obrigado de coração por prestigiar o meu trabalho! 💙" — Rafa
@@ -90,7 +90,7 @@ peças prontas e posts. Divisão do trabalho, dita com todas as letras:
   Vasos, chaveiros, suportes, personalizados
   👇 catálogo com preço e PIX
   ```
-- **Link:** https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/
+- **Link:** https://rafa3ddalessi.com.br/catalogo/
 - **Destaques (stories fixos):** Catálogo · Peças prontas · Bastidores ·
   Como pedir
 - **Foto de perfil:** [`catalogo/assets/perfil-instagram.png`](../catalogo/assets/perfil-instagram.png)
