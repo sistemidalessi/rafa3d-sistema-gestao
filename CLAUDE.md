@@ -374,6 +374,14 @@ sai dali.
   `.card { overflow-x: auto }` — toda tabela larga rola dentro do cartão.
   Pra diagnosticar: `document.documentElement.scrollWidth` maior que
   `window.innerWidth` no celular é este bug, seja em que aba for.
+- **Cartão que vira imagem (html2canvas) não pode ter `<img>` com
+  `object-fit`.** O html2canvas 1.4.1 ignora `object-fit` e estica a
+  imagem pra caixa inteira — na prévia fica certo (o navegador recorta),
+  no PNG sai deformado. Foi o primeiro post do Instagram (11/09): vaso
+  largo. Nos três cartões que passam por ele (post do Instagram e os dois
+  orçamentos) a foto é FUNDO de bloco com `background-size: cover`, que
+  ele desenha certo. Cartão novo pra html2canvas segue a mesma regra; a
+  cartinha impressa (`@media print`) pode usar `<img>` normal.
 - **Fundo colorido some na impressão sem `print-color-adjust: exact`.** O
   navegador apaga fundo "pra economizar tinta", e a cartinha saía branca.
   Vale pra qualquer coisa desenhada pra imprimir.

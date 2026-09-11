@@ -3560,9 +3560,10 @@ async function preencherOrcamentoCard(lineItemId, janela) {
       '.eyebrow { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:11px; letter-spacing:.08em;' +
         ' text-transform:uppercase; color:#0061f7; background:rgba(255,255,255,.75); padding:4px 10px; border-radius:20px; }' +
       '.topo img { height:20px; width:auto; }' +
+      // Fotos como FUNDO, não <img>: o html2canvas ignora object-fit e
+      // estica (ver o post do Instagram, 11/09).
       '.foto-peca { margin:14px 18px 0; border-radius:16px; overflow:hidden; aspect-ratio:1;' +
-        ' border:3px solid #fff; box-shadow:0 8px 18px -8px rgba(11,23,51,.35); position:relative; z-index:2; background:#fff; }' +
-      '.foto-peca img { width:100%; height:100%; object-fit:cover; display:block; }' +
+        ' border:3px solid #fff; box-shadow:0 8px 18px -8px rgba(11,23,51,.35); position:relative; z-index:2; background:#fff center/cover no-repeat; }' +
       '.corpo { padding:14px 18px 18px; position:relative; z-index:2; }' +
       '.oi { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:19px; color:#0b1733; margin:0 0 6px; }' +
       '.item-nome { font-size:13.5px; color:#2b3652; margin:0 0 12px; line-height:1.4;' +
@@ -3575,7 +3576,8 @@ async function preencherOrcamentoCard(lineItemId, janela) {
       '.texto { font-size:12.5px; line-height:1.55; color:#2b3652; margin:0 0 14px;' +
         ' background:rgba(255,255,255,.66); border-radius:10px; padding:9px 10px; }' +
       '.rodape { display:flex; align-items:center; gap:9px; padding-top:12px; border-top:1px dashed #c9b077; }' +
-      '.rodape img { width:34px; height:34px; border-radius:50%; object-fit:cover; border:1.5px solid #fff;' +
+      '.rodape .retratinho { width:34px; height:34px; border-radius:50%; border:1.5px solid #fff;' +
+        ' background:#fff url("catalogo/assets/rafa_cartinha.png") center top/cover no-repeat;' +
         ' box-shadow:0 2px 5px rgba(11,23,51,.25); flex:none; }' +
       '.rodape-txt { font-size:11px; line-height:1.45; color:#5b6b87; }' +
       '.rodape-txt strong { color:#0b1733; display:block; font-size:11.5px; font-family:"Space Grotesk",sans-serif; }' +
@@ -3592,14 +3594,14 @@ async function preencherOrcamentoCard(lineItemId, janela) {
     '<div class="cartao" id="cartaoOrcamento">' +
       '<div class="decor-layer">' + cartinhaCamadaDecorativa() + '</div>' +
       '<div class="topo"><span class="eyebrow">Orçamento</span><img src="catalogo/assets/logo_clean.png" alt="RAFA 3D" crossorigin="anonymous"></div>' +
-      '<div class="foto-peca"><img src="' + escapeHtml(fotoPeca || 'catalogo/assets/rafa_cartinha.png') + '" alt="a peça" crossorigin="anonymous"></div>' +
+      '<div class="foto-peca" role="img" aria-label="a peça" style="background-image:url(&quot;' + escapeHtml(fotoPeca || 'catalogo/assets/rafa_cartinha.png') + '&quot;)"></div>' +
       '<div class="corpo">' +
         '<p class="oi">Oi' + (primeiroNome ? ', ' + escapeHtml(primeiroNome) : '') + '!</p>' +
         '<p class="item-nome">Segue o orçamento que você pediu pra <strong>' + escapeHtml(li.custom_description || 'sua peça') + '</strong>.</p>' +
         '<div class="preco-bloco"><div class="preco-rotulo">Fica</div><div class="preco-valor">' + fmtMoney(li.unit_price) + '</div></div>' +
         '<p class="texto">Cada peça eu desenho, fatio e imprimo com as minhas próprias mãos — tenho só <strong>10 anos</strong>, mas cada encomenda é trabalho de verdade pra mim. Fico muito feliz em fazer essa pra você! 💙</p>' +
         '<div class="rodape">' +
-          '<img src="catalogo/assets/rafa_cartinha.png" alt="Rafa" crossorigin="anonymous">' +
+          '<div class="retratinho" role="img" aria-label="Rafa"></div>' +
           '<div class="rodape-txt"><strong>Rafael Dalessi · 10 anos</strong>WhatsApp (11) 98719-0466</div>' +
         '</div>' +
       '</div>' +
@@ -3769,9 +3771,12 @@ async function preencherPostInstagram(productId, janela) {
       '.topo { position:relative; z-index:2; display:flex; justify-content:space-between; align-items:center; padding:14px 16px 0; }' +
       '.topo img { height:18px; width:auto; }' +
       '.eyebrow { font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:9px; letter-spacing:2.2px; color:#6fb0ff; text-transform:uppercase; }' +
+      // A foto é FUNDO do bloco, não <img>: o html2canvas ignora
+      // `object-fit: cover` e estica a imagem pra caixa inteira — na
+      // prévia ficava certo e no PNG o vaso saía largo (primeiro post,
+      // 11/09). `background-size: cover` ele desenha do jeito certo.
       '.foto { position:relative; z-index:2; margin:12px 16px 0; height:196px; border-radius:16px; overflow:hidden;' +
-        ' border:3px solid rgba(255,255,255,.92); background:#fff; box-shadow:0 10px 24px -10px rgba(0,0,0,.6); }' +
-      '.foto img { width:100%; height:100%; object-fit:cover; display:block; }' +
+        ' border:3px solid rgba(255,255,255,.92); background:#fff center/cover no-repeat; box-shadow:0 10px 24px -10px rgba(0,0,0,.6); }' +
       '.corpo { position:relative; z-index:2; padding:11px 16px 0; flex:1; display:flex; flex-direction:column; }' +
       '.nome { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:18px; line-height:1.12; letter-spacing:-.2px;' +
         ' display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }' +
@@ -3798,7 +3803,7 @@ async function preencherPostInstagram(productId, janela) {
       '<div class="brilho"></div><div class="brilho2"></div>' +
       '<div class="topo"><img src="' + escapeHtml(logoSrc) + '" alt="RAFA 3D" crossorigin="anonymous">' +
         '<span class="eyebrow">' + escapeHtml((numeroDaSecao ? numeroDaSecao + ' · ' : '') + (categoria || 'Catálogo')) + '</span></div>' +
-      '<div class="foto"><img src="' + escapeHtml(fotoSrc) + '" alt="' + escapeHtml(p.name) + '" crossorigin="anonymous"></div>' +
+      '<div class="foto" role="img" aria-label="' + escapeHtml(p.name) + '" style="background-image:url(&quot;' + escapeHtml(fotoSrc) + '&quot;)"></div>' +
       '<div class="corpo">' +
         '<div class="nome">' + escapeHtml(p.name) + '</div>' +
         '<div class="linha">' +
@@ -3932,7 +3937,7 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
     const qtdTxt = it.quantity > 1 ? ' <span style="color:#8a93a8;">×' + it.quantity + '</span>' : '';
     const foto = fotos[i];
     return '<div class="item-linha">' +
-      (foto ? '<img class="item-foto" src="' + escapeHtml(foto) + '" alt="" crossorigin="anonymous">' : '<div class="item-foto item-foto-vazia"></div>') +
+      (foto ? '<div class="item-foto" style="background-image:url(&quot;' + escapeHtml(foto) + '&quot;)"></div>' : '<div class="item-foto item-foto-vazia"></div>') +
       '<span class="nome">' + escapeHtml(nomeItem(it)) + qtdTxt + '</span>' +
       '<span class="valor">' + fmtMoney(it.unit_price * it.quantity) + '</span></div>';
   }).join('');
@@ -3967,8 +3972,10 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
       '.itens-lista { background:rgba(255,255,255,.7); border-radius:10px; padding:4px 10px; margin:0 0 12px; }' +
       '.item-linha { display:flex; align-items:center; gap:9px; font-size:12.5px; padding:7px 0; border-bottom:1px dashed #d8dce6; }' +
       '.item-linha:last-child { border-bottom:none; }' +
-      '.item-foto { width:36px; height:36px; border-radius:9px; object-fit:cover; flex:none;' +
-        ' border:1px solid #fff; box-shadow:0 1px 4px rgba(11,23,51,.18); background:#fff; }' +
+      // Fotos como FUNDO, não <img>: o html2canvas ignora object-fit e
+      // estica (ver o post do Instagram, 11/09).
+      '.item-foto { width:36px; height:36px; border-radius:9px; flex:none;' +
+        ' border:1px solid #fff; box-shadow:0 1px 4px rgba(11,23,51,.18); background:#fff center/cover no-repeat; }' +
       '.item-foto-vazia { background:#eef0f4; }' +
       '.item-linha .nome { flex:1; color:#2b3652; }' +
       '.item-linha .valor { color:#0b1733; font-weight:700; white-space:nowrap; }' +
@@ -3979,7 +3986,8 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
       '.texto { font-size:12.5px; line-height:1.55; color:#2b3652; margin:0 0 14px;' +
         ' background:rgba(255,255,255,.66); border-radius:10px; padding:9px 10px; }' +
       '.rodape { display:flex; align-items:center; gap:9px; padding-top:12px; border-top:1px dashed #c9b077; }' +
-      '.rodape img { width:34px; height:34px; border-radius:50%; object-fit:cover; border:1.5px solid #fff;' +
+      '.rodape .retratinho { width:34px; height:34px; border-radius:50%; border:1.5px solid #fff;' +
+        ' background:#fff url("catalogo/assets/rafa_cartinha.png") center top/cover no-repeat;' +
         ' box-shadow:0 2px 5px rgba(11,23,51,.25); flex:none; }' +
       '.rodape-txt { font-size:11px; line-height:1.45; color:#5b6b87; }' +
       '.rodape-txt strong { color:#0b1733; display:block; font-size:11.5px; font-family:"Space Grotesk",sans-serif; }' +
@@ -4002,7 +4010,7 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
         '<div class="preco-bloco"><div class="preco-rotulo">Total</div><div class="preco-valor">' + fmtMoney(total) + '</div></div>' +
         '<p class="texto">Cada peça eu desenho, fatio e imprimo com as minhas próprias mãos — tenho só <strong>10 anos</strong>, mas cada encomenda é trabalho de verdade pra mim. Fico muito feliz em fazer essas pra você! 💙</p>' +
         '<div class="rodape">' +
-          '<img src="catalogo/assets/rafa_cartinha.png" alt="Rafa" crossorigin="anonymous">' +
+          '<div class="retratinho" role="img" aria-label="Rafa"></div>' +
           '<div class="rodape-txt"><strong>Rafael Dalessi · 10 anos</strong>WhatsApp (11) 98719-0466</div>' +
         '</div>' +
       '</div>' +
