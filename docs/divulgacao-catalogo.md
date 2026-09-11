@@ -93,8 +93,16 @@ peças prontas e posts. Divisão do trabalho, dita com todas as letras:
 - **Link:** https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/
 - **Destaques (stories fixos):** Catálogo · Peças prontas · Bastidores ·
   Como pedir
-- **Foto de perfil:** `catalogo/assets/logo_clean.png` sobre fundo
-  `#000817` (o mesmo da arte do catálogo).
+- **Foto de perfil:** [`catalogo/assets/perfil-instagram.png`](../catalogo/assets/perfil-instagram.png)
+  (1080×1080 — o Instagram corta em círculo sozinho) e a versão redonda
+  com fundo transparente, [`perfil-redondo.png`](../catalogo/assets/perfil-redondo.png),
+  pra WhatsApp Business, etiqueta e cartão. Geradas pelo Blender em
+  segundo plano (`blender --background --python`): a `logo_clean.png`
+  **não tem transparência** — vem com fundo escuro próprio —, então o
+  script recorta esse fundo pela cor do canto antes de assentar a logo no
+  degradê `#000817 → #0061f7`. Refazer = rodar
+  [`docs/gerar-perfil-instagram.py`](gerar-perfil-instagram.py) de novo
+  (o comando está no cabeçalho dele); não editar o PNG à mão.
 
 ### Ritmo
 
