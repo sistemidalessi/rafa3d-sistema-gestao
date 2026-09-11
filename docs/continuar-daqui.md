@@ -6,9 +6,11 @@ Onde as coisas pararam em **09/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ HOJE À NOITE, em casa — anotado em 10/09
+## ⚠️ PENDENTE — na próxima vez em casa (anotado em 10/09, ainda não feito em 11/09)
 
 Pedido do Anderson. Dois computadores, tarefas diferentes em cada um.
+**Não apague enquanto não for feito** — em 10/09 ele não chegou a ligar
+o computador de casa, e a lista continua valendo inteira.
 
 ### No computador do Anderson (onde o GT3 RS foi editado no Bambu)
 
