@@ -83,14 +83,17 @@ peças prontas e posts. Divisão do trabalho, dita com todas as letras:
   · `rafa3d.camadaporcamada`
 - **Nome:** Rafa 3D · Impressão 3D
 - **Categoria:** Loja de presentes (ou "Serviço de impressão")
-- **Bio** (cabe em 150):
+- **Bio** (133 caracteres — o limite é 150; a versão com a linha
+  "Vasos, chaveiros, suportes…" passava de 170 e não cabia):
   ```
   Peças impressas em 3D, camada por camada 💙
   Tenho 10 anos e essa loja é minha: eu desenho, imprimo e mando.
-  Vasos, chaveiros, suportes, personalizados
   👇 catálogo com preço e PIX
   ```
-- **Link:** https://rafa3ddalessi.com.br/catalogo/
+- **Pronomes:** em branco (é loja, não pessoa). **Banners:** nenhum.
+- **Links** (campo próprio, fora da bio): 1) `https://rafa3ddalessi.com.br/catalogo/`
+  com título "Catálogo com preço e PIX"; 2) `https://wa.me/5511987190466`
+  com título "Falar no WhatsApp".
 - **Destaques (stories fixos):** Catálogo · Peças prontas · Bastidores ·
   Como pedir
 - **Foto de perfil:** [`catalogo/assets/perfil-instagram.png`](../catalogo/assets/perfil-instagram.png)
