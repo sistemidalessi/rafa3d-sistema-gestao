@@ -46,6 +46,40 @@ feita.
 
 Quando tudo isso estiver feito, apague esta seção.
 
+## 🌐 Domínio rafa3ddalessi.com.br — registrado em 11/09 (UOL Host, CPF do Anderson)
+
+`rafa3d.com.br` já tinha dono. O escolhido casa com o Instagram
+(`@rafa3d.dalessi`). O site continua no GitHub Pages; o domínio só aponta
+pra ele. **Ordem obrigatória, senão o catálogo cai do ar:**
+
+1. **DNS na UOL Host** (painel de domínios → Gerenciar DNS / Zona DNS),
+   feito pelo Anderson:
+   - `A` · nome `@` (ou vazio) → `185.199.108.153`
+   - `A` · `@` → `185.199.109.153`
+   - `A` · `@` → `185.199.110.153`
+   - `A` · `@` → `185.199.111.153`
+   - `CNAME` · `www` → `sistemidalessi.github.io`
+   Apagar qualquer `A`/`CNAME` que a UOL tenha criado sozinha pra `@` e
+   `www` (página de "domínio registrado"). Propagação: minutos a horas.
+2. **Só depois que `nslookup rafa3ddalessi.com.br` devolver os IPs do
+   GitHub**, criar o arquivo `CNAME` na raiz do repositório com uma
+   linha, `rafa3ddalessi.com.br`, e dar push. Antes disso NÃO: o GitHub
+   passa a redirecionar o endereço `github.io` pro domínio no mesmo
+   instante em que o CNAME entra — se o DNS ainda não resolve, todo link
+   do catálogo que já circula morre até resolver.
+3. Em Settings → Pages do repositório, marcar **Enforce HTTPS** (aparece
+   depois que o certificado sai, uns minutos após o passo 2).
+4. Aí trocar os links: `CATALOGO_URL_PUBLICA` no `index.html`, `og:url`/
+   `og:image` no `catalogo/index.html`, o texto em
+   `docs/divulgacao-catalogo.md`, a bio do Instagram e o QR da cartinha
+   (`catalogo/assets/qr_catalogo.png`). O QR e os links antigos não
+   quebram: o GitHub redireciona `github.io` → domínio.
+
+**Já feito (11/09):** o `index.html` na raiz do domínio manda quem não
+está logado pro `/catalogo/` — cliente que digita `rafa3ddalessi.com.br`
+cai na vitrine, não na tela de login. Quem tem sessão fica no sistema;
+pra logar num aparelho novo pelo domínio, `rafa3ddalessi.com.br/?entrar`.
+
 ## 📸 Instagram da Rafa 3D — começou em 11/09
 
 O botão **"📸 Post pro Instagram"** (Produtos → ⚙️ Gerenciar) gera a arte

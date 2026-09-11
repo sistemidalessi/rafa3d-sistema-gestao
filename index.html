@@ -4,6 +4,28 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafa 3D — Sistema de Gestão</title>
+<script>
+  // Domínio próprio (rafa3ddalessi.com.br, registrado em 11/09/2026): a
+  // raiz do domínio é este arquivo, que é o sistema de gestão — mas quem
+  // digita o domínio é cliente, e cliente tem que cair no CATÁLOGO. Então
+  // na raiz do domínio, quem nunca entrou no sistema vai pra /catalogo/;
+  // quem já está logado (tem sessão do Supabase guardada) fica aqui. Pra
+  // logar num aparelho novo pelo domínio, abra com ?entrar no fim.
+  // No endereço antigo do GitHub nada muda.
+  (function () {
+    try {
+      var h = location.hostname;
+      if (!/(^|\.)rafa3ddalessi\.com\.br$/.test(h)) return;
+      if (location.pathname !== '/' && location.pathname !== '/index.html') return;
+      if (/[?&]entrar\b/.test(location.search)) return;
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (/^sb-.*-auth-token$/.test(k)) return;
+      }
+      location.replace('/catalogo/');
+    } catch (e) { /* sem localStorage: segue pro sistema */ }
+  })();
+</script>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%96%A8%EF%B8%8F%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
