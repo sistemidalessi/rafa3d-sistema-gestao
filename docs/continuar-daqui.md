@@ -116,6 +116,31 @@ em [`docs/divulgacao-catalogo.md`](divulgacao-catalogo.md), seção
 **Próximo post:** bastidor — foto do Rafa na impressora com uma peça
 saindo, ou vídeo de 10-20 s da impressão rodando (vira Reel). O sistema
 não gera esse; a pessoa manda a foto/vídeo e a legenda sai na hora.
+O Anderson vai fazer de casa, onde está a impressora. Ideias que
+não pedem produção: vídeo de 15 s da impressora de perto com o Rafa
+tirando a peça no final; foto dele com a peça recém-saída, ainda com
+suporte; "lapso de tempo" da câmera do celular numa impressão inteira;
+a mesa cheia de pedidos embalados antes da entrega.
+
+**Divulgar a conta nos grupos** (mesmos grupos que receberam o catálogo),
+com a foto `catalogo/assets/perfil-redondo.png` junto:
+
+```
+Oi, gente! 👋 A Rafa 3D agora tem Instagram!
+
+Lá eu vou mostrar as peças que estou imprimindo, os bastidores da impressora
+e as novidades do catálogo antes de todo mundo.
+
+📸 https://instagram.com/rafa3d.dalessi
+
+Me segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
+— Rafa, 10 anos
+```
+
+Seguir gente: 20-30 por dia, começando por quem já conhece a loja; conta
+nova que segue 100 de uma vez leva bloqueio temporário. Nunca seguir e
+deixar de seguir pra inflar número, nem mandar mensagem direta oferecendo
+produto.
 Depois: peça entregue (precisa de foto da peça pronta, que o sistema hoje
 não guarda). Agendamento de graça, quando o ritmo apertar: Meta Business
 Suite (pede uma Página do Facebook ligada à conta).
