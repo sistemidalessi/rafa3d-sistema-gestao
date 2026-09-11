@@ -99,9 +99,26 @@ O botão **"📸 Post pro Instagram"** (Produtos → ⚙️ Gerenciar) gera a ar
 1080×1080 e a legenda com link e hashtags; publicar fica com o Anderson.
 Textos da conta (bio, @, destaques), ritmo e a divisão do trabalho estão
 em [`docs/divulgacao-catalogo.md`](divulgacao-catalogo.md), seção
-"Instagram". Próximos passos naturais, quando pedirem: post de peça
-entregue (precisa de foto da peça pronta, que o sistema hoje não guarda)
-e post de bastidor.
+"Instagram".
+
+**Onde ficou em 11/09, fim do dia:**
+
+- Conta criada: **@rafa3d.dalessi**, perfil profissional, bio, foto e os
+  dois links (catálogo e WhatsApp) preenchidos.
+- Na grade: a arte do catálogo, **fixada** no topo, e o primeiro post de
+  peça (Vaso Moderno, R$ 25,90), feito pelo botão do sistema no celular.
+- Dois defeitos achados nesse primeiro uso, os dois corrigidos e no ar:
+  no celular o "⚙️ Gerenciar" abria a janela fora da tela (tabela larga
+  esticava a página), e a foto do post saía deformada (o html2canvas
+  ignora `object-fit`; o primeiro post foi excluído e refeito certo).
+  Detalhe dos dois nas pegadinhas do `CLAUDE.md`.
+
+**Próximo post:** bastidor — foto do Rafa na impressora com uma peça
+saindo, ou vídeo de 10-20 s da impressão rodando (vira Reel). O sistema
+não gera esse; a pessoa manda a foto/vídeo e a legenda sai na hora.
+Depois: peça entregue (precisa de foto da peça pronta, que o sistema hoje
+não guarda). Agendamento de graça, quando o ritmo apertar: Meta Business
+Suite (pede uma Página do Facebook ligada à conta).
 
 ## ✅ A colinha passou a decidir primeira camada, velocidade e suporte de verdade — 09/09 (patch 53)
 
