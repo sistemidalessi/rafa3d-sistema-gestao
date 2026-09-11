@@ -123,7 +123,8 @@ suporte; "lapso de tempo" da câmera do celular numa impressão inteira;
 a mesa cheia de pedidos embalados antes da entrega.
 
 **Divulgar a conta nos grupos** (mesmos grupos que receberam o catálogo),
-com a foto `catalogo/assets/perfil-redondo.png` junto:
+com o convite `catalogo/assets/convite-instagram.jpg` junto (retrato do
+Rafa + logo + @; a logo redonda sozinha foi mandada uma vez e ficou fria):
 
 ```
 Oi, gente! 👋 A Rafa 3D agora tem Instagram!

@@ -115,6 +115,33 @@ peças prontas e posts. Divisão do trabalho, dita com todas as letras:
   [`docs/gerar-perfil-instagram.py`](gerar-perfil-instagram.py) de novo
   (o comando está no cabeçalho dele); não editar o PNG à mão.
 
+### Convite pros grupos de WhatsApp
+
+A logo redonda sozinha diz "é uma loja"; o que faz a pessoa seguir é a
+cara do Rafa. Por isso o convite que vai nos grupos é
+[`catalogo/assets/convite-instagram.jpg`](../catalogo/assets/convite-instagram.jpg)
+(1080×1350, retrato + logo + @, no azul do catálogo; o PNG está ao lado),
+gerado por [`docs/gerar-convite-instagram.py`](gerar-convite-instagram.py)
+no Blender em segundo plano. Pra trocar por uma foto de verdade dele,
+mude `FOTO` no script e rode de novo — qualquer proporção serve, ela é
+recortada pra preencher o quadro. Pelo celular:
+https://rafa3ddalessi.com.br/catalogo/assets/convite-instagram.jpg
+
+Texto que vai junto (o link precisa do `instagram.com/` na frente, só o
+@ não vira link no WhatsApp):
+
+```
+Oi, gente! 👋 A Rafa 3D agora tem Instagram!
+
+Lá eu vou mostrar as peças que estou imprimindo, os bastidores da impressora
+e as novidades do catálogo antes de todo mundo.
+
+📸 https://instagram.com/rafa3d.dalessi
+
+Me segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
+— Rafa, 10 anos
+```
+
 ### Ritmo
 
 3 posts por semana: uma peça do catálogo (o botão), um bastidor
