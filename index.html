@@ -3825,7 +3825,10 @@ async function preencherPostInstagram(productId, janela) {
         'document.getElementById("legenda").value = montarLegenda();' +
         'try { localStorage.setItem(CHAVE, a); } catch (e) {}' +
       '}' +
-      'try { document.getElementById("igHandle").value = localStorage.getItem(CHAVE) || ""; } catch (e) {}' +
+      // A conta existe desde 11/09/2026: @rafa3d.dalessi. Vem preenchido
+      // e continua editável, porque quem gera o post pode ser o Rafa num
+      // aparelho que nunca digitou nada.
+      'try { document.getElementById("igHandle").value = localStorage.getItem(CHAVE) || "@rafa3d.dalessi"; } catch (e) { document.getElementById("igHandle").value = "@rafa3d.dalessi"; }' +
       'document.getElementById("igHandle").addEventListener("input", atualizar);' +
       'atualizar();' +
       'async function gerarImagem() {' +
