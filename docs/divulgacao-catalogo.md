@@ -41,12 +41,20 @@ nenhum. O botão desenhado na arte é convite, não link.
 
 ## Se a arte mudar
 
-A arte é gerada por script, não editada à mão. Ele monta o fundo, encaixa
-as fotos das peças (aparando a borda vazia de cada uma pra a figura não
-ficar pequena), recorta o retrato e escreve os textos.
+A arte foi gerada por script, não editada à mão — mas **esse gerador não
+está no repositório** (só o resultado). O que existe é
+[`docs/atualizar-rodape-arte-catalogo.py`](atualizar-rodape-arte-catalogo.py),
+que troca só o **link do rodapé**: apaga a faixa do texto antigo
+(interpolando o fundo, sem deixar retângulo) e renderiza o texto novo com
+o Blender em segundo plano. Foi assim que o rodapé passou de
+`sistemidalessi.github.io/...` pra `rafa3ddalessi.com.br` em 11/09/2026.
+Ele parte de `arte-catalogo-original.png` (a arte sem rodapé novo, guardada
+ao lado) e grava o PNG e o JPEG leve de uma vez.
 
-Ao trocar a arte, refaça também o JPEG leve e confira que o `og:image` no
-[`catalogo/index.html`](../catalogo/index.html) continua apontando pra ele.
+Pra mudar qualquer outra coisa na arte (fotos, texto, retrato), é refazer
+a arte inteira em outra ferramenta — e depois rodar o script do rodapé de
+novo. Ao trocar a arte, confira que o `og:image` no
+[`catalogo/index.html`](../catalogo/index.html) continua apontando pro JPEG.
 
 ## O que a mensagem promete, e por isso não pode mudar sozinho
 
