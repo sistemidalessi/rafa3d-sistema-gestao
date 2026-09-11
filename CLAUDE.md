@@ -363,6 +363,17 @@ sai dali.
   Pra diagnosticar rápido: compare o DOM da seção nova com o de uma que
   funciona. Mesma casca e zero cards significa que a lista não chegou ao
   template, não que a consulta falhou.
+- **Tabela larga fora de `.tabela-rola` alarga o documento no celular, e a
+  modal some pra fora da tela.** Em 11/09 o "⚙️ Gerenciar" da aba Produtos
+  "não fazia nada" no celular: o fundo escurecia e a janela não aparecia.
+  A tabela de Produtos não estava dentro de `.tabela-rola`, então o
+  documento ficava com ~1900px de largura; a modal é `position: fixed`
+  centralizada no viewport de **layout** (não no visual), e nascia em
+  `left ≈ 580px` numa tela de 375. Não é bug de JavaScript — o clique
+  funcionava, a modal existia, só estava fora do enquadramento. Correção:
+  `.card { overflow-x: auto }` — toda tabela larga rola dentro do cartão.
+  Pra diagnosticar: `document.documentElement.scrollWidth` maior que
+  `window.innerWidth` no celular é este bug, seja em que aba for.
 - **Fundo colorido some na impressão sem `print-color-adjust: exact`.** O
   navegador apaga fundo "pra economizar tinta", e a cartinha saía branca.
   Vale pra qualquer coisa desenhada pra imprimir.

@@ -126,6 +126,12 @@
   .card {
     background: #fff; border: 1px solid var(--border); border-radius: 14px; padding: 18px;
     margin-bottom: 16px; box-shadow: 0 6px 18px rgba(11,23,51,0.06);
+    /* Tabela larga dentro do cartão rola AQUI, não na página. Sem isto o
+       documento fica mais largo que a tela do celular, e a modal (fixa,
+       centralizada no "viewport de layout") nasce fora da tela: o fundo
+       escurece e a janela não aparece — foi o "Gerenciar não faz nada"
+       de 11/09, na aba Produtos. */
+    overflow-x: auto;
   }
   .empty { color: var(--muted); font-size: 13px; padding: 20px 0; }
 
