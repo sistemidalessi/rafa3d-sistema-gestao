@@ -46,6 +46,16 @@ feita.
 
 Quando tudo isso estiver feito, apague esta seção.
 
+## 📸 Instagram da Rafa 3D — começou em 11/09
+
+O botão **"📸 Post pro Instagram"** (Produtos → ⚙️ Gerenciar) gera a arte
+1080×1080 e a legenda com link e hashtags; publicar fica com o Anderson.
+Textos da conta (bio, @, destaques), ritmo e a divisão do trabalho estão
+em [`docs/divulgacao-catalogo.md`](divulgacao-catalogo.md), seção
+"Instagram". Próximos passos naturais, quando pedirem: post de peça
+entregue (precisa de foto da peça pronta, que o sistema hoje não guarda)
+e post de bastidor.
+
 ## ✅ A colinha passou a decidir primeira camada, velocidade e suporte de verdade — 09/09 (patch 53)
 
 **O incidente:** a colinha da "Vovó Rosana" (árvore com folhas finas e

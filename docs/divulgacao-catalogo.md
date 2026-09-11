@@ -58,3 +58,49 @@ Ao trocar a arte, refaça também o JPEG leve e confira que o `og:image` no
 - **"escolhe a peça e a cor"** — o seletor de cor fica no checkout
 
 Mexeu em algum desses, confira a mensagem antes de divulgar de novo.
+
+## Instagram — 11/09/2026
+
+Decisão do Anderson: ter um Instagram da Rafa 3D com o link do catálogo,
+peças prontas e posts. Divisão do trabalho, dita com todas as letras:
+
+- **Criar a conta e publicar é da pessoa.** Não existe caminho gratuito e
+  confiável pra postar no Instagram por API, e conta é coisa dela.
+- **Produzir o post é do sistema.** Em Produtos → ⚙️ Gerenciar → **📸 Post
+  pro Instagram**: abre a imagem quadrada (1080×1080, identidade do
+  catálogo — fundo `#000817`, azul `#0061f7`, Space Grotesk) com foto,
+  nome, preço e seção, mais a legenda pronta (link direto pra seção da
+  peça no catálogo + hashtags da categoria). "Mandar a imagem" usa o
+  compartilhar do celular; "Copiar legenda" cola no post. O @ digitado
+  fica salvo no aparelho e entra no rodapé da arte.
+  Mesma mecânica da cartinha (html2canvas + Web Share API), em
+  `preencherPostInstagram()`. Categoria nova entra em `SECAO_DO_CATALOGO`
+  e `HASHTAGS_DA_CATEGORIA` além dos cinco lugares de sempre.
+
+### Textos da conta (pra criar como "Profissional → Empresa")
+
+- **Nome de usuário** (o primeiro livre): `rafa3d.dalessi` · `rafa3d.oficial`
+  · `rafa3d.camadaporcamada`
+- **Nome:** Rafa 3D · Impressão 3D
+- **Categoria:** Loja de presentes (ou "Serviço de impressão")
+- **Bio** (cabe em 150):
+  ```
+  Peças impressas em 3D, camada por camada 💙
+  Tenho 10 anos e essa loja é minha: eu desenho, imprimo e mando.
+  Vasos, chaveiros, suportes, personalizados
+  👇 catálogo com preço e PIX
+  ```
+- **Link:** https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/
+- **Destaques (stories fixos):** Catálogo · Peças prontas · Bastidores ·
+  Como pedir
+- **Foto de perfil:** `catalogo/assets/logo_clean.png` sobre fundo
+  `#000817` (o mesmo da arte do catálogo).
+
+### Ritmo
+
+3 posts por semana: uma peça do catálogo (o botão), um bastidor
+(impressora rodando, peça saindo da mesa — em vídeo/Reel vale mais que
+foto, e o Rafael operando a máquina é o melhor conteúdo que a marca tem),
+uma peça entregue com a história do cliente. Agendar de graça no **Meta
+Business Suite**. Começar pelo que já tem foto boa — post sem foto boa
+não salva ninguém.

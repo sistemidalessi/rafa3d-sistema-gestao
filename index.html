@@ -3629,6 +3629,217 @@ async function preencherOrcamentoCard(lineItemId, janela) {
   janela.document.close();
 }
 
+/* ====== POST PRO INSTAGRAM (PRODUTO) ======
+   Mesma mecânica da cartinha e do orçamento (html2canvas + Web Share
+   API), agora virada pra fora: um clique num produto gera a imagem
+   quadrada (1080×1080) com a foto, o nome e o preço, na identidade do
+   catálogo (fundo #000817, azul #0061f7, Space Grotesk), mais a legenda
+   pronta com o link e as hashtags. A pessoa compartilha a imagem pro
+   Instagram pelo celular e cola a legenda — o Instagram não aceita
+   legenda junto do arquivo, por isso o botão de copiar é separado.
+
+   Publicar mesmo fica com a pessoa, de propósito: não existe caminho
+   gratuito e confiável pra postar no Instagram por API, e a conta é dela.
+   O que dá pra automatizar é o trabalho de fazer o post — e é isso que
+   transforma "alimentar o Instagram" num clique depois de cada peça. */
+
+const CATALOGO_URL_PUBLICA = 'https://sistemidalessi.github.io/rafa3d-sistema-gestao/catalogo/';
+
+// Categoria -> âncora da seção no catálogo (ids das <div id="sec-..."> em
+// catalogo/index.html). Categoria nova precisa entrar aqui também.
+const SECAO_DO_CATALOGO = {
+  products: 'sec-vasos', cars: 'sec-brinquedos', holders: 'sec-portacards', utils: 'sec-suportes',
+  wines: 'sec-vinhos', keychains: 'sec-chaveiros', phoneStands: 'sec-celular', deskOrganizers: 'sec-mesa',
+  books: 'sec-livros', minis: 'sec-minis', garden: 'sec-jardim', jewelry: 'sec-portajoias', signs: 'sec-placas',
+};
+
+const HASHTAGS_BASE = ['impressao3d', 'impressão3d', 'rafa3d', 'feitoamao', 'presentecriativo', 'decoracao3d', 'bambulab', '3dprinting', 'empreendedorismoinfantil'];
+const HASHTAGS_DA_CATEGORIA = {
+  products: ['vasos', 'vaso3d', 'decoracaodecasa', 'plantas'],
+  cars: ['actionfigure', 'colecionaveis', 'brinquedos', 'expositor'],
+  holders: ['portacards', 'tcg', 'pokemon', 'cardgame'],
+  utils: ['organizacao', 'utilidades', 'casaorganizada'],
+  wines: ['vinho', 'bar', 'portavinho', 'presenteparahomem'],
+  keychains: ['chaveiro', 'chaveiros', 'chaveiropersonalizado', 'lembrancinha'],
+  phoneStands: ['suporteparacelular', 'setup', 'homeoffice'],
+  deskOrganizers: ['organizadordemesa', 'setup', 'homeoffice', 'escritorio'],
+  books: ['livros', 'leitura', 'bookstagram', 'marcadordepagina'],
+  minis: ['miniaturas', 'colecionaveis', 'geek', 'nerd'],
+  garden: ['jardim', 'plantas', 'jardinagem', 'suculentas'],
+  jewelry: ['portajoias', 'organizacao', 'presenteparamulher'],
+  signs: ['placas', 'quadros', 'decoracao', 'personalizado'],
+};
+
+function abrirPostInstagram(productId) {
+  const janela = window.open('', '_blank');
+  if (!janela) { toast('O navegador bloqueou a janela. Libere os pop-ups pra ver o post.'); return; }
+  janela.document.write('<p style="font-family:sans-serif;padding:20px;color:#666;">Montando o post…</p>');
+  preencherPostInstagram(productId, janela);
+}
+
+async function preencherPostInstagram(productId, janela) {
+  let p = produtosCache.find((x) => x.id === productId);
+  if (!p) p = await q(SUPA.from('products').select('*').eq('id', productId).maybeSingle());
+  if (!p) { janela.document.body.textContent = 'Não achei esse produto.'; return; }
+
+  const categoria = CATEGORY_LABELS[p.category] || '';
+  const secao = SECAO_DO_CATALOGO[p.category];
+  const linkCatalogo = CATALOGO_URL_PUBLICA + (secao ? '#' + secao : '');
+  const hashtags = HASHTAGS_BASE.concat(HASHTAGS_DA_CATEGORIA[p.category] || []).map((h) => '#' + h).join(' ');
+  const codigo = String(p.catalog_code || '');
+  const numeroDaSecao = codigo.split('.')[0] || '';
+  // Endereços absolutos, resolvidos a partir desta página: a janela nova
+  // nasce em branco e nem sempre herda a base pra caminho relativo — e
+  // uma imagem que não carrega vira um buraco silencioso no PNG. Se a
+  // página não tiver uma base usável (aberta como data:, por exemplo),
+  // fica o caminho como está, que é o que a cartinha sempre usou.
+  const absolutoDaqui = (caminho) => { try { return new URL(caminho, location.href).href; } catch (e) { return caminho; } };
+  const logoSrc = absolutoDaqui('catalogo/assets/logo_clean.png');
+  const fotoSrc = absolutoDaqui(produtoFotoSrc(p));
+
+  // Os dados vão pro script da janela como JSON: a legenda é montada lá,
+  // porque ela muda ao vivo quando a pessoa digita o @ do Instagram.
+  const dados = {
+    nome: p.name || '', preco: fmtMoney(p.sale_price), categoria, link: linkCatalogo, hashtags,
+    codigo, arquivo: 'post-' + (codigo || 'rafa3d').replace(/[^0-9a-z]+/gi, '-') + '.png',
+  };
+
+  const html =
+    '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width, initial-scale=1">' +
+    '<title>Post pro Instagram — ' + escapeHtml(p.name) + '</title>' +
+    '<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=Caveat:wght@700&display=swap" rel="stylesheet">' +
+    '<style>' +
+      '* { box-sizing:border-box; }' +
+      'body { margin:0; font-family:Manrope,sans-serif; background:#eef0f4; min-height:100vh;' +
+        ' display:flex; flex-direction:column; align-items:center; gap:14px; padding:22px 14px 40px; }' +
+      '.instrucao { max-width:400px; text-align:center; font-size:13px; color:#5b6a85; line-height:1.5; }' +
+      '.acoes { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; }' +
+      '.botao { font-family:Manrope,sans-serif; font-weight:700; font-size:13.5px; text-decoration:none;' +
+        ' padding:10px 16px; border-radius:10px; border:1.5px solid #0061f7; color:#0061f7; background:#fff; cursor:pointer; }' +
+      '.botao.cheio { background:#0061f7; color:#fff; }' +
+      '.botao:disabled { opacity:.6; cursor:default; }' +
+      '.arroba { display:flex; align-items:center; gap:8px; font-size:12.5px; color:#5b6a85; }' +
+      '.arroba input { font-family:Manrope,sans-serif; font-size:13px; padding:7px 10px; border:1.5px solid #cfd6e4; border-radius:8px; width:200px; }' +
+      // O cartão tem 360px de lado e é capturado com scale 3 = 1080×1080,
+      // o tamanho que o Instagram usa pra post quadrado.
+      // Tamanho FIXO, sem max-width: em tela estreita o cartão encolhia
+      // na largura e continuava com 360px de altura — o PNG saía 756×1080,
+      // e o Instagram cortaria. Se não caber, o palco rola pro lado; a
+      // imagem sai sempre 1080×1080.
+      '.palco { width:100%; overflow-x:auto; display:flex; justify-content:center; padding:2px 0; }' +
+      '.cartao { width:360px; height:360px; flex:none; position:relative; overflow:hidden; border-radius:0;' +
+        ' background:#000817; color:#fff; display:flex; flex-direction:column;' +
+        ' background-image:radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px); background-size:18px 18px;' +
+        ' box-shadow:0 16px 40px -12px rgba(11,23,51,.45); }' +
+      '.brilho { position:absolute; width:260px; height:260px; border-radius:50%; right:-90px; top:-90px;' +
+        ' background:radial-gradient(circle, rgba(0,97,247,.55) 0%, rgba(0,97,247,0) 70%); }' +
+      '.brilho2 { position:absolute; width:220px; height:220px; border-radius:50%; left:-100px; bottom:40px;' +
+        ' background:radial-gradient(circle, rgba(61,139,255,.35) 0%, rgba(0,97,247,0) 70%); }' +
+      '.topo { position:relative; z-index:2; display:flex; justify-content:space-between; align-items:center; padding:14px 16px 0; }' +
+      '.topo img { height:18px; width:auto; }' +
+      '.eyebrow { font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:9px; letter-spacing:2.2px; color:#6fb0ff; text-transform:uppercase; }' +
+      '.foto { position:relative; z-index:2; margin:12px 16px 0; height:196px; border-radius:16px; overflow:hidden;' +
+        ' border:3px solid rgba(255,255,255,.92); background:#fff; box-shadow:0 10px 24px -10px rgba(0,0,0,.6); }' +
+      '.foto img { width:100%; height:100%; object-fit:cover; display:block; }' +
+      '.corpo { position:relative; z-index:2; padding:11px 16px 0; flex:1; display:flex; flex-direction:column; }' +
+      '.nome { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:18px; line-height:1.12; letter-spacing:-.2px;' +
+        ' display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }' +
+      '.linha { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:auto; padding-bottom:14px; }' +
+      '.preco { font-family:"Space Grotesk",sans-serif; font-weight:700; font-size:15px; color:#fff; background:#0061f7;' +
+        ' padding:7px 13px; border-radius:999px; box-shadow:0 4px 14px rgba(0,97,247,.45); white-space:nowrap; }' +
+      '.assina { text-align:right; line-height:1.15; }' +
+      '.assina .arroba-txt { font-family:"Space Grotesk",sans-serif; font-weight:600; font-size:10.5px; color:#dfe9ff; }' +
+      '.assina .slogan { font-family:Caveat,cursive; font-weight:700; font-size:15px; color:#6fb0ff; }' +
+      '.legenda { width:400px; max-width:100%; }' +
+      '.legenda textarea { width:100%; min-height:210px; font-family:Manrope,sans-serif; font-size:13px; line-height:1.5;' +
+        ' padding:10px 12px; border:1.5px solid #cfd6e4; border-radius:10px; resize:vertical; color:#1f2a44; }' +
+      '.dica { font-size:11.5px; color:#8090ad; text-align:center; max-width:400px; line-height:1.45; }' +
+    '</style></head><body>' +
+
+    '<div class="instrucao" id="instrucaoTxt">📲 <strong>Mandar a imagem</strong> abre o compartilhar do celular — escolha o Instagram. Depois, <strong>Copiar legenda</strong> e cola no post. No computador a imagem é baixada pra você subir.</div>' +
+    '<div class="arroba"><label for="igHandle">Seu @ no Instagram</label><input id="igHandle" placeholder="@rafa3d" autocomplete="off"></div>' +
+    '<div class="acoes">' +
+      '<button class="botao cheio" id="btnMandarArte">📲 Mandar a imagem</button>' +
+      '<button class="botao" id="btnCopiar">📋 Copiar legenda</button>' +
+    '</div>' +
+
+    '<div class="palco"><div class="cartao" id="cartaoPost">' +
+      '<div class="brilho"></div><div class="brilho2"></div>' +
+      '<div class="topo"><img src="' + escapeHtml(logoSrc) + '" alt="RAFA 3D" crossorigin="anonymous">' +
+        '<span class="eyebrow">' + escapeHtml((numeroDaSecao ? numeroDaSecao + ' · ' : '') + (categoria || 'Catálogo')) + '</span></div>' +
+      '<div class="foto"><img src="' + escapeHtml(fotoSrc) + '" alt="' + escapeHtml(p.name) + '" crossorigin="anonymous"></div>' +
+      '<div class="corpo">' +
+        '<div class="nome">' + escapeHtml(p.name) + '</div>' +
+        '<div class="linha">' +
+          '<span class="preco">' + fmtMoney(p.sale_price) + '</span>' +
+          '<div class="assina"><div class="arroba-txt" id="arrobaCartao">catálogo no link da bio</div><div class="slogan">camada por camada</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div></div>' +
+
+    '<div class="legenda"><textarea id="legenda" spellcheck="false"></textarea></div>' +
+    '<div class="dica">A legenda é ponto de partida — mexa à vontade antes de copiar. O link leva direto pra seção dessa peça no catálogo.</div>' +
+
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script>' +
+      'var dados = ' + JSON.stringify(dados) + ';' +
+      'var CHAVE = "rafa3d_instagram";' +
+      'function arroba() { var v = (document.getElementById("igHandle").value || "").trim(); if (v && v[0] !== "@") v = "@" + v; return v; }' +
+      'function montarLegenda() {' +
+        'var a = arroba();' +
+        'return "✨ " + dados.nome + "\\n\\n" +' +
+          '"Peça impressa em 3D aqui na Rafa 3D, camada por camada 💙 Eu tenho 10 anos e cada peça sai da minha impressora feita com muito carinho." + "\\n\\n" +' +
+          '"💰 " + dados.preco + " · você escolhe a cor no catálogo\\n" +' +
+          '"👉 " + dados.link + "\\n" +' +
+          '"📲 Dúvidas ou encomenda: WhatsApp (11) 98719-0466" + "\\n\\n" +' +
+          'dados.hashtags;' +
+      '}' +
+      'function atualizar() {' +
+        'var a = arroba();' +
+        'document.getElementById("arrobaCartao").textContent = a ? (a + " · catálogo no link da bio") : "catálogo no link da bio";' +
+        'document.getElementById("legenda").value = montarLegenda();' +
+        'try { localStorage.setItem(CHAVE, a); } catch (e) {}' +
+      '}' +
+      'try { document.getElementById("igHandle").value = localStorage.getItem(CHAVE) || ""; } catch (e) {}' +
+      'document.getElementById("igHandle").addEventListener("input", atualizar);' +
+      'atualizar();' +
+      'async function gerarImagem() {' +
+        'if (document.fonts && document.fonts.ready) { try { await document.fonts.ready; } catch (e) {} }' +
+        'var canvas = await html2canvas(document.getElementById("cartaoPost"), { useCORS: true, scale: 3, width: 360, height: 360, backgroundColor: "#000817" });' +
+        'return new Promise(function(resolve){ canvas.toBlob(resolve, "image/png"); });' +
+      '}' +
+      'document.getElementById("btnMandarArte").addEventListener("click", async function() {' +
+        'var btn = this; var textoOriginal = btn.textContent;' +
+        'btn.disabled = true; btn.textContent = "Preparando a imagem...";' +
+        'try {' +
+          'var blob = await gerarImagem();' +
+          'var arquivo = new File([blob], dados.arquivo, { type: "image/png" });' +
+          'if (navigator.canShare && navigator.canShare({ files: [arquivo] })) {' +
+            'await navigator.share({ files: [arquivo] });' +
+          '} else {' +
+            'var url = URL.createObjectURL(blob); var a = document.createElement("a");' +
+            'a.href = url; a.download = dados.arquivo; document.body.appendChild(a); a.click(); a.remove();' +
+            'setTimeout(function(){ URL.revokeObjectURL(url); }, 4000);' +
+            'document.getElementById("instrucaoTxt").textContent = "📥 Baixei a imagem " + dados.arquivo + " (esse aparelho não deixa mandar direto). Suba ela no Instagram pelo celular ou pelo Meta Business Suite, e cole a legenda.";' +
+          '}' +
+        '} catch (e) { if (e && e.name !== "AbortError") alert("Não consegui gerar a imagem: " + e.message); }' +
+        'btn.disabled = false; btn.textContent = textoOriginal;' +
+      '});' +
+      'document.getElementById("btnCopiar").addEventListener("click", async function() {' +
+        'var ta = document.getElementById("legenda"); var btn = this;' +
+        'try { await navigator.clipboard.writeText(ta.value); }' +
+        'catch (e) { ta.focus(); ta.select(); try { document.execCommand("copy"); } catch (e2) {} }' +
+        'btn.textContent = "✅ Legenda copiada"; setTimeout(function(){ btn.textContent = "📋 Copiar legenda"; }, 2000);' +
+      '});' +
+    '<\/script>' +
+    '</body></html>';
+
+  janela.document.open();
+  janela.document.write(html);
+  janela.document.close();
+}
+
 /* ====== ORÇAMENTO PRA MANDAR (PEDIDOS) ======
    Mesma arte, mesma mecânica (html2canvas + Web Share API) do orçamento
    de projeto — só que aqui é pro PEDIDO inteiro, não uma peça só. Existe
@@ -6387,6 +6598,10 @@ function abrirGerenciarProduto(productId) {
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Fatiamento e colinha IA — ' + renderFatiamentoCell(p) + '</span>' +
         '<span class="row-actions">' + renderFatiamentoBtns(p) + '</span>' +
+      '</div>' +
+      '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
+        '<span>Mostrar no Instagram <span style="color:var(--muted); font-size:11px;">imagem pronta + legenda</span></span>' +
+        '<button class="btn ghost" onclick="abrirPostInstagram(\'' + p.id + '\')">📸 Post pro Instagram</button>' +
       '</div>' +
       '<div style="display:flex; justify-content:space-between; align-items:center; padding:10px 0; border-top:1px solid var(--border);">' +
         '<span>Apagar esse produto</span>' +
