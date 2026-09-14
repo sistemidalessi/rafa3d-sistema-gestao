@@ -6,40 +6,22 @@ Onde as coisas pararam em **14/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ PENDENTE — na próxima vez em casa (anotado em 10/09; em 14/09 só o do Rafa foi feito)
+## ✅ Lista de casa (10/09) — tudo feito em 14/09
 
-Pedido do Anderson. Dois computadores, tarefas diferentes em cada um.
-**Não apague enquanto não for feito** — em 10/09 ele não chegou a ligar
-o computador de casa, e a lista continua valendo inteira.
+- **Computador do Rafa** atualizado pros patches 52 e 53 (`4c76571`),
+  conferido no banco. O que travou na primeira tentativa foi a pasta: o
+  comando usa caminho relativo, precisa de `cd` pro projeto antes.
+- **Chaveiro GT3 RS** salvo do Bambu e cadastrado como **06.41
+  Porta-Chaves Racing GT3 3D** (R$ 119,90), com o `.3mf` anexado. Olhei
+  dentro do arquivo: é projeto do Bambu de verdade (project_settings +
+  slice_info + 27 objetos), com 33 ajustes do Anderson por cima do
+  perfil — a versão editada, não o original baixado. **Não pedir colinha
+  nesse produto**: `manual_upload` sem `slicer_saved_at` recebe a colinha
+  ao abrir, e ela passaria por cima dos ajustes dele.
 
-### No computador do Anderson (onde o GT3 RS foi editado no Bambu)
-
-1. **Resgatar o projeto "Chaveiro GT3 RS"** — ele só existe no disco desse
-   computador (o Histórico de impressão da conta Bambu guarda só os
-   G-codes fatiados, não o projeto editável; foi isso que travou o
-   Anderson no escritório em 10/09). No Bambu Studio: abrir o projeto →
-   **Arquivo → Salvar projeto como…** → guardar o `.3mf` atual.
-2. **Cadastrar o GT3 RS no sistema** como produto e **anexar esse `.3mf`**
-   ("+ Anexar"). A partir daí ele vive no Storage e qualquer computador
-   abre a versão mais nova com "Abrir no Fatiador".
-3. Se esse computador também roda o agente (aparece na lista de
-   computadores do sistema), rode nele os mesmos dois comandos do item
-   abaixo — é seguro rodar em máquina já atualizada.
-
-### No computador do Rafa (o agente "Rafa") — ✅ FEITO em 14/09
-
-O `atualizar-agente.ps1` rodou e o agente passou a reportar `4c76571`
-(patches 52 e 53), conferido no banco. Detalhe que travou na primeira
-tentativa: o comando usa caminho relativo, então precisa ser rodado
-**de dentro da pasta do projeto** — com `cd` antes, funcionou.
-
-### Nos dois, daqui pra frente
-
-Mexeu no Bambu → **Ctrl+S** → volta no sistema → **"📥 Guardar o que eu
-mudei no Bambu"**. Sem isso, a edição fica presa no computador onde foi
-feita.
-
-Quando tudo isso estiver feito, apague esta seção.
+Daqui pra frente, nos dois computadores: mexeu no Bambu → **Ctrl+S** →
+**"📥 Guardar o que eu mudei no Bambu"**. Sem isso, a edição fica presa no
+computador onde foi feita.
 
 ## 🌐 Domínio rafa3ddalessi.com.br — registrado em 11/09 (UOL Host, CPF do Anderson)
 
