@@ -6,7 +6,7 @@ Onde as coisas pararam em **14/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ⚠️ PENDENTE — na próxima vez em casa (anotado em 10/09, ainda não feito em 11/09)
+## ⚠️ PENDENTE — na próxima vez em casa (anotado em 10/09; em 14/09 só o do Rafa foi feito)
 
 Pedido do Anderson. Dois computadores, tarefas diferentes em cada um.
 **Não apague enquanto não for feito** — em 10/09 ele não chegou a ligar
@@ -26,17 +26,12 @@ o computador de casa, e a lista continua valendo inteira.
    computadores do sistema), rode nele os mesmos dois comandos do item
    abaixo — é seguro rodar em máquina já atualizada.
 
-### No computador do Rafa (o agente "Rafa")
+### No computador do Rafa (o agente "Rafa") — ✅ FEITO em 14/09
 
-1. **Atualizar o agente** — está com código de 30/08 (`46f6f19`), sem os
-   patches 52 e 53 (guardar de volta do Bambu, colinha nova, placa lisa):
-   ```
-   powershell -ExecutionPolicy Bypass -File slicer-agent\atualizar-agente.ps1
-   powershell -ExecutionPolicy Bypass -File slicer-agent\conferir-maquina.ps1
-   ```
-   O segundo só confere (Node, .env, agente de pé, vigia instalado) e diz
-   se falta algo. Enquanto isso não roda, o "Guardar o que eu mudei no
-   Bambu" fica parado na fila quando cai nesse computador.
+O `atualizar-agente.ps1` rodou e o agente passou a reportar `4c76571`
+(patches 52 e 53), conferido no banco. Detalhe que travou na primeira
+tentativa: o comando usa caminho relativo, então precisa ser rodado
+**de dentro da pasta do projeto** — com `cd` antes, funcionou.
 
 ### Nos dois, daqui pra frente
 
