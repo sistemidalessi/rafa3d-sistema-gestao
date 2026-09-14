@@ -1,6 +1,6 @@
 # Continuar daqui
 
-Onde as coisas pararam em **09/09/2026**.
+Onde as coisas pararam em **14/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
@@ -82,8 +82,9 @@ redirecionando o `github.io` antigo. Links trocados (`CATALOGO_URL_PUBLICA`,
 `og:*` do catálogo, textos de divulgação) e QR refeito
 (`catalogo/assets/qr_catalogo.png`, agora 900×900 — o antigo apontava pro
 `github.io` e continuaria funcionando pelo redirecionamento).
-**Falta só o passo 3, que é um clique do Anderson:** GitHub → repositório
-→ Settings → Pages → marcar **Enforce HTTPS**.
+**Passo 3 também feito** (conferido em 14/09: `http://` responde 301 pro
+`https://`, e o `github.io` antigo redireciona pro domínio). Nada pendente
+no domínio.
 Detalhe: o resolver da rede do escritório (pfSense) guardou resposta
 negativa do domínio e por umas horas o computador de lá pode não abrir
 `rafa3ddalessi.com.br` — celular e outras redes abrem normal.
