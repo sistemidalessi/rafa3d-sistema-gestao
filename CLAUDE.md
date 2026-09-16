@@ -300,6 +300,14 @@ sai dali.
      no CHECK das três tabelas** — o patch 32 travou `bed_plate` numa
      lista, e gravar valor novo sem o patch 53 dá erro 23514, igual ao
      `model_source` no patch 27. Placa nova = quatro lugares, não três.
+- **Tudo assume bico 0,4 — o prompt da colinha, o `printer_settings_id`
+  do arquivo gerado e todo `.3mf` que já está no Storage.** Não existe
+  campo de bico em lugar nenhum. Em 16/09 o Anderson imprimiu o 01.29 com
+  bico 0,6 e a peça partiu no gargalo: linha de 0,42 saindo de um furo de
+  0,6 não cola camada. Enquanto o bico diferente for exceção, a saída é
+  um projeto local do Bambu à parte, sem guardar de volta (ver
+  `continuar-daqui.md`). Se virar regra, o bico entra no cadastro da
+  impressora e a colinha e o `gerar3mf.js` passam a ler dali.
 - **A adaptação do catálogo ao celular é feita em JavaScript, não em CSS.** O
   framework de template tem um prop `columns` que **vence qualquer media
   query** — ele foi pensado pra pré-visualizar em 1080px fixos. Por isso a

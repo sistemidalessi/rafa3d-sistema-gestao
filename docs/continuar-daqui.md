@@ -1,10 +1,47 @@
 # Continuar daqui
 
-Onde as coisas pararam em **14/09/2026**.
+Onde as coisas pararam em **16/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## 🖨️ Lote de 50 vasos (01.29, Lembrancinha de Casamento) com bico 0,6 — 16/09
+
+**O que deu errado no primeiro:** a boca do vaso soltou do gargalo (o
+"anel" da foto era o lábio, não uma tampa) e a costura ficou um sulco
+aberto. Causa: o arquivo do sistema e a colinha são pra **bico 0,4**
+(impressora "A1 0.4 nozzle", linha 0,42), e o Anderson trocou pro 0,6
+pra ganhar tempo no lote. Linha de 0,42 saindo de um furo de 0,6 não
+achata na camada de baixo — as camadas não colam, e o gargalo, que é o
+perímetro menor, é onde parte.
+
+**Decisão:** o 0,6 é só pra esse lote. Nada muda no sistema (a colinha
+continua assumindo 0,4). O lote roda de um projeto local do Bambu,
+salvo à parte ("Vaso 0.6 x4.3mf"), **sem** "Guardar o que eu mudei no
+Bambu" — senão o arquivo do catálogo viraria a versão de 0,6.
+
+**Configuração combinada (o que muda do perfil):**
+- Tela da A1: bico 0,6. Studio: A1 0.6 nozzle · Cool Plate · Generic PLA ·
+  processo 0.30mm Standard @BBL A1 0.6.
+- Qualidade: camada 0,30 (primeira 0,30); costura Alinhada + costura em
+  rampa "Contorno", lacuna 10%.
+- Resistência: 3 paredes, 4 topo, 3 base, preenchimento grade 15%.
+- Velocidade: parede externa **120** (o perfil traz 200 e o bico grosso
+  arredonda as estrias), interna 200, primeira camada 40.
+- Aderência: brim externo 4 mm, gap 0. Suporte desligado.
+- Filamento: bico 220 na primeira / 215 depois; mesa 40; ventoinha
+  desligada nas 2 primeiras camadas. Fio ou brilho demais → 210.
+- Envio: calibração de fluxo dinâmico ligada, ao menos na primeira placa.
+- 4 vasos por placa (87 mm cada; 3 em linha não cabem nos 256 da A1) →
+  13 placas. Um "Terminei" só, no fim.
+
+**Quando o 0,4 voltar:** trocar na tela da impressora também. O arquivo
+do sistema não foi tocado e volta a abrir certo.
+
+Se um dia o 0,6 virar regra, o caminho é acrescentar o bico ao cadastro
+da impressora e fazer a colinha e o `gerar3mf.js` lerem dali (hoje o
+prompt e o `printer_settings_id` dizem "0.4" fixo).
 
 ## ✅ Lista de casa (10/09) — tudo feito em 14/09
 
