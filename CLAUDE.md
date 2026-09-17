@@ -420,6 +420,12 @@ sai dali.
   catálogo em vez do sistema" virar reclamação, é isso — e é de
   propósito. O endereço antigo (`sistemidalessi.github.io/...`)
   redireciona pro domínio, então link e QR antigos continuam valendo.
+  **Mas a sessão NÃO acompanha o redirecionamento**: `localStorage` é
+  por endereço, e quem tinha login guardado no `github.io` chega ao
+  domínio sem sessão e cai no catálogo — em 17/09 pareceu "o Dashboard
+  quebrou". Por isso o rodapé do catálogo tem o link "Área do Rafa"
+  (`/?entrar`): é a porta de entrada, e é a única. Favorito e atalho
+  devem apontar pro domínio com `?entrar`.
   **Ordem ao mexer em domínio:** DNS primeiro, conferir com `nslookup`
   em `8.8.8.8` (o resolver da rede do escritório guarda resposta negativa
   por um tempo e mente), e só então o `CNAME` — o GitHub redireciona o
