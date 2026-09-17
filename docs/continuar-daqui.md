@@ -6,15 +6,36 @@ Onde as coisas pararam em **17/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
-## ℹ️ Bambu Studio subiu pra 2.8.3.66 — 17/09
+## ⚠️ O assistente do Bambu voltava toda vez: era o aplicativo do Itaú — 17/09
 
-Instalada em 09/09 (às 10h03, logo depois de fechar o Bambu), mas só
-aberta pela primeira vez em 17/09, no computador do escritório — e aí
-apareceu o "Assistente de configuração" pedindo região de login. É
-normal: toda primeira abertura de versão nova passa pelo assistente, e
-nada se perde (região "Outras", conta, impressora e preferências
-continuam no `BambuStudio.conf`). Só seguir: Outras → A1 (marcar o bico
-0,6 também, se for usar) → filamentos como estão → Finalizar.
+Primeira explicação (versão nova, 2.8.3.66, primeira abertura) estava
+**errada**: o assistente voltou na segunda abertura também. O que era de
+verdade, medido no computador do escritório:
+
+- O Bambu deste computador guarda tudo em
+  `AppData\Roaming\BambuStudioBeta` (a pasta `BambuStudio` ao lado é de
+  outra instalação, parada desde 09/09).
+- Ao salvar, o Bambu grava `BambuStudio.conf.<pid>`, apaga o
+  `BambuStudio.conf` e **renomeia** o temporário pro nome definitivo. O
+  rename falhava com "arquivo em uso por outro processo" — pra qualquer
+  arquivo, só naquelas duas pastas (subpastas e pastas vizinhas
+  funcionavam). Resultado: configuração apagada a cada salvamento, e
+  assistente do zero a cada abertura. Os dezenas de `.conf.<pid>`
+  acumulados desde agosto são o rastro de quantas vezes isso falhou.
+- Quem segurava as duas pastas (`handles-pasta.ps1`, via
+  `NtQuerySystemInformation`): **`itauaplicativo.exe`**, o aplicativo do
+  Itaú pra Windows, com handle de diretório aberto em
+  `Roaming\BambuStudio` e `Roaming\BambuStudioBeta`. Handle de pasta sem
+  compartilhar escrita bloqueia rename dentro dela. Fechado o Itaú, o
+  rename voltou a funcionar na hora, e a configuração foi restaurada da
+  cópia `BambuStudio.conf.30760` (estado de 16/09 à noite: região Outras,
+  A1 0.6, filamentos).
+
+**O que o Anderson precisa fazer:** tirar o aplicativo do Itaú da
+inicialização (Gerenciador de Tarefas → Inicializar → "Aplicativo Itaú"
+→ Desabilitar) e abrir ele só na hora de usar o banco. Enquanto ele
+estiver rodando, o Bambu não consegue salvar configuração nenhuma.
+Se o assistente voltar: `Get-Process itauaplicativo` responde a pergunta.
 
 As pegadinhas do `CLAUDE.md` sobre o `.3mf` (lista de `support_style`,
 "organic" inválido, nomes de brim) foram conferidas na **2.8.2**. Se uma

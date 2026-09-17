@@ -1134,12 +1134,13 @@ async function renderProjetos() {
   // partes estavam trabalhando, parava de se atualizar, e elas ficavam
   // em "gerando…" pra sempre — mesmo já prontas no banco há minutos.
   const partesEmAndamento = await q(SUPA.from('project_parts').select('id').limit(1)
-    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.eq.queued,save_back_status.eq.queued'));
+    .or('meshy_status.in.(queued,processing),ai_analysis_status.in.(queued,processing),open_slicer_status.in.(queued,processing),save_back_status.in.(queued,processing)'));
   const emAndamento = (partesEmAndamento && partesEmAndamento.length > 0) || projetos.some((li) =>
     li.meshy_status === 'queued' || li.meshy_status === 'processing' ||
     li.hi3d_status === 'queued' || li.hi3d_status === 'processing' ||
     li.ai_analysis_status === 'queued' || li.ai_analysis_status === 'processing' ||
-    li.open_slicer_status === 'queued' || li.save_back_status === 'queued');
+    li.open_slicer_status === 'queued' || li.open_slicer_status === 'processing' ||
+    li.save_back_status === 'queued' || li.save_back_status === 'processing');
 
   // O aviso de computador desligado tem que aparecer AQUI também: é
   // desta aba que se manda projeto pro fatiador, e foi aqui que o Rafa
@@ -1158,7 +1159,9 @@ async function renderProjetos() {
     });
   });
 
-  if (_projetoGerenciarAberto && document.getElementById('modalRoot').classList.contains('show')) {
+  // Só se a janela aberta for a Gerenciar mesmo (marca no HTML): outra
+  // janela do mesmo projeto com a variável viva seria atropelada.
+  if (_projetoGerenciarAberto && document.getElementById('janelaGerenciarProjeto')) {
     abrirGerenciarProjeto(_projetoGerenciarAberto);
   }
 
@@ -1227,7 +1230,7 @@ async function abrirGerenciarProjeto(lineItemId) {
     fotoUrl = data ? data.signedUrl : null;
   }
 
-  let html = '<div style="display:flex; gap:14px; margin-bottom:16px;">';
+  let html = '<div id="janelaGerenciarProjeto" style="display:flex; gap:14px; margin-bottom:16px;">';
   html += '<div style="flex:none;">';
   html += fotoUrl
     ? '<img src="' + fotoUrl + '" style="width:110px; height:110px; object-fit:cover; border-radius:12px; border:1px solid var(--border);">'
@@ -6604,9 +6607,22 @@ function desenharProdutos() {
   window.scrollTo(0, scrollY);
   requestAnimationFrame(() => window.scrollTo(0, scrollY));
 
+  // A janela "Gerenciar" fica por cima da lista e NÃO era redesenhada
+  // junto: a lista atrás mudava pra "pronto" e a janela continuava com
+  // "guardando o que você salvou…" girando o dia inteiro (17/09). Só
+  // redesenha se a janela aberta for mesmo a Gerenciar (pela marca no
+  // HTML) — quem clicou em "Editar" a partir dela está com outro
+  // formulário aberto e a variável ainda viva, e perderia o que digitou.
+  if (_produtoGerenciarAberto && document.getElementById('janelaGerenciarProduto')) {
+    abrirGerenciarProduto(_produtoGerenciarAberto);
+  }
+
   clearTimeout(_fatiamentoPollTimer);
+  // "processing" também é andamento: o agente marca assim enquanto
+  // trabalha, e sem ele aqui a tela parava de olhar no meio do caminho.
   const emAndamento = produtosCache.some((p) =>
-    p.open_slicer_status === 'queued' || p.save_back_status === 'queued' ||
+    p.open_slicer_status === 'queued' || p.open_slicer_status === 'processing' ||
+    p.save_back_status === 'queued' || p.save_back_status === 'processing' ||
     p.ai_analysis_status === 'queued' || p.ai_analysis_status === 'processing');
   if (emAndamento && !el.classList.contains('hidden')) {
     _fatiamentoPollTimer = setTimeout(() => { renderProdutos(); }, 4000);
@@ -6618,7 +6634,7 @@ function abrirGerenciarProduto(productId) {
   _produtoGerenciarAberto = productId;
   const p = produtosCache.find((x) => x.id === productId);
   openModal(
-    '<div style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">' +
+    '<div id="janelaGerenciarProduto" style="display:flex; gap:14px; align-items:center; margin-bottom:16px;">' +
       '<img src="' + escapeHtml(produtoFotoSrc(p)) + '" style="width:72px; height:72px; object-fit:cover; border-radius:50%; border:1px solid var(--border);" onerror="this.style.visibility=\'hidden\'">' +
       '<div><h3 style="margin:0;">' + escapeHtml(p.name) + '</h3>' +
       '<div style="font-size:12px; color:var(--muted);">' + escapeHtml(p.catalog_code) + ' · ' + escapeHtml(CATEGORY_LABELS[p.category] || p.category) + ' · ' + fmtMoney(p.sale_price) + '</div></div>' +

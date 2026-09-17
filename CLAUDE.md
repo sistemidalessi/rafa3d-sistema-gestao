@@ -300,6 +300,28 @@ sai dali.
      no CHECK das três tabelas** — o patch 32 travou `bed_plate` numa
      lista, e gravar valor novo sem o patch 53 dá erro 23514, igual ao
      `model_source` no patch 27. Placa nova = quatro lugares, não três.
+- **Janela por cima da lista não se redesenha sozinha.** A aba Produtos
+  se atualiza a cada 4 s enquanto tem fila (fatiador, colinha, guardar
+  de volta), mas a janela "⚙️ Gerenciar" aberta por cima ficava com o
+  HTML de quando abriu: "guardando o que você salvou…" girando o dia
+  inteiro com o trabalho pronto no banco (17/09). Agora
+  `desenharProdutos()` reabre a Gerenciar se ela estiver na tela — e
+  reconhece que é ela pela marca `id="janelaGerenciarProduto"`, porque
+  "Editar" e "Dar preço" fecham a janela mantendo
+  `_produtoGerenciarAberto` vivo, e redesenhar por cima do formulário
+  jogaria fora o que a pessoa digitou. A de Projetos
+  (`janelaGerenciarProjeto`) segue a mesma regra. Janela nova que mostra
+  estado de fila precisa entrar nesse redesenho, senão gira pra sempre.
+- **O aplicativo do Itaú segura as pastas do Bambu Studio.** No
+  computador do escritório, `itauaplicativo.exe` mantém handle de
+  diretório aberto em `Roaming\BambuStudio` e `Roaming\BambuStudioBeta`,
+  e isso faz TODO rename dentro delas falhar com "em uso por outro
+  processo". O Bambu salva a configuração por rename, então ela sumia a
+  cada salvamento e o assistente de primeira abertura voltava toda vez
+  (17/09). Sintoma: `BambuStudio.conf` ausente e dezenas de
+  `BambuStudio.conf.<pid>` na pasta. Diagnóstico: `Get-Process
+  itauaplicativo`; conserto: fechar o Itaú e copiar o `.conf.<pid>` mais
+  novo pra `BambuStudio.conf`. Detalhe em `continuar-daqui.md`.
 - **Tudo assume bico 0,4 — o prompt da colinha, o `printer_settings_id`
   do arquivo gerado e todo `.3mf` que já está no Storage.** Não existe
   campo de bico em lugar nenhum. Em 16/09 o Anderson imprimiu o 01.29 com
