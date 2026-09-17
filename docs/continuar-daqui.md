@@ -31,6 +31,9 @@ verdade, medido no computador do escritório:
   cópia `BambuStudio.conf.30760` (estado de 16/09 à noite: região Outras,
   A1 0.6, filamentos).
 
+Confirmado às 11h40: com o Itaú fechado e a configuração restaurada, o
+Bambu abriu direto, sem assistente.
+
 **O que o Anderson precisa fazer:** tirar o aplicativo do Itaú da
 inicialização (Gerenciador de Tarefas → Inicializar → "Aplicativo Itaú"
 → Desabilitar) e abrir ele só na hora de usar o banco. Enquanto ele
