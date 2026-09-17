@@ -26,6 +26,13 @@ Bambu" — senão o arquivo do catálogo viraria a versão de 0,6.
   processo 0.30mm Standard @BBL A1 0.6.
 - Qualidade: camada 0,30 (primeira 0,30); costura Alinhada + costura em
   rampa "Contorno", lacuna 10%.
+  **"Costura em rampa" na tela do Bambu em português aparece como
+  "cachecol"** (traduziram *scarf joint* ao pé da letra): a caixa
+  "Aplicação de costura de cachecol inteligente" marcada é a rampa
+  ligada; o limiar de 155° faz ela valer só em parede curva (vaso é
+  tudo curva); degraus 10 e "junta para paredes internas" ficam no
+  padrão. É o que impede o sulco aberto do primeiro vaso: o fim e o
+  começo de cada volta se sobrepõem em diagonal em vez de parar seco.
 - Resistência: 3 paredes, 4 topo, 3 base, preenchimento grade 15%.
 - Velocidade: parede externa **120** (o perfil traz 200 e o bico grosso
   arredonda as estrias), interna 200, primeira camada 40.
