@@ -1,10 +1,25 @@
 # Continuar daqui
 
-Onde as coisas pararam em **16/09/2026**.
+Onde as coisas pararam em **17/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## ℹ️ Bambu Studio subiu pra 2.8.3.66 — 17/09
+
+Instalada em 09/09 (às 10h03, logo depois de fechar o Bambu), mas só
+aberta pela primeira vez em 17/09, no computador do escritório — e aí
+apareceu o "Assistente de configuração" pedindo região de login. É
+normal: toda primeira abertura de versão nova passa pelo assistente, e
+nada se perde (região "Outras", conta, impressora e preferências
+continuam no `BambuStudio.conf`). Só seguir: Outras → A1 (marcar o bico
+0,6 também, se for usar) → filamentos como estão → Finalizar.
+
+As pegadinhas do `CLAUDE.md` sobre o `.3mf` (lista de `support_style`,
+"organic" inválido, nomes de brim) foram conferidas na **2.8.2**. Se uma
+colinha abrir com aviso de "valor substituído" na 2.8.3, é o primeiro
+lugar a olhar.
 
 ## 🖨️ Lote de 50 vasos (01.29, Lembrancinha de Casamento) com bico 0,6 — 16/09
 
