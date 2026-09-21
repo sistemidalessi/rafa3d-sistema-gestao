@@ -2,8 +2,10 @@
 -- Patch 55 — a view orders_payment_status passa a respeitar a RLS
 -- Rode este arquivo inteiro no SQL Editor do Supabase (projeto Rafa 3D).
 --
--- STATUS: AINDA NÃO APLICADO (escrito em 21/09/2026, esperando o "sim" do
--- Anderson — é alteração no banco de produção).
+-- STATUS: JÁ APLICADO EM PRODUÇÃO em 21/09/2026, com o "sim" do Anderson,
+-- pelo SQL Editor do painel. Conferido: reloptions = {security_invoker=true};
+-- num teste descartável, uma conta de fora leu 0 linhas da view e o dono
+-- leu as 16.
 --
 -- POR QUE ISTO EXISTE
 --
