@@ -113,7 +113,52 @@ secret do projeto Supabase, nunca `.env` nem constante no código.
 
 `finalizar-pedido` **revalida os preços no servidor**. Nunca passe a confiar no
 valor que o navegador mandou: o catálogo é público e qualquer um edita o que
-sai dali.
+sai dali. (O **frete** ainda é confiado do navegador — achado `r3d-01` da
+auditoria de 11/09/2026, em aberto.)
+
+
+## Segurança do banco: "da loja" não é "autenticado" (patch 54, 21/09/2026)
+
+Duas regras, as duas impostas no banco, as duas aprendidas do jeito ruim:
+
+- **Política nunca usa `using (true)` pra `authenticated`.** Usa `is_staff()`
+  (tem linha em `profiles` **e** `active`) ou `is_owner()`. O cadastro público
+  do Supabase Auth é uma chave do painel, não algo que a RLS controla: com ele
+  ligado — e estava — "autenticado" é *qualquer pessoa da internet que crie uma
+  conta com o próprio e-mail*. Até o patch 54, vinte políticas eram
+  `using (true)`: essa pessoa leria todos os clientes, pedidos e pagamentos
+  (CPF, WhatsApp, endereço) e poderia **alterar e apagar pedidos**. Em 21/09
+  as 2 contas existentes eram as dos donos; ninguém de fora tinha entrado.
+  De carona, `profiles.active = false` passou a cortar o acesso do ajudante de
+  verdade (antes só a aba sumia — achado `r3d-04`).
+- **Toda função `security definer` tem checagem por dentro E
+  `revoke execute ... from public, anon`.** Função `security definer` ignora a
+  RLS, e o Postgres dá `EXECUTE` a `PUBLIC` em toda função nova por padrão (é o
+  `=X` no começo do `proacl`). `add_filament_spool` e `consume_filament` não
+  checavam nada: o visitante do catálogo, com o id de uma cor (público), criava
+  rolo falso no estoque. Agora a primeira exige `is_owner()`, a segunda
+  `is_staff()`, e nenhuma função do schema `public` é executável pelo `anon`
+  (conferência no fim do arquivo do patch).
+
+Quem **não** é afetado por política nenhuma: o `slicer-agent` e as Edge
+Functions, que usam a `service_role`. É por isso que o patch não mudou nada
+pra eles — e é também por isso que a `service_role` em texto puro no PC do
+Rafael (`r3d-05`) continua sendo o ponto mais sensível do sistema.
+
+**Como essa leitura foi feita, pra repetir:** a auditoria de 11/09 leu só o
+repositório e não viu nada disto, porque o que vale é o banco. Ler o banco
+real: `pg_policies` (procurar `qual = 'true'`), `pg_get_functiondef` +
+`has_function_privilege('anon', oid, 'EXECUTE')`, e
+`GET /auth/v1/settings` com a chave pública (campo `disable_signup`). Aplicar:
+ensaiar o patch inteiro + testes numa transação que termina num
+`raise exception` proposital com o resultado (desfaz tudo, inclusive o rolo de
+teste), conferir que nada ficou, aplicar, e atacar de fora com a chave pública
+via `curl`. O conector do Supabase da sessão não enxergava este projeto (só o
+da JJ Solene); foi pelo editor SQL do painel, no Chrome do Anderson.
+
+**Pendente, clique no painel:** Authentication › Sign In / Providers ›
+desligar "Allow new users to sign up" (segunda tranca; donos e ajudantes
+continuam sendo criados por Add user).
 
 
 ## Pegadinhas conhecidas
