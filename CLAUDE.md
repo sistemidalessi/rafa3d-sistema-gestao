@@ -111,10 +111,37 @@ coloridas. Mexeu numa, confira se as irmãs precisam da mesma coisa.
 o `git push`** — precisa de `supabase functions deploy <nome>`. Segredo novo é
 secret do projeto Supabase, nunca `.env` nem constante no código.
 
-`finalizar-pedido` **revalida os preços no servidor**. Nunca passe a confiar no
-valor que o navegador mandou: o catálogo é público e qualquer um edita o que
-sai dali. (O **frete** ainda é confiado do navegador — achado `r3d-01` da
-auditoria de 11/09/2026, em aberto.)
+`finalizar-pedido` **revalida os preços no servidor — dos produtos e, desde
+21/09/2026, do frete** (achado `r3d-01`). Nunca passe a confiar no valor que o
+navegador mandou: o catálogo é público e qualquer um edita o que sai dali.
+Antes, `frete.preco` e `servico_id` eram gravados como vinham: dava pra fechar
+pedido com frete de 1 centavo e trocar o serviço por um mais caro, que a
+`gerar-etiqueta` compraria depois com o saldo do Melhor Envio.
+
+**A cotação mora em [`_shared/frete.ts`](supabase/functions/_shared/frete.ts)
+e é usada pelas duas pontas** — `calcular-frete` mostra as opções,
+`finalizar-pedido` refaz a mesma conta com o CEP do pedido e a quantidade que
+*ele* validou, e só vale a opção que sair dali (transportadora, serviço, prazo
+e preço gravados são os do Melhor Envio). Preço visto pelo cliente diferente do
+recotado em mais de 1 centavo, ou serviço que não existe: `409` pedindo pra
+calcular de novo, sem criar pedido. Consequências:
+
+- **Mudou pacote, origem ou regra de quantidade? Muda em `_shared/frete.ts` e
+  publica AS DUAS funções.** Se só uma for publicada, as duas cotam diferente
+  e todo checkout responde "o valor do frete mudou".
+- O Melhor Envio fora do ar na hora de fechar = pedido com entrega não fecha
+  (`502`, e a mensagem sugere "combinar a entrega", que não depende dele).
+- Conferido em 21/09: três cotações seguidas devolvem os mesmos preços, então a
+  folga de 1 centavo não recusa cliente honesto. Se um dia recusar, é o Melhor
+  Envio variando preço entre chamadas — aumentar a folga, não tirar a conferência.
+
+**Como testar uma Edge Function sem Deno nem Docker na máquina** (foi assim em
+21/09): `npx esbuild arquivo.ts` só pra sintaxe; guardar a resposta de produção
+*antes*; `supabase functions deploy <nome>`; comparar a resposta *depois* (a do
+`calcular-frete` saiu idêntica, byte a byte); mandar as fraudes — elas são
+recusadas antes de criar qualquer coisa — e por fim UM pedido honesto de teste,
+avisando o Anderson, porque ele dispara push e e-mail de verdade. Pra voltar
+atrás: `git checkout <commit anterior> -- supabase/functions` e publicar de novo.
 
 
 ## Segurança do banco: "da loja" não é "autenticado" (patch 54, 21/09/2026)
