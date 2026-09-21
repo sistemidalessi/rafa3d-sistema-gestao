@@ -1,0 +1,32 @@
+-- =====================================================================
+-- Patch 55 — a view orders_payment_status passa a respeitar a RLS
+-- Rode este arquivo inteiro no SQL Editor do Supabase (projeto Rafa 3D).
+--
+-- STATUS: AINDA NÃO APLICADO (escrito em 21/09/2026, esperando o "sim" do
+-- Anderson — é alteração no banco de produção).
+--
+-- POR QUE ISTO EXISTE
+--
+-- O patch 54 trocou `using (true)` por is_staff() em orders e payments. Mas
+-- esta view é do dono `postgres` e não tem `security_invoker`: view assim
+-- roda com o privilégio de quem a CRIOU e ignora a RLS das tabelas por baixo.
+-- Conferido no banco em 21/09: `authenticated` tem SELECT nela (o anon não).
+-- Resultado: uma pessoa de fora que crie uma conta ainda leria, por aqui,
+-- order_id, total_amount, total_paid, expected_deposit_* e payment_status
+-- de todos os pedidos. Não tem nome, CPF nem endereço — é valor e status —
+-- mas é exatamente o desvio que o patch 54 quis fechar. Era o achado r3d-11
+-- da auditoria de 11/09, que na época era "inócuo" porque as tabelas já eram
+-- abertas; deixou de ser no momento em que elas fecharam.
+--
+-- O QUE MUDA: com security_invoker a view passa a valer as políticas de quem
+-- CONSULTA. Dono e ajudante ativo leem orders e payments, então pra eles nada
+-- muda. Quem não é da loja passa a receber zero linhas.
+--
+-- REGRA: toda view nova nasce com `with (security_invoker = true)`.
+-- =====================================================================
+
+alter view public.orders_payment_status set (security_invoker = true);
+
+-- CONFERÊNCIA
+-- select reloptions from pg_class where oid = 'public.orders_payment_status'::regclass;
+--   (esperado: {security_invoker=true})
