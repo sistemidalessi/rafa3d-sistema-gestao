@@ -828,7 +828,17 @@ class Component extends DCLogic {
   async _loadCatalog() {
     try {
       const sb = window.supabase.createClient(SB_URL, SB_ANON);
-      const { data, error } = await sb.from('products').select('*').eq('active', true).order('catalog_code');
+      // Colunas pelo nome, NUNCA "select *" (auditoria de segurança, achado
+      // r3d-03, 21/09/2026). A regra do banco escolhe quais LINHAS o
+      // visitante vê (produto ativo), não quais COLUNAS: com "*" qualquer
+      // pessoa recebia junto as dicas de fatiamento que a IA escreveu, a
+      // configuração do fatiador, o caminho do arquivo do modelo e o nome
+      // dos computadores do Rafa. No banco, quem não fez login só tem
+      // permissão nestas colunas (patch 56) — pedir outra, ou "*", dá erro
+      // 42501 e a loja abre VAZIA. Coluna nova que a vitrine precise entra
+      // nos DOIS lugares: aqui e num "grant select (coluna) ... to anon".
+      const COLUNAS_DA_VITRINE = 'id, catalog_code, category, name, height_cm, sale_price, price_unit_note, promo_note, extra_note, image_path, active, created_at, updated_at, badge_label, material, size_note';
+      const { data, error } = await sb.from('products').select(COLUNAS_DA_VITRINE).eq('active', true).order('catalog_code');
       if (error) throw error;
 
       // As cores vêm da mesma tabela que o Rafa edita no sistema, pra
