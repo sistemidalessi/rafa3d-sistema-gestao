@@ -7,6 +7,12 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import webpush from "web-push";
+import { cotarFrete, limparCep } from "../_shared/frete.ts";
+
+// Todo texto que vem do navegador entra cortado: o catálogo é público, e sem
+// limite alguém grava um livro inteiro no nome do cliente (achado r3d-02).
+const texto = (v: unknown, max: number): string => String(v ?? "").trim().slice(0, max);
+const textoOuNull = (v: unknown, max: number): string | null => texto(v, max) || null;
 
 // Quanto o cliente paga adiantado. Era 50% (metade agora, metade na
 // entrega) até 24/08/2026, quando passou a ser tudo de uma vez.
@@ -146,12 +152,13 @@ export default {
     }
 
     const itens = Array.isArray(corpo.itens) ? corpo.itens : [];
-    const nomeCliente = String(corpo.nome_cliente || "").trim();
-    const contatoCliente = String(corpo.contato_cliente || "").trim();
-    const documentoCliente = String(corpo.documento_cliente || "").replace(/\D/g, "");
+    const nomeCliente = texto(corpo.nome_cliente, 120);
+    const contatoCliente = texto(corpo.contato_cliente, 40);
+    const documentoCliente = String(corpo.documento_cliente || "").replace(/\D/g, "").slice(0, 14);
     const combinar = !!corpo.frete_combinar;
 
     if (!itens.length) return Response.json({ error: "Carrinho vazio." }, { status: 400 });
+    if (itens.length > 60) return Response.json({ error: "Carrinho grande demais. Fecha em dois pedidos." }, { status: 400 });
     if (!nomeCliente) return Response.json({ error: "Falta o nome de quem está comprando." }, { status: 400 });
     if (!contatoCliente) return Response.json({ error: "Falta um WhatsApp pra contato." }, { status: 400 });
     if (documentoCliente.length !== 11) return Response.json({ error: "CPF inválido." }, { status: 400 });
@@ -215,7 +222,38 @@ export default {
       totalProdutos += produto.sale_price * quantidade;
     }
 
-    const freteValor = combinar ? 0 : Math.max(0, parseFloat(corpo.frete?.preco) || 0);
+    // O FRETE também nunca vem do navegador (achado r3d-01, corrigido em
+    // 21/09/2026). Antes esta linha era `parseFloat(corpo.frete?.preco)`:
+    // dava pra fechar pedido com frete de 1 centavo (o PIX saía menor) e
+    // trocar o servico_id por um mais caro, que a gerar-etiqueta compraria
+    // depois com o saldo da carteira do Melhor Envio. Agora a cotação é
+    // refeita aqui, com o CEP do pedido e a quantidade que ESTE código
+    // validou, e só vale a opção que sair dela — transportadora, serviço,
+    // prazo e preço são os do Melhor Envio, não os do corpo da requisição.
+    // Se o preço que o cliente viu não bate mais, o pedido NÃO é criado com
+    // outro valor em silêncio: volta um aviso pra ele calcular de novo.
+    let frete: { id: number | string; transportadora: string; servico: string; preco: number; prazo_dias: number | null } | null = null;
+    if (!combinar) {
+      const qtdTotal = linhas.reduce((s, l) => s + l.quantity, 0);
+      const cotacao = await cotarFrete(corpo.endereco.cep, qtdTotal);
+      if (!cotacao.ok) {
+        const msg = cotacao.status === 400
+          ? "O CEP de entrega não parece certo. Confere e calcula o frete de novo."
+          : "Não consegui conferir o frete agora. Tenta de novo em instantes, ou marca \"combinar a entrega\".";
+        return Response.json({ error: msg }, { status: cotacao.status === 400 ? 400 : 502 });
+      }
+      const idPedido = String(corpo.frete?.servico_id ?? "");
+      const escolhida = cotacao.opcoes.find((o) => String(o.id) === idPedido);
+      if (!idPedido || !escolhida) {
+        return Response.json({ error: "Essa opção de frete não está mais disponível. Volta e calcula o frete de novo." }, { status: 409 });
+      }
+      const precoVisto = parseFloat(corpo.frete?.preco);
+      if (!(Math.abs(precoVisto - escolhida.preco) <= 0.01)) {
+        return Response.json({ error: "O valor do frete mudou. Volta e calcula o frete de novo." }, { status: 409 });
+      }
+      frete = escolhida;
+    }
+    const freteValor = frete ? frete.preco : 0;
     const total = totalProdutos + freteValor;
     const orderNumber = "SITE-" + Date.now().toString(36).toUpperCase();
 
@@ -235,21 +273,23 @@ export default {
       // deles em vez de mudar junto.
       expected_deposit_pct: PERCENTUAL_SINAL,
     };
-    if (!combinar) {
+    if (!combinar && frete) {
       const end = corpo.endereco || {};
       Object.assign(dadosPedido, {
-        shipping_cep: end.cep || null,
-        shipping_street: end.rua || null,
-        shipping_number: end.numero || null,
-        shipping_complement: end.complemento || null,
-        shipping_district: end.bairro || null,
-        shipping_city: end.cidade || null,
-        shipping_state: end.estado || null,
-        shipping_carrier: corpo.frete?.transportadora || null,
-        shipping_service: corpo.frete?.servico || null,
-        shipping_service_id: corpo.frete?.servico_id || null,
-        shipping_price: freteValor,
-        shipping_days: corpo.frete?.prazo_dias || null,
+        shipping_cep: limparCep(end.cep) || null,
+        shipping_street: textoOuNull(end.rua, 160),
+        shipping_number: textoOuNull(end.numero, 20),
+        shipping_complement: textoOuNull(end.complemento, 120),
+        shipping_district: textoOuNull(end.bairro, 120),
+        shipping_city: textoOuNull(end.cidade, 120),
+        shipping_state: textoOuNull(end.estado, 40),
+        // tudo daqui pra baixo é o que o Melhor Envio respondeu AGORA, não
+        // o que o navegador mandou
+        shipping_carrier: frete.transportadora || null,
+        shipping_service: frete.servico || null,
+        shipping_service_id: frete.id,
+        shipping_price: frete.preco,
+        shipping_days: frete.prazo_dias,
       });
     }
 
