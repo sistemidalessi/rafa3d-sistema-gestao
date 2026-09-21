@@ -192,6 +192,19 @@ Toda view nova nasce `with (security_invoker = true)`; depois de apertar
 política, procurar view sem isso (`select relname, reloptions from pg_class
 where relkind = 'v'`).
 
+**A vitrine só enxerga as colunas da vitrine (patch 56, 21/09/2026).** A política de
+`products` pro visitante escolhe LINHAS (`active`), não COLUNAS, e o `anon` tinha
+SELECT na tabela inteira: com `select('*')` qualquer pessoa recebia as dicas e a
+configuração de fatiamento da IA, o caminho dos modelos, o estado das filas e o
+nome dos computadores do Rafa. Agora o `anon` só tem SELECT nas 16 colunas de
+`COLUNAS_DA_VITRINE` ([`catalogo/index.html`](catalogo/index.html)) — o mesmo
+que o patch 30 já fazia em `filament_colors`. **Coluna nova que a vitrine
+precise entra nos DOIS lugares**: na lista do catálogo e num
+`grant select (coluna) on products to anon`. Esquecer o grant, ou pedir `*`,
+devolve 42501 e a loja abre **vazia, sem erro na tela**. E mudança assim é
+sempre em dois tempos: publica o catálogo que pede menos, espera o cache de 10
+min do GitHub Pages vencer, só então aperta o banco.
+
 **Cadastro público desligado em 21/09/2026** (Authentication › Sign In /
 Providers › "Allow new users to sign up"): `auth/v1/settings` responde
 `disable_signup: true` e uma tentativa real de `signup` devolve

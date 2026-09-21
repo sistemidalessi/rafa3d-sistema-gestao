@@ -2,10 +2,14 @@
 -- Patch 56 — quem não fez login só enxerga as colunas da vitrine
 -- Rode este arquivo inteiro no SQL Editor do Supabase (projeto Rafa 3D).
 --
--- STATUS: AINDA NÃO APLICADO. Só pode rodar DEPOIS que o catálogo novo (o que
--- pede COLUNAS_DA_VITRINE em vez de "*") estiver publicado E o cache de 10
--- minutos do GitHub Pages tiver vencido. Rodar antes faz o catálogo ANTIGO,
--- que pede "*", abrir vazio.
+-- STATUS: JÁ APLICADO EM PRODUÇÃO em 21/09/2026 às 16:49, com o "sim" do
+-- Anderson, pelo SQL Editor do painel. O catálogo novo (COLUNAS_DA_VITRINE) tinha
+-- entrado no ar às 16:29; esperou-se o cache de 10 min do GitHub Pages vencer
+-- antes de rodar, senão o catálogo antigo (que pedia "*") abriria vazio. Ensaio
+-- 7/7 numa transação desfeita. Depois, de fora com a chave pública: dicas e
+-- configuração de fatiamento, nome dos computadores, caminho do modelo e "*"
+-- recusados (42501); a vitrine lê os 208 produtos; cotação de frete e
+-- fechamento de pedido seguem funcionando; catálogo real conferido no navegador.
 --
 -- POR QUE ISTO EXISTE (auditoria de 11/09/2026, achado r3d-03)
 --
