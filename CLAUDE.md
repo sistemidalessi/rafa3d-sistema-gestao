@@ -474,6 +474,15 @@ projeto de Auth ou outra tabela, não esta chave.
   Pra diagnosticar rápido: compare o DOM da seção nova com o de uma que
   funciona. Mesma casca e zero cards significa que a lista não chegou ao
   template, não que a consulta falhou.
+- **Tela que mostra fila do agente em andamento precisa do relógio de 4 s.**
+  O agente termina em segundos, mas o navegador só sabe se perguntar de
+  novo: `renderX()` confere se algo está `queued`/`processing` e, se a aba
+  está visível, chama a si mesma com `setTimeout` de 4 s (padrão de
+  Projetos, Pedidos, Preparar e Produtos). A Fila ficou de fora e o botão
+  "Abrindo…" durava até a pessoa trocar de aba (22/09) — quarta tela a
+  cair nisso. Botão novo que enfileira algo = a tela dele redesenha
+  sozinha, e o redesenho automático não mostra "Carregando..." (piscaria
+  a cada 4 s por cima da lista).
 - **Tabela larga fora de `.tabela-rola` alarga o documento no celular, e a
   modal some pra fora da tela.** Em 11/09 o "⚙️ Gerenciar" da aba Produtos
   "não fazia nada" no celular: o fundo escurecia e a janela não aparecia.

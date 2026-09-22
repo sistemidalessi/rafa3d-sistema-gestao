@@ -5046,9 +5046,18 @@ function nomeDoClienteNaFila(it) {
   return 'Sem nome';
 }
 
-async function renderFila() {
+// A Fila é a quarta tela a ganhar este relógio (Projetos, Pedidos e
+// Produtos já tinham): enquanto alguma peça está "Abrindo…", redesenha a
+// cada 4 s. Sem isso o botão ficava "Abrindo…" mesmo com o Bambu já
+// aberto — o agente termina em 12 s e a tela só descobria quando a
+// pessoa trocava de aba (22/09, lote da Dayane).
+let _filaPollTimer = null;
+async function renderFila(silencioso) {
   const el = document.getElementById('tab-fila');
-  el.innerHTML = '<div class="empty">Carregando...</div>';
+  clearTimeout(_filaPollTimer);
+  // No redesenho automático não mostra "Carregando...": piscaria a cada
+  // 4 s por cima de uma lista que já está na tela.
+  if (!silencioso) el.innerHTML = '<div class="empty">Carregando...</div>';
 
   const items = await q(SUPA.from('order_line_items')
     .select('*, orders(order_number, needed_by, customer_name, customers(id, name)), products(name, material, model_file_path, open_slicer_status, open_slicer_error)')
@@ -5218,6 +5227,14 @@ async function renderFila() {
     html += '</table></div></div>';
   }
   el.innerHTML = html;
+
+  const emAndamento = items.some((it) => {
+    const f = fonteDoPreparo(it);
+    return f.open_slicer_status === 'queued' || f.open_slicer_status === 'processing';
+  });
+  if (emAndamento && !el.classList.contains('hidden')) {
+    _filaPollTimer = setTimeout(() => { renderFila(true); }, 4000);
+  }
 }
 
 // A mesma regra vale pro bloco do cliente e pras peças dentro dele —
