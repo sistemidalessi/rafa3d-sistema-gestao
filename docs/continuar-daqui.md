@@ -26,9 +26,9 @@ coluna interna, pagamentos, pedidos e clientes dão 42501; `signUp` responde
 "Signups not allowed". Tudo como o patch diz.
 
 **Em aberto:** `r3d-05` — a `service_role` em texto puro no `.env` do
-computador do Rafa continua o ponto mais sensível. E o pedido de teste da
-auditoria (`SITE-MUBM01VM`, "TESTE AUDITORIA - pode apagar") ficou na
-Lixeira.
+computador do Rafa continua o ponto mais sensível. (O pedido de teste da
+auditoria e o Descanso de panela de 06/09 foram apagados da Lixeira em
+22/09, a pedido do Anderson — Lixeira zerada.)
 
 ## ⚠️ O assistente do Bambu voltava toda vez: era o aplicativo do Itaú — 17/09
 
