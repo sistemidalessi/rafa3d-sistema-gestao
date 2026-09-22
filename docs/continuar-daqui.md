@@ -1,10 +1,34 @@
 # Continuar daqui
 
-Onde as coisas pararam em **17/09/2026**.
+Onde as coisas pararam em **22/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## 🔒 Auditoria de segurança do banco — 21/09 (patches 54, 55, 56)
+
+Feita noutra sessão; o detalhe está no `CLAUDE.md` (pegadinhas com
+`r3d-01` a `r3d-05`) e nos três patches. Resumo do que mudou:
+
+- **Patch 54:** 20 políticas `using(true)` fechadas — "da loja" não é
+  "qualquer um logado"; `add_filament_spool` e `consume_filament` passaram
+  a checar dono/equipe; `anon` não executa função nenhuma. Cadastro
+  público do Auth desligado.
+- **Patch 55:** a view de pagamentos respeita a RLS (`security_invoker`).
+- **Patch 56:** o visitante do catálogo só lê as 16 colunas da vitrine de
+  `products`; o catálogo pede as colunas pelo nome em vez de `*`.
+- **`finalizar-pedido` refaz a cotação do frete no servidor** (`r3d-01`),
+  publicada e conferida em produção com um pedido de teste.
+
+Conferido de fora em 22/09 com a chave pública: vitrine lê nome e preço;
+coluna interna, pagamentos, pedidos e clientes dão 42501; `signUp` responde
+"Signups not allowed". Tudo como o patch diz.
+
+**Em aberto:** `r3d-05` — a `service_role` em texto puro no `.env` do
+computador do Rafa continua o ponto mais sensível. E o pedido de teste da
+auditoria (`SITE-MUBM01VM`, "TESTE AUDITORIA - pode apagar") ficou na
+Lixeira.
 
 ## ⚠️ O assistente do Bambu voltava toda vez: era o aplicativo do Itaú — 17/09
 
