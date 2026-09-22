@@ -211,3 +211,406 @@ Providers › "Allow new users to sign up"): `auth/v1/settings` responde
 `signup_disabled`. Donos e ajudantes continuam sendo criados por Add user.
 **Não religar** — se um dia precisar de cadastro de cliente, é outro
 projeto de Auth ou outra tabela, não esta chave.
+
+
+## Pegadinhas conhecidas
+
+> **Antes de commitar uma edição neste arquivo, olhe o `git diff --stat`.**
+> Em 21/09/2026 um commit apagou 428 linhas daqui (esta seção inteira e a
+> do fatiador) sem ninguém notar, e só apareceu em 22/09. Edição de
+> CLAUDE.md que remove mais do que acrescenta está errada até prova em
+> contrário.
+
+- **Mexeu no `agent.js` ou no `gerar3mf.js`? Reinicie o agente.** Ele lê o
+  código uma vez, ao iniciar — testar sem reiniciar é testar a versão
+  velha e concluir errado. Isso enganou duas vezes em 25/08: um teste
+  "falhou" e a conclusão quase foi de que o código não funcionava.
+  Parar e subir: `Stop-Process` no `node.exe` cuja linha de comando tem
+  `agent.js`, depois dois cliques em `start-hidden.vbs`.
+
+- **O agente pode cair no meio do dia, sem erro nenhum no `agent.log`.**
+  Em 28/08/2026 ficou mais de 2h parado (o computador continuava ligado
+  e em uso) até um pedido de colinha não sair da fila — sem stack trace,
+  sem mensagem de erro, só silêncio. `slicer_agents.last_seen_at` é o
+  jeito de confirmar: se está velho, ele não está rodando, ponto. Por
+  isso existe `instalar-vigia.ps1` (patch de infraestrutura, não SQL) —
+  registra uma Tarefa Agendada do Windows via `schtasks.exe` (não o
+  módulo `ScheduledTasks`/`Register-ScheduledTask`: esse devolveu
+  "Acesso negado" mesmo sem precisar de admin de verdade) que confere a
+  cada 5 minutos e religa sozinho. Rode uma vez por máquina; o
+  `conferir-maquina.ps1` avisa se falta.
+
+- **`GRANT` é separado de RLS, e vale até pro `service_role`.** Essa mesma
+  pegadinha derrubou os patches 06, 09, 17, 19, 26, 34, 35 e 43: sem `grant`, a consulta nem
+  chega a ser avaliada pela política (erro 42501, "permission denied"). Tabela
+  nova ou coluna nova usada pelo agente ou por Edge Function precisa do `grant`
+  correspondente — já inclua no mesmo patch.
+  **Conceda o verbo que vai faltar depois, não só os de hoje.** O patch 25
+  concedeu `select, insert, update` porque era o que a tela usava, e o
+  `delete` só fez falta no 43 — quando descobrimos que nenhum computador
+  saía da lista. Grant de tabela cobre coluna nova; grant de coluna não.
+  **E `delete` sem grant não estoura**: devolve `permission denied` no
+  campo `error`, e quem não conferir segue achando que apagou. Se você
+  escreveu no banco por script, confira o resultado — não a sua mensagem
+  de sucesso.
+- **`delete` que não apaga nada devolve SUCESSO.** Pior que o caso
+  acima: sem `.select()`, o Supabase não distingue "apaguei uma linha"
+  de "não achei nenhuma" — as duas voltam sem `error`. Em 29/08 a tela
+  disse "Pedido excluído" três vezes com o pedido ainda no banco.
+  **Todo `delete` de tela leva `.select()` e confere `data.length`**, e
+  zero linha vira aviso pra pessoa. Escrevi a regra do bullet anterior
+  de manhã e caí nela à tarde, nas duas funções que tinha acabado de
+  criar — não confie em ter lido isto uma vez.
+- **Todo `delete` passa pela lixeira (patch 47).** Guarde a cópia
+  (`guardarNaLixeira`) ANTES de apagar, e não apague se a cópia falhar.
+  A cópia inclui as filhas que somem na cascata. Nasceu de 28/08, quando
+  excluir um projeto apagou o pedido inteiro do cliente e só deu pra
+  remontar por coincidência. Aviso de exclusão precisa dizer o
+  **tamanho** do estrago, não só "não tem como desfazer".
+- **Proibir é a saída preguiçosa.** Quando o dono pede pra fazer algo
+  que parece perigoso, quase sempre são duas ideias grudadas que
+  precisam ser separadas — não uma trava. "Excluir projeto" apagava o
+  pedido junto; eu proibi, e o resultado foi prendê-lo numa tela
+  entulhada sem explicar nada. O certo era oferecer as duas saídas
+  ("tirar da lista" e "apagar tudo") e deixar ele escolher.
+- **Cor sozinha na tela é bug.** Sempre `Preto (TPU)`, nunca `Preto` —
+  use `rotuloDaCor()`. "Preto" e "Preto" são filamentos diferentes se um
+  é PLA e o outro é TPU, e o material decide temperatura, placa e se a
+  peça sai ou derrete. Em 28/08 a Fila aprovou imprimir uma peça de PETG
+  num rolo de TPU porque os dois eram pretos e a tela só escrevia a cor.
+- **Material tem DOIS vocabulários — compare a família.** `products` e
+  `project_parts` guardam `pla|petg|tpu|abs` (tem `check`, patch 33);
+  `filament_colors` e as receitas guardam o nome comercial (`PLA Silk`,
+  `PETG Basic`). Texto exato entre os dois acusa `pla` contra `PLA Silk`
+  como conflito — metade do catálogo. `familiaDoMaterial()` compara a
+  primeira palavra.
+- **São dois fatiadores, de propósito.** `SLICER_APP_PATH` (Bambu Studio) é o
+  que abre pro Rafael trabalhar; `ORCA_PATH` (OrcaSlicer) é só pro fatiamento
+  por linha de comando. Não unifique.
+- **`.stl` não tem miniatura embutida; `.3mf` tem.** Por isso a análise de IA
+  do produto extrai a imagem de dentro do `.3mf`, e a do projeto usa a
+  miniatura que a Meshy devolveu (ou cai pra foto do cliente).
+- **A fila de "Abrir no Fatiador" tem destino.** Desde o patch-25 cada pedido
+  carrega `open_slicer_agent` — o computador que deve abrir a janela — e cada
+  agente só pega o que é dele (ou o que está sem dono, que é como todo registro
+  antigo se comporta). Se você mexer nessa fila, mantenha o filtro: sem ele,
+  com dois agentes ligados, o arquivo abre na tela errada. O nome vem de
+  `os.hostname()` e o agente se anuncia sozinho em `slicer_agents`.
+- **A escala do `.3mf` gerado é decidida pela origem do arquivo, não pelo
+  tamanho.** Modelo da Meshy sempre é normalizado pra 80mm no maior lado
+  (a Meshy não exporta em milímetro, e o número dela varia muito); arquivo
+  anexado à mão nunca é reescalado. A versão antiga adivinhava pelo tamanho e
+  errava nas duas pontas. Se um dia isso precisar mudar, mexa em
+  `escalaSegura()` — e lembre que `model_source` vem do banco, então a consulta
+  do agente precisa continuar trazendo essa coluna.
+- **Projeto não é tabela própria.** É `order_line_items` com
+  `line_type = 'custom'` — sempre filtre por isso ao consultar projetos. Já as
+  **partes** de um projeto são tabela de verdade (`project_parts`, patch-23).
+- **O checkout do catálogo é JavaScript puro, fora do framework de template**
+  ([`catalogo/support.js`](catalogo/support.js)). Foi de propósito: aquele
+  framework re-renderiza a página inteira a cada scroll, e um formulário dentro
+  dele perderia o que a pessoa digitou.
+- **O arquivo NÃO troca a placa no Bambu Studio.** Gravar `curr_bed_type`
+  descreve pra que placa a peça foi pensada, mas não muda nada: a placa é
+  preferência do **aplicativo** (fica em `BambuStudio.conf` como
+  `"curr_bed_type": "1"`, um número). Testado em 25/08/2026 abrindo o
+  Bambu do zero — ele continua na placa anterior. Quem troca é a pessoa,
+  na tela do fatiador; por isso o sistema avisa qual escolher ao abrir.
+- **`filament_settings_id` é o nome de um perfil que precisa existir** na
+  instalação (`resources\profiles\BBL\filament`). Trocar o material troca
+  esse perfil junto — sem isso o arquivo abria como "Bambu PLA Basic" com
+  temperatura de PETG, e corrigir o filamento na mão fazia o fatiador
+  reescrever as temperaturas e jogar a colinha fora.
+- **Cada placa da Bambu tem o SEU campo de temperatura**, e o fatiador só
+  lê o da placa selecionada em `curr_bed_type`. Escrever em
+  `hot_plate_temp` com o perfil em `Cool Plate` não dá erro nenhum — o
+  valor é simplesmente ignorado, e foi o que aconteceu até 25/08/2026.
+  A tabela `PLACAS` em [`gerar3mf.js`](slicer-agent/gerar3mf.js) faz a
+  ligação, e a placa é resolvida **antes** do laço de campos justamente
+  porque ela decide onde a temperatura vai ser gravada.
+- **`model_source` decide se o arquivo recebe a colinha.** Quem reconfigura o
+  `.3mf` olha essa coluna, e por um tempo `manual_upload` ficou de fora: a IA
+  analisava, gerava uma ficha ótima, e ela nunca era aplicada no arquivo que de
+  fato abria no fatiador. Sintoma: colinha linda na tela, fatiador com os
+  valores do perfil. Origem nova precisa entrar nessa lista.
+- **O caminho do arquivo era só de ida — o "Salvar" do Bambu não voltava.**
+  Em 09/09/2026 o Anderson abriu "Vovó Rosana" pelo sistema, mexeu em tudo
+  no Bambu (separou partes, trocou parâmetros), salvou com Ctrl+S, e o
+  próximo "Abrir no Fatiador" baixou o original do Storage por cima do
+  arquivo salvo. Não havia cópia em lugar nenhum: perdeu a tarde. Desde o
+  patch 52 são duas proteções, as duas no agente:
+  1. Todo arquivo gravado em `downloads/` ganha um rastro
+     (`<nome>.origem.json`: caminho no Storage + hora da gravação). Se na
+     hora de abrir o arquivo estiver mais novo que o rastro, foi o Bambu
+     que salvou — o agente abre **esse**, e nem baixa (economiza a saída
+     do Supabase). Checado em `arquivoSalvoPelaPessoa()` ANTES do
+     download, nas três filas de abrir. Sem rastro (arquivo de antes do
+     patch) vale a regra antiga.
+  2. O botão **"📥 Guardar o que eu mudei no Bambu"** (produto, projeto,
+     parte e passo 3 do Preparar; só aparece depois do primeiro "abrir")
+     enfileira `save_back_status` pro computador que abriu a peça. O
+     agente sobe o arquivo salvo pro Storage no lugar do original, marca
+     `slicer_saved_at` e `model_source = 'manual_upload'` — e a partir daí
+     abre o arquivo **como está, sem reaplicar a colinha**: reaplicar
+     trocaria o `project_settings` inteiro e jogaria fora justamente o
+     que a pessoa mudou. Só sobe se o arquivo foi salvo DEPOIS de o
+     agente ter gravado; senão devolve erro dizendo pra salvar primeiro.
+  Testado de ponta a ponta em 09/09 com a própria "Vovó Rosana"
+  (abrir → simular Ctrl+S → abrir de novo sem baixar → guardar de volta →
+  abrir sem reaplicar).
+- **A colinha decide primeira camada, velocidades e suporte em detalhe —
+  e a placa lisa de outra marca existe (09/09/2026, patch 53).** A colinha
+  antiga só sabia camada/parede/infill/suporte-básico/brim/temperatura;
+  pra peça delicada (a "Vovó Rosana": árvore de folhas finas com bonecos
+  num balanço) ela saiu genérica e a peça soltou nas primeiras camadas. O
+  que funcionou foi a receita de um chat externo: primeira camada a 15
+  mm/s, ventoinha desligada nas 2 primeiras, bico +5°C na primeira, brim
+  de 10-12 mm gap 0, suporte árvore orgânica a 20° com "só regiões
+  críticas" e "remover saliências pequenas" DESLIGADOS, e um teste de
+  1 mm antes da peça inteira. Agora:
+  1. O JSON da colinha tem 16 chaves novas (`first_layer_*`,
+     `fan_off_first_layers`, `*_speed_mms`, `support_style`,
+     `support_critical_regions_only`, `support_remove_small_overhang`,
+     `support_on_build_plate_only`, `support_interface_top_layers`,
+     `support_*_distance_mm`, `brim_gap_mm`, `nozzle_temp_first_layer_c`).
+     Cada uma entra em `CATEGORIA` e no `mapa` de
+     `aplicarAjustesColinha()`. **Ventoinha é FILAMENTO** no Bambu
+     (`close_fan_the_first_x_layers` só existe em `profiles/BBL/filament`),
+     por isso categoria 1 e um valor por slot — conferido nos perfis da
+     instalação, não de memória. `support_style` é lista fechada
+     (`default|grid|snug|tree_slim|tree_strong|tree_hybrid`). **"organic"
+     NÃO existe no Bambu 2.8.2** — a string aparece no `.dll`, mas é texto
+     de tela: o Bambu abriu avisando *"'organic' foi substituído por
+     'default'"*. A árvore orgânica nesta versão é `tree_hybrid`, e todo
+     sinônimo de "orgânico" cai nele. Lição: token no `.dll` não prova
+     valor válido; só abrir o arquivo no Bambu prova (o aviso de
+     substituição aparece uma vez, e o resto da configuração entra).
+     `support_critical_regions_only` e
+     `support_remove_small_overhang` não aparecem em nenhum perfil de
+     process/ mas estão no `project_settings.config` do template — são
+     chaves de projeto, válidas.
+  2. O prompt classifica a peça em (A) simples ou (B) "coleção de
+     saliências pequenas" ANTES dos números, e em (B) prioriza a primeira
+     camada: é lá que essas peças morrem, não no suporte lá em cima. A
+     ficha ganhou "## Primeira camada" e "## Antes de imprimir" (limpar a
+     placa, cortar a 1 mm e imprimir só a base, olhar as 2-3 primeiras
+     camadas). O modelo passou a ser `claude-opus-5` com raciocínio
+     adaptativo e `effort: high` — é julgamento, e são centavos por colinha.
+  3. Placa `smooth_other` ("placa lisa de outra marca": holográfica,
+     Stellar, Chameleon). Vive em `PLACAS_DA_LOJA` (tela), `PLACAS_PRA_IA`
+     (prompt) e `PLACAS` (gerar3mf.js → `textured_plate_temp` + `curr_bed_type`
+     "Textured PEI Plate", o perfil que se escolhe no Bambu pra ela). **E
+     no CHECK das três tabelas** — o patch 32 travou `bed_plate` numa
+     lista, e gravar valor novo sem o patch 53 dá erro 23514, igual ao
+     `model_source` no patch 27. Placa nova = quatro lugares, não três.
+- **Tudo assume bico 0,4 — o prompt da colinha, o `printer_settings_id`
+  do arquivo gerado e todo `.3mf` que já está no Storage.** Não existe
+  campo de bico em lugar nenhum. Em 16/09 o Anderson imprimiu o 01.29 com
+  bico 0,6 e a peça partiu no gargalo: linha de 0,42 saindo de um furo de
+  0,6 não cola camada. Enquanto o bico diferente for exceção, a saída é
+  um projeto local do Bambu à parte, sem guardar de volta (ver
+  `continuar-daqui.md`). Se virar regra, o bico entra no cadastro da
+  impressora e a colinha e o `gerar3mf.js` passam a ler dali.
+- **A adaptação do catálogo ao celular é feita em JavaScript, não em CSS.** O
+  framework de template tem um prop `columns` que **vence qualquer media
+  query** — ele foi pensado pra pré-visualizar em 1080px fixos. Por isso a
+  grade lê `viewportW` do estado (atualizado no `resize`) e decide o número de
+  colunas na mão. Se um dia a grade voltar a ficar com produto do tamanho de um
+  selo no celular, é esse prop brigando de novo — não adianta escrever CSS.
+- **Colunas mortas:** `post_processing_minutes` e `post_processing_labor_rate`
+  ficaram órfãs quando o patch-15 trocou a conta de custo por `has_painting` —
+  nenhuma linha de código as usa. As `ai_viability_*` do patch 09 tiveram o
+  mesmo destino e já foram apagadas pelo patch 12.
+- **`unit_cost_estimate` quase nunca está preenchido.** Só recebe valor em
+  item personalizado, quando o dono aprova o orçamento. Item de catálogo nunca
+  preenche — `salvarItem()` não toca nele. Por isso a aba "Quanto sobrou" tem
+  quatro fontes de custo em cascata em vez de simplesmente ler essa coluna.
+- **O fatiamento por linha de comando do OrcaSlicer não funciona — em caso
+  nenhum.** Testado em 26/08 numa peça simples, de um objeto e um
+  filamento, e num `.stl` cru sem perfil: a mesma
+  `Slic3r::CLI::run found error, exit` nos dois. Conferido no código-fonte
+  do OrcaSlicer: é um catch-all impresso em qualquer erro interno, não
+  assinatura de peça complexa. Não conte com essa via pra extrair peso e
+  tempo automaticamente — é por isso que "Terminei" pergunta os números.
+- **`orders.status` é campo morto.** Nada no sistema atualiza ele: fica
+  preso em "Vendo o preço" desde a criação. Quem sabe o estado de verdade
+  é o `line_status` de cada peça, e é nele que a lista de Pedidos e a Fila
+  se baseiam. Não escreva lógica nova em cima de `orders.status`.
+- **"Terminei" não pergunta mais nada, e não grava receita.** Ele baixa o
+  estoque sozinho: pega as cores da peça, os gramas do cadastro (que
+  vieram do fatiador) e o rolo aberto de cada cor. Perguntar "qual rolo"
+  e "quantas gramas" era pedir número inventado — peça de 4 cores gasta
+  um pouco de cada, e não existe "o rolo". Em peça multicor ele divide
+  igual entre as cores **e diz que dividiu**; a precisão vem de pesar o
+  rolo e usar "Corrigir rolo" em Filamentos.
+  Falta cor, gramas ou rolo? A peça avança do mesmo jeito, e a tela diz
+  por que não mexeu no estoque — **terminar de imprimir é fato
+  consumado, a tela não pode recusar por falta de cadastro.**
+- **O catálogo é sempre o link, nunca PDF — e por isso renumerar é
+  seguro.** Decidido pelo dono em 30/08: nada de mandar catálogo em
+  arquivo, justamente porque muda muito. Quem recebe o link vê o
+  atualizado na hora. Então mover produto de categoria **deve** trocar o
+  código dele e fechar o buraco na antiga (as categorias não têm buraco
+  nenhum hoje, e o padrão é esse). Os pedidos não quebram: eles ligam
+  por `product_id`, e o `catalog_code` só é montado na hora de gerar o
+  link do formulário e a mensagem de WhatsApp. **Ordem importa** ao
+  renumerar: tire o que sai primeiro, senão dois produtos disputam o
+  mesmo código.
+- **Categoria do catálogo vive em CINCO lugares.** Esta nota já disse
+  "dois" e estava errada — em 30/08, criando `garden` (11 · Jardim &
+  Externos), a seção desenhou vazia com tudo aparentemente certo.
+  1. `CATEGORY_LABELS` no [`index.html`](index.html);
+  2. a lista da Edge Function
+     [`sugerir-cadastro-produto`](supabase/functions/sugerir-cadastro-produto/index.ts)
+     — **e ela precisa de deploy**, senão a IA nunca sugere a nova;
+  3. `CATALOG_CATEGORY_KEYS` + o estado inicial em
+     [`catalogo/index.html`](catalogo/index.html);
+  4. as variáveis do render (`const x = this.state.x`), o `sectionCodes`
+     e a seção HTML própria (clone de outra, trocando id, número,
+     título, subtítulo e as variáveis do template);
+  5. **o `return` do render** — ele lista explicitamente o que o
+     template enxerga. Faltando ali, a grade vem vazia e nada acusa
+     erro: sem CSS quebrado, sem erro no console, sem falha de consulta.
+  Pra diagnosticar rápido: compare o DOM da seção nova com o de uma que
+  funciona. Mesma casca e zero cards significa que a lista não chegou ao
+  template, não que a consulta falhou.
+- **Tabela larga fora de `.tabela-rola` alarga o documento no celular, e a
+  modal some pra fora da tela.** Em 11/09 o "⚙️ Gerenciar" da aba Produtos
+  "não fazia nada" no celular: o fundo escurecia e a janela não aparecia.
+  A tabela de Produtos não estava dentro de `.tabela-rola`, então o
+  documento ficava com ~1900px de largura; a modal é `position: fixed`
+  centralizada no viewport de **layout** (não no visual), e nascia em
+  `left ≈ 580px` numa tela de 375. Não é bug de JavaScript — o clique
+  funcionava, a modal existia, só estava fora do enquadramento. Correção:
+  `.card { overflow-x: auto }` — toda tabela larga rola dentro do cartão.
+  Pra diagnosticar: `document.documentElement.scrollWidth` maior que
+  `window.innerWidth` no celular é este bug, seja em que aba for.
+- **Cartão que vira imagem (html2canvas) não pode ter `<img>` com
+  `object-fit`.** O html2canvas 1.4.1 ignora `object-fit` e estica a
+  imagem pra caixa inteira — na prévia fica certo (o navegador recorta),
+  no PNG sai deformado. Foi o primeiro post do Instagram (11/09): vaso
+  largo. Nos três cartões que passam por ele (post do Instagram e os dois
+  orçamentos) a foto é FUNDO de bloco com `background-size: cover`, que
+  ele desenha certo. Cartão novo pra html2canvas segue a mesma regra; a
+  cartinha impressa (`@media print`) pode usar `<img>` normal.
+- **Fundo colorido some na impressão sem `print-color-adjust: exact`.** O
+  navegador apaga fundo "pra economizar tinta", e a cartinha saía branca.
+  Vale pra qualquer coisa desenhada pra imprimir.
+- **O OrcaSlicer sai com código 0 mesmo falhando.** A única checagem confiável
+  é ver se o arquivo de saída existe.
+
+
+- **Supabase cobra pelo que SAI do servidor, e o catálogo é público.** Em
+  02/09/2026 a cota de 5 GB/mês do plano grátis estourou e o projeto
+  INTEIRO foi bloqueado — sistema, catálogo e agente de uma vez, com
+  `exceed_egress_quota` na tela de login (parece senha errada, não é).
+  Eram 46 fotos de produto em PNG de 2 MB, e cada pessoa que abria o
+  link baixava todas: uns 100 acessos gastaram o mês. Desde então a foto
+  é encolhida no navegador antes de subir (`encolherFoto()`: JPEG, 1200
+  px, ~15× menor) e o plano é o Pro (US$ 25/mês, 250 GB). Se o erro
+  voltar: site do Supabase → organização → **Billing / Usage**. Fotos de
+  projeto e os `.3mf` de 20 MB que o agente baixa a cada tarefa também
+  contam, só que muito menos.
+- **O site tem domínio próprio, e a raiz dele é o CATÁLOGO por
+  redirecionamento (11/09/2026).** `rafa3ddalessi.com.br` (UOL Host, CPF do
+  Anderson; `rafa3d.com.br` já tinha dono) aponta pro GitHub Pages via os
+  quatro `A` do GitHub + `CNAME www`, e o arquivo `CNAME` na raiz do repo
+  liga o domínio. Como Pages serve o repositório inteiro, a raiz do
+  domínio é o `index.html` — o sistema de gestão. Por isso há um script
+  no topo do `<head>`: no domínio, na raiz, **sem sessão do Supabase no
+  `localStorage`**, ele manda pra `/catalogo/`. Quem está logado fica;
+  aparelho novo entra por `?entrar`. Se um dia "o domínio abre o
+  catálogo em vez do sistema" virar reclamação, é isso — e é de
+  propósito. O endereço antigo (`sistemidalessi.github.io/...`)
+  redireciona pro domínio, então link e QR antigos continuam valendo.
+  **Ordem ao mexer em domínio:** DNS primeiro, conferir com `nslookup`
+  em `8.8.8.8` (o resolver da rede do escritório guarda resposta negativa
+  por um tempo e mente), e só então o `CNAME` — o GitHub redireciona o
+  `github.io` no instante em que o arquivo entra, e se o DNS não resolve
+  o catálogo cai do ar.
+- **Renumerar produto NÃO move a pasta dele no Storage.** `image_path` e
+  `model_file_path` são caminhos completos gravados no banco, então
+  continuam funcionando depois de trocar o código — mas a pasta fica com
+  o código VELHO. Script que casa pasta com `catalog_code` troca a foto
+  de um produto pela de outro: em 02/09 fiz exatamente isso e a Cesta
+  Suspensa ficou com a foto do Porta Joias por alguns minutos. **Sempre
+  parta do `image_path` do produto, nunca do nome da pasta.** (Hoje as
+  fotos do Supabase estão na pasta do código atual; as originais em
+  PNG ficaram em `produtos-fotos/originais/<código da época>/`.)
+
+## Abrir o fatiador já configurado: por que é delicado
+
+O [`gerar3mf.js`](slicer-agent/gerar3mf.js) converte o `.stl` da Meshy num
+`.3mf` que abre no Bambu Studio com os ajustes da colinha já aplicados. Isso
+funciona hoje, mas foram **três defeitos empilhados** até funcionar, cada um
+escondendo o seguinte. Se algum dia voltar a abrir "sem a colinha", provavelmente
+é um destes:
+
+1. **A ordem dentro do zip.** A norma do `.3mf` (OPC) exige o
+   `[Content_Types].xml` como **primeira** parte do pacote. O `adm-zip`
+   reordenava ao gravar e jogava o `_rels/.rels` na frente, e o Bambu recusava
+   o pacote. Por isso o zip é montado pelo [`zip3mf.js`](slicer-agent/zip3mf.js),
+   escrito à mão, que grava na ordem exata — **não troque por biblioteca de
+   zip sem garantir a ordem.**
+2. **O arquivo precisa se declarar como projeto do Bambu.** Ele decide entre
+   "leio as configurações" e "importo só a malha" pelo
+   `<metadata name="Application">BambuStudio-...` e pela presença do
+   `Metadata/slice_info.config`. Sem os dois, ignora tudo em silêncio.
+   `reconfigurarHi3d3mf()` já injeta os dois quando faltam (achado em
+   28/08 com um `.3mf` do Layerpaint) — mas **não resolve sozinho**, ver
+   item 4.
+3. **`different_settings_to_system` é o que faz os valores valerem.** O Bambu
+   não lê os valores soltos: ele carrega o perfil nomeado em
+   `print_settings_id` e aplica por cima **só** os campos listados nesse
+   vetor (processo, filamento, impressora). Campo alterado que não entra na
+   lista é descartado — o sintoma é abrir limpo, sem erro nenhum, e mesmo
+   assim vir tudo com os valores do perfil.
+   **O vetor nem sempre tem três posições.** Só tem quando é um filamento
+   só (arquivo gerado do zero). Peça dividida por cor no Hi3D tem um slot
+   de filamento PRA CADA cor — 4 cores vira vetor de 6 posições (processo,
+   filamento 1, 2, 3, 4, impressora), e a impressora deixa de ser a
+   posição 2 pra virar a última. `aplicarAjustesColinha()` calcula os
+   índices pelo tamanho real do vetor (achado com o Chaveiro do Pikachu,
+   27/08: índice fixo marcava só a cor 1 como "mexida" e gravava a placa
+   na posição da cor 2) — se voltar a escrever índice fixo, o mesmo bug
+   volta, só que silencioso de novo.
+4. **Nem todo `.3mf` anexado à mão É um projeto do Bambu por baixo — e
+   isso não tem conserto no nosso código.** Achado em 28/08 com peças de
+   um projeto (Friends) baixadas do Layerpaint (ferramenta de pintura de
+   cor, não fatiador): o arquivo original — **mesmo sem nenhuma
+   modificação nossa** — já abre no Bambu Studio com "O arquivo 3mf
+   contém uma configuração inválida, carregar apenas os dados de
+   geometria". Não é o item 2 (isso a gente resolve); é a
+   **estrutura interna do modelo**: o Layerpaint grava a peça inteira
+   num `3D/3dmodel.model` só, com cor por `<m:colorgroup>` (extensão de
+   Materiais do padrão 3MF), sem o esqueleto de
+   `3D/Objects/object_N.model` + `3D/_rels/3dmodel.model.rels` que um
+   projeto real do Bambu sempre tem (comparado lado a lado com um
+   projeto de verdade que abre bem). O Bambu reconhece que tem cor pra
+   importar (mostra a janela "Cor padrão 3mf Importada", pra mapear as
+   cores do arquivo pros filamentos carregados) mas não trata como
+   projeto seu, e por isso descarta a configuração inteira — **de
+   propósito**, não é bug do Bambu nem nosso.
+   Na prática: a peça abre certinha (malha e cor corretas), só que sem a
+   colinha aplicada — quem for imprimir uma peça dessas precisa mapear a
+   cor na janela que aparece e digitar brim/temperatura/altura de camada
+   à mão, olhando o texto da colinha (💬 "Ver colinha" na tela do
+   sistema). Isso só afeta arquivo vindo do Layerpaint; Hi3D, Meshy e
+   `.stl`/`.3mf` anexado de um projeto real do Bambu continuam recebendo
+   a colinha automática do jeito de sempre.
+
+Além disso, os campos de lista só aceitam as palavras exatas do Bambu, e
+**valor inválido derruba o arquivo de configuração inteiro**, não só aquele
+campo. Por isso `aplicarAjustesColinha()` traduz por lista fechada
+(`LISTAS_DO_BAMBU`) e descarta o que não conhece.
+
+Os nomes mudaram entre versões, e é aí que se erra: `normal` virou
+`normal(auto)`, e o `outer_brim_only` do formato antigo hoje é **`outer_only`**
+(o `inner_brim_only` virou `inner_only`). Mandar o nome velho não dá erro — o
+Bambu troca por `auto_brim` sozinho e avisa numa janela, e a peça sai com o
+brim errado. Os valores válidos, tirados da tabela de dentro do
+`BambuStudio.dll`:
+
+```
+no_brim | outer_only | inner_only | outer_and_inner | auto_brim | brim_ears
+```
