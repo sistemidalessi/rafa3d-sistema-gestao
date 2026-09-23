@@ -8,20 +8,22 @@ Onde as coisas pararam em **23/09/2026**.
 
 ## 🚨 A Meta suspendeu as contas do Anderson por causa do "tenho 10 anos" — 23/09
 
-Na manhã de 23/09 Instagram, Facebook e WhatsApp do Anderson foram
-suspensos de uma vez (estão todos na mesma Central de Contas da Meta, e o
-WhatsApp da Rafa 3D é o número dele). Causa: a bio e os posts do
+Na manhã de 23/09 Instagram, Facebook e o WhatsApp **pessoal** do
+Anderson (11 98719-0101) foram suspensos de uma vez (estão todos na mesma
+Central de Contas da Meta). O WhatsApp da Rafa 3D, (11) 98719-0466, é
+outro número e **não foi afetado** — catálogo, cartinha e orçamento
+continuam atendendo. Causa: a bio e os posts do
 @rafa3d.dalessi diziam **em primeira pessoa** "tenho 10 anos e essa loja
 é minha" — textos que eu escrevi. A regra da Meta é 13 anos pra ter
 conta; pra ela, o dono da conta se declarou com 10.
 
 - Instagram e Facebook voltaram no mesmo dia com a selfie de verificação
   de idade. O Anderson tirou a idade da bio e apagou os posts.
-- WhatsApp: pedido de revisão dentro do app + e-mail pro suporte, com o
-  número em formato internacional e a explicação de que a idade já foi
-  verificada no Instagram/Facebook da mesma Central de Contas. Enquanto
-  não volta, o número (11) 98719-0466 do catálogo e da cartinha está
-  fora do ar — cliente que mandar mensagem não recebe resposta.
+- WhatsApp pessoal: pedido de revisão dentro do app + e-mail pra
+  support@whatsapp.com, com o número em formato internacional
+  (+55 11 98719-0101) e a explicação de que a idade já foi verificada no
+  Instagram/Facebook da mesma Central de Contas. Repetir a cada 48 h até
+  voltar.
 - Daqui pra frente, todo texto que vá pra dentro da Meta fala do Rafa em
   **terceira pessoa** e diz que a conta é administrada pelos pais. Bio
   nova e mensagem de grupo novas em `divulgacao-catalogo.md`; a legenda
