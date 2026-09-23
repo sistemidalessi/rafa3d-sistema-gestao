@@ -1,10 +1,33 @@
 # Continuar daqui
 
-Onde as coisas pararam em **22/09/2026**.
+Onde as coisas pararam em **23/09/2026**.
 
 > **Memória do agente não viaja entre as máquinas.** O que precisa
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
+
+## 🚨 A Meta suspendeu as contas do Anderson por causa do "tenho 10 anos" — 23/09
+
+Na manhã de 23/09 Instagram, Facebook e WhatsApp do Anderson foram
+suspensos de uma vez (estão todos na mesma Central de Contas da Meta, e o
+WhatsApp da Rafa 3D é o número dele). Causa: a bio e os posts do
+@rafa3d.dalessi diziam **em primeira pessoa** "tenho 10 anos e essa loja
+é minha" — textos que eu escrevi. A regra da Meta é 13 anos pra ter
+conta; pra ela, o dono da conta se declarou com 10.
+
+- Instagram e Facebook voltaram no mesmo dia com a selfie de verificação
+  de idade. O Anderson tirou a idade da bio e apagou os posts.
+- WhatsApp: pedido de revisão dentro do app + e-mail pro suporte, com o
+  número em formato internacional e a explicação de que a idade já foi
+  verificada no Instagram/Facebook da mesma Central de Contas. Enquanto
+  não volta, o número (11) 98719-0466 do catálogo e da cartinha está
+  fora do ar — cliente que mandar mensagem não recebe resposta.
+- Daqui pra frente, todo texto que vá pra dentro da Meta fala do Rafa em
+  **terceira pessoa** e diz que a conta é administrada pelos pais. Bio
+  nova e mensagem de grupo novas em `divulgacao-catalogo.md`; a legenda
+  do gerador de post (`montarLegenda`) já foi trocada. A cartinha e o
+  orçamento (que vão como imagem, pra cliente) continuam na voz do Rafa:
+  não são conteúdo de conta da Meta.
 
 ## 🖨️ Bambu travou a 71% duas vezes — e se atualizou sozinho pra 2.8.4.57 — 22/09
 
@@ -241,13 +264,13 @@ Rafa + logo + @; a logo redonda sozinha foi mandada uma vez e ficou fria):
 ```
 Oi, gente! 👋 A Rafa 3D agora tem Instagram!
 
-Lá eu vou mostrar as peças que estou imprimindo, os bastidores da impressora
-e as novidades do catálogo antes de todo mundo.
+Lá a gente mostra as peças que o Rafa está imprimindo, os bastidores da
+impressora e as novidades do catálogo antes de todo mundo.
 
 📸 https://instagram.com/rafa3d.dalessi
 
-Me segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
-— Rafa, 10 anos
+Segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
+— Anderson, pai do Rafa
 ```
 
 Seguir gente: 20-30 por dia, começando por quem já conhece a loja; conta

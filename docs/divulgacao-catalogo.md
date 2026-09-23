@@ -31,8 +31,8 @@ hora — o código já vem pronto, é só copiar e colar no banco.
 
 👉 https://rafa3ddalessi.com.br/catalogo/
 
-"Tenho 10 anos e essa loja é minha: eu desenho, imprimo, embalo e mando.
-Obrigado de coração por prestigiar o meu trabalho! 💙" — Rafa
+"Quem desenha, imprime, embala e manda é o Rafa, de 10 anos — com a gente
+por perto. Obrigado de coração por prestigiar o trabalho dele! 💙" — Anderson
 ```
 
 Anexe a imagem e cole o texto como legenda. **O link no texto é o que
@@ -91,13 +91,22 @@ peças prontas e posts. Divisão do trabalho, dita com todas as letras:
   · `rafa3d.camadaporcamada`
 - **Nome:** Rafa 3D · Impressão 3D
 - **Categoria:** Loja de presentes (ou "Serviço de impressão")
-- **Bio** (133 caracteres — o limite é 150; a versão com a linha
-  "Vasos, chaveiros, suportes…" passava de 170 e não cabia):
+- **Bio** (o limite é 150 caracteres):
   ```
   Peças impressas em 3D, camada por camada 💙
-  Tenho 10 anos e essa loja é minha: eu desenho, imprimo e mando.
+  Feitas pelo Rafa, 10 anos · conta administrada pelos pais
   👇 catálogo com preço e PIX
   ```
+  **Nunca em primeira pessoa.** A bio anterior dizia "Tenho 10 anos e
+  essa loja é minha", e em 23/09/2026 a Meta suspendeu de uma vez o
+  Instagram, o Facebook e o WhatsApp do Anderson (todos na mesma Central
+  de Contas): a regra da Meta é 13+ pra TER conta, e a frase dizia que o
+  dono tinha 10. Instagram e Facebook voltaram com selfie de verificação
+  de idade; o WhatsApp foi o mais demorado. A Meta aceita conta que
+  MOSTRA uma criança desde que seja administrada por um adulto e a bio
+  diga isso — é o formato acima. Vale pra legenda de post (o gerador do
+  sistema já foi trocado), pra mensagem de grupo e pra qualquer texto que
+  vá parar dentro de produto da Meta.
 - **Pronomes:** em branco (é loja, não pessoa). **Banners:** nenhum.
 - **Links** (campo próprio, fora da bio): 1) `https://rafa3ddalessi.com.br/catalogo/`
   com título "Catálogo com preço e PIX"; 2) `https://wa.me/5511987190466`
@@ -133,13 +142,13 @@ Texto que vai junto (o link precisa do `instagram.com/` na frente, só o
 ```
 Oi, gente! 👋 A Rafa 3D agora tem Instagram!
 
-Lá eu vou mostrar as peças que estou imprimindo, os bastidores da impressora
-e as novidades do catálogo antes de todo mundo.
+Lá a gente mostra as peças que o Rafa está imprimindo, os bastidores da
+impressora e as novidades do catálogo antes de todo mundo.
 
 📸 https://instagram.com/rafa3d.dalessi
 
-Me segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
-— Rafa, 10 anos
+Segue lá? Cada seguidor ajuda muito a lojinha a aparecer pra mais gente 💙
+— Anderson, pai do Rafa
 ```
 
 ### Ritmo

@@ -403,6 +403,39 @@ projeto de Auth ou outra tabela, não esta chave.
      no CHECK das três tabelas** — o patch 32 travou `bed_plate` numa
      lista, e gravar valor novo sem o patch 53 dá erro 23514, igual ao
      `model_source` no patch 27. Placa nova = quatro lugares, não três.
+- **Texto que vai pra dentro da Meta (Instagram, Facebook, WhatsApp)
+  fala do Rafa em terceira pessoa e diz que a conta é dos pais.** Em
+  23/09/2026 a bio e a legenda que eu escrevi ("tenho 10 anos e essa loja
+  é minha") fizeram a Meta suspender Instagram, Facebook e WhatsApp do
+  Anderson de uma vez — pra ela, o dono da conta declarou ter 10, e a
+  regra é 13+. A legenda do gerador de post (`montarLegenda`) e os textos
+  de `docs/divulgacao-catalogo.md` já estão no formato certo; texto novo
+  pra rede social segue o mesmo. A cartinha e o orçamento, que vão como
+  imagem pro cliente, podem continuar na voz do Rafa.
+- **Janela por cima da lista não se redesenha sozinha.** A aba Produtos
+  se atualiza a cada 4 s enquanto tem fila (fatiador, colinha, guardar
+  de volta), mas a janela "⚙️ Gerenciar" aberta por cima ficava com o
+  HTML de quando abriu: "guardando o que você salvou…" girando o dia
+  inteiro com o trabalho pronto no banco (17/09). Agora
+  `desenharProdutos()` reabre a Gerenciar se ela estiver na tela — e
+  reconhece que é ela pela marca `id="janelaGerenciarProduto"`, porque
+  "Editar" e "Dar preço" fecham a janela mantendo
+  `_produtoGerenciarAberto` vivo, e redesenhar por cima do formulário
+  jogaria fora o que a pessoa digitou. A de Projetos
+  (`janelaGerenciarProjeto`) segue a mesma regra. Janela nova que mostra
+  estado de fila precisa entrar nesse redesenho, senão gira pra sempre.
+  (Esta nota e a seguinte tinham sumido no commit b5daf42 e a restauração
+  c2da3b8 não as trouxe de volta; reescritas em 23/09.)
+- **O aplicativo do Itaú segura as pastas do Bambu Studio.** No
+  computador do escritório, `itauaplicativo.exe` mantém handle de
+  diretório aberto em `Roaming\BambuStudio` e `Roaming\BambuStudioBeta`,
+  e isso faz TODO rename dentro delas falhar com "em uso por outro
+  processo". O Bambu salva a configuração por rename, então ela sumia a
+  cada salvamento e o assistente de primeira abertura voltava toda vez
+  (17/09). Sintoma: `BambuStudio.conf` ausente e dezenas de
+  `BambuStudio.conf.<pid>` na pasta. Diagnóstico: `Get-Process
+  itauaplicativo`; conserto: fechar o Itaú e copiar o `.conf.<pid>` mais
+  novo pra `BambuStudio.conf`. Detalhe em `continuar-daqui.md`.
 - **Tudo assume bico 0,4 — o prompt da colinha, o `printer_settings_id`
   do arquivo gerado e todo `.3mf` que já está no Storage.** Não existe
   campo de bico em lugar nenhum. Em 16/09 o Anderson imprimiu o 01.29 com

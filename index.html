@@ -3827,7 +3827,13 @@ async function preencherPostInstagram(productId, janela) {
       'function montarLegenda() {' +
         'var a = arroba();' +
         'return "✨ " + dados.nome + "\\n\\n" +' +
-          '"Peça impressa em 3D aqui na Rafa 3D, camada por camada 💙 Eu tenho 10 anos e cada peça sai da minha impressora feita com muito carinho." + "\\n\\n" +' +
+          // Terceira pessoa, de propósito (23/09/2026): a legenda antiga
+          // dizia "eu tenho 10 anos", e a Meta entendeu que o DONO da conta
+          // tem 10 anos — a regra dela é 13+ — e suspendeu Instagram,
+          // Facebook e WhatsApp do Anderson de uma vez. Conta de criança
+          // só existe como conta do responsável, e o texto tem que dizer
+          // isso: quem faz é o Rafa, quem cuida da conta são os pais.
+          '"Peça impressa em 3D na Rafa 3D, camada por camada 💙 Quem imprime é o Rafa, com a impressora da família — e quem cuida desta conta são os pais dele." + "\\n\\n" +' +
           '"💰 " + dados.preco + " · você escolhe a cor no catálogo\\n" +' +
           '"👉 " + dados.link + "\\n" +' +
           '"📲 Dúvidas ou encomenda: WhatsApp (11) 98719-0466" + "\\n\\n" +' +
