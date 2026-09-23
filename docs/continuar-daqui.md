@@ -6,6 +6,33 @@ Onde as coisas pararam em **22/09/2026**.
 > sobreviver à troca de computador tem que estar no repositório — aqui
 > ou no `CLAUDE.md`. Não deixe recado só na memória.
 
+## 🖨️ Bambu travou a 71% duas vezes — e se atualizou sozinho pra 2.8.4.57 — 22/09
+
+Fatiando o lote da Dayane (projeto do sistema, bico 0,6), a barra parou em
+71% e não saiu. Medido daqui: **0% de processador por mais de 20 s**,
+janela respondendo, nenhum aviso escondido. Fatiamento de verdade usa
+vários núcleos o tempo todo — 0% é travado, não lento. Cancelar e fatiar
+de novo travou no mesmo ponto. Só fechar o programa resolveu: reaberto,
+fatiou a placa inteira em **35 s** (G-code de 85 MB).
+
+Três coisas que valem pra próxima:
+
+- **O Bambu Studio se atualizou sozinho pra 2.8.4.57 hoje às 06:04** (a
+  nota de 17/09 fala da 2.8.3; as pegadinhas do `.3mf` no CLAUDE.md foram
+  conferidas na 2.8.2). A versão nova fatiou o mesmo projeto bem às 21:19,
+  então não é "a 2.8.4 não fatia" — foi um engasgo do processo.
+- **"Abrir no fatiador" NÃO reabre o programa.** Se o Bambu já está
+  aberto, o arquivo vai pra janela existente — e se ela está travada,
+  continua travada. O Anderson "fechou e abriu" duas vezes e era o mesmo
+  processo (mesmo PID desde 19:49). Bambu travado tem que ser encerrado
+  de verdade (Gerenciador de Tarefas); o `CloseMainWindow` normal não
+  respondeu, só `Stop-Process -Force`. Seguro quando o título está sem `*`.
+- **Como conferir daqui se está fatiando ou travado:** amostra de CPU do
+  processo `bambu-studio` por 10 s (`TotalProcessorTime` antes/depois), e
+  a pasta de trabalho `%TEMP%amboo_model<dia><hora>#<PID>#NMetadata`:
+  a fatiada terminou quando aparece `.<PID>.<placa>.gcode` com hora nova.
+  O log do Bambu é criptografado (`log*.enc`), não ajuda.
+
 ## 🔒 Auditoria de segurança do banco — 21/09 (patches 54, 55, 56)
 
 Feita noutra sessão; o detalhe está no `CLAUDE.md` (pegadinhas com
