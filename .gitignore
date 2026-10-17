@@ -33,3 +33,7 @@ slicer-agent/downloads/
 # Malhas baixadas pela comparacao Hi3D x Meshy -- sao pesadas e da pra
 # gerar de novo a qualquer momento rodando comparar-geradores.js.
 slicer-agent/comparacao/
+
+# Grafo do graphify (mapa do codigo pra Claude): gerado na maquina, da pra
+# refazer a qualquer momento com /graphify.
+graphify-out/
