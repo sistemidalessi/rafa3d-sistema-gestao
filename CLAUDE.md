@@ -128,7 +128,11 @@ calcular de novo, sem criar pedido. Consequências:
 
 - **Mudou pacote, origem ou regra de quantidade? Muda em `_shared/frete.ts` e
   publica AS DUAS funções.** Se só uma for publicada, as duas cotam diferente
-  e todo checkout responde "o valor do frete mudou".
+  e todo checkout responde "o valor do frete mudou". **Mudou o pacote
+  (`PACOTE_PADRAO`)? Publica também a `gerar-etiqueta`**, que importa a caixa
+  dali pra comprar a etiqueta. Até 17/10/2026 ela tinha uma cópia própria:
+  quem mudasse só o `_shared` faria o cliente pagar por uma caixa e a
+  etiqueta sair com outra, sem erro nenhum (achado pelo grafo do graphify).
 - O Melhor Envio fora do ar na hora de fechar = pedido com entrega não fecha
   (`502`, e a mensagem sugere "combinar a entrega", que não depende dele).
 - Conferido em 21/09: três cotações seguidas devolvem os mesmos preços, então a

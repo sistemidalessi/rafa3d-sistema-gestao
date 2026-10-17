@@ -12,9 +12,12 @@
 // da API do Melhor Envio é devolvido pra facilitar esse ajuste.
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+// O tamanho da caixa vem do mesmo lugar que a cotação: se a etiqueta
+// fosse comprada com outra caixa, o cliente pagaria um frete e a
+// etiqueta sairia com outro peso, sem erro nenhum na tela.
+import { PACOTE_PADRAO } from "../_shared/frete.ts";
 
 const ME_API = "https://melhorenvio.com.br/api/v2/me";
-const PACOTE_PADRAO = { altura_cm: 10, largura_cm: 15, comprimento_cm: 20, peso_kg: 0.3 };
 
 // Pega o link de impressão e o código de rastreio de uma etiqueta que
 // JÁ foi comprada e gerada.
