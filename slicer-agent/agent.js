@@ -8,7 +8,17 @@ const AdmZip = require('adm-zip');
 const { gerarModelo3mfConfigurado, reconfigurarHi3d3mf } = require('./gerar3mf');
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
-const SERVICE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+// Desde 30/10/2026 (patch 57, auditoria r3d-05) o agente entra como um USUÁRIO
+// PRÓPRIO (papel 'agent' em profiles), com a chave pública + e-mail + senha, e
+// só enxerga o que is_agent() libera: as filas de products / order_line_items /
+// project_parts, o sinal de vida em slicer_agents, o histórico de feedback e os
+// buckets modelos-3d / projetos-fotos. Antes era a service_role, que passa por
+// cima de toda a RLS — quem lesse o .env tinha o banco inteiro, clientes com
+// CPF inclusive. A service_role NÃO é mais lida aqui, de propósito: se ela
+// ainda estiver no .env, é só um aviso pra apagar a linha.
+const ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const AGENT_EMAIL = process.env.AGENT_EMAIL;
+const AGENT_PASSWORD = process.env.AGENT_PASSWORD;
 const ORCA_PATH = process.env.ORCA_PATH || 'C:\\Program Files\\OrcaSlicer\\orca-slicer.exe';
 // Programa que abre quando clica "Abrir no Fatiador" — separado do ORCA_PATH
 // (que só é usado pelo fatiamento automático via linha de comando, hoje sem
@@ -56,9 +66,22 @@ function logTamanhoConvertido(nomeRef, resultado) {
   }
 }
 
-if (!SUPABASE_URL || !SERVICE_KEY) {
-  console.error('[agente] Faltam SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY no .env. Copie .env.example para .env e preencha.');
+// TRANSIÇÃO (tirar depois que os DOIS computadores estiverem com o usuário do
+// agente no .env): se o .env ainda for o antigo, só com a service_role, o
+// agente sobe do jeito antigo e grita. Sem isto, um "git pull" antes de
+// preencher o .env deixaria o computador do Rafael sem agente.
+const MODO_ANTIGO = !(ANON_KEY && AGENT_EMAIL && AGENT_PASSWORD) && !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+if (!SUPABASE_URL || (!MODO_ANTIGO && !(ANON_KEY && AGENT_EMAIL && AGENT_PASSWORD))) {
+  console.error('[agente] Faltam SUPABASE_URL / SUPABASE_ANON_KEY / AGENT_EMAIL / AGENT_PASSWORD no .env. ' +
+    'Copie .env.example para .env e preencha (o usuário do agente é criado em Supabase → Authentication → Users).');
   process.exit(1);
+}
+if (MODO_ANTIGO) {
+  console.error('[agente] ATENÇÃO: rodando com a SERVICE_ROLE (modo antigo) porque SUPABASE_ANON_KEY / AGENT_EMAIL / ' +
+    'AGENT_PASSWORD não estão no .env. Essa chave dá acesso ao banco inteiro. Preencha as três e apague a service_role.');
+} else if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  console.error('[agente] AVISO: SUPABASE_SERVICE_ROLE_KEY ainda está no .env. O agente não usa mais essa chave — ' +
+    'apague a linha: ela dá acesso ao banco inteiro pra quem ler este arquivo.');
 }
 if (!fs.existsSync(SLICER_APP_PATH)) {
   log('AVISO: fatiador não encontrado em: ' + SLICER_APP_PATH + ' — "Abrir no Fatiador" vai falhar até ajustar SLICER_APP_PATH no .env.');
@@ -73,7 +96,39 @@ if (!HI3D_ACCESS_KEY || !HI3D_SECRET_KEY) {
   log('Sem HI3D_ACCESS_KEY / HI3D_SECRET_KEY no .env — "Gerar e dividir em partes" fica desligado até configurar.');
 }
 
-const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
+// persistSession: false porque isto é Node, não navegador (não há localStorage);
+// autoRefreshToken: true renova o token sozinho enquanto o processo vive.
+const supabase = MODO_ANTIGO
+  ? createClient(SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY)
+  : createClient(SUPABASE_URL, ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: true, detectSessionInUrl: false },
+    });
+
+// Garante que há uma sessão válida antes de cada volta do laço. O refresh
+// automático cobre o dia a dia, mas não cobre o computador que dormiu horas
+// (o token venceu e o refresh falhou enquanto a rede estava fora): aí o
+// próximo tick levaria "JWT expired" em toda consulta. Relogar com e-mail e
+// senha custa uma chamada e resolve. Nunca derruba o agente: sem sessão, o
+// tick falha com erro de permissão e tenta de novo na próxima volta.
+let ultimoAvisoLogin = 0;
+async function garantirLogin() {
+  if (MODO_ANTIGO) return true; // service_role não tem sessão pra renovar
+  const { data } = await supabase.auth.getSession();
+  const s = data && data.session;
+  const venceEmMs = s && s.expires_at ? s.expires_at * 1000 - Date.now() : -1;
+  if (s && venceEmMs > 2 * 60 * 1000) return true;
+  const { error } = await supabase.auth.signInWithPassword({ email: AGENT_EMAIL, password: AGENT_PASSWORD });
+  if (error) {
+    if (Date.now() - ultimoAvisoLogin > 60 * 1000) {
+      log('ERRO: não consegui entrar no banco como ' + AGENT_EMAIL + ': ' + error.message +
+        ' (confira AGENT_EMAIL / AGENT_PASSWORD no .env e se o usuário existe e está ativo em profiles)');
+      ultimoAvisoLogin = Date.now();
+    }
+    return false;
+  }
+  log('Entrei no banco como ' + AGENT_EMAIL + (s ? ' (sessão renovada)' : '') + '.');
+  return true;
+}
 
 // Quando o agente é fechado no meio de um trabalho (Ctrl+C, computador
 // desligado, queda de luz), a linha fica marcada como 'processing' pra
@@ -1615,11 +1670,15 @@ async function main() {
     (VERSAO_DO_CODIGO.code_commit ? ' (commit ' + VERSAO_DO_CODIGO.code_commit + ')' : ' (sem git nesta máquina)'));
   log('OrcaSlicer: ' + ORCA_PATH);
   log('Verificando a fila a cada ' + (POLL_INTERVAL_MS / 1000) + 's. Ctrl+C para parar.');
+  if (!(await garantirLogin())) log('Sigo tentando entrar a cada volta; até lá nada da fila é processado.');
   await darSinalDeVida();
   // De 5 em 5 minutos, e não a cada volta: são seis consultas, e nada
   // trava em 5 segundos.
   let proximoDestrave = 0;
   for (;;) {
+    try {
+      if (!(await garantirLogin())) { await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS)); continue; }
+    } catch (e) { log('Erro inesperado (login): ' + e.message); }
     try { await darSinalDeVida(); } catch (e) { log('Erro inesperado (sinal de vida): ' + e.message); }
     if (Date.now() >= proximoDestrave) {
       proximoDestrave = Date.now() + 5 * 60 * 1000;

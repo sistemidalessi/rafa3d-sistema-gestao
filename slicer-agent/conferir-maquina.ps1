@@ -53,15 +53,20 @@ $env_ = Join-Path $pasta ".env"
 if (Test-Path $env_) {
   $linhas = Get-Content $env_
   $vazias = @()
-  foreach ($obrigatoria in @("SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY")) {
+  # Desde 30/10/2026 (patch 57) o agente entra com usuario proprio: chave
+  # publica + e-mail + senha do agente. A service_role NAO deve mais estar
+  # no .env - se estiver, e' aviso, nao erro, so' pra transicao.
+  foreach ($obrigatoria in @("SUPABASE_URL", "SUPABASE_ANON_KEY", "AGENT_EMAIL", "AGENT_PASSWORD")) {
     $l = $linhas | Where-Object { $_ -match "^$obrigatoria=" }
     if (-not $l -or $l -match "^$obrigatoria=\s*$") { $vazias += $obrigatoria }
   }
-  if ($vazias.Count -eq 0) { Ok ".env preenchido (chave do banco presente)" }
+  if ($vazias.Count -eq 0) { Ok ".env preenchido (acesso do agente ao banco presente)" }
   else {
     Falta ".env existe, mas falta preencher: $($vazias -join ', ')"
-    $faltando += "Abra slicer-agent\.env e preencha a service_role (Supabase - Project Settings - API)"
+    $faltando += "Abra slicer-agent\.env e preencha SUPABASE_ANON_KEY (a mesma chave publica do catalogo), AGENT_EMAIL e AGENT_PASSWORD (o usuario do agente criado no Supabase - Authentication - Users)"
   }
+  $sr = $linhas | Where-Object { $_ -match "^SUPABASE_SERVICE_ROLE_KEY=\S" }
+  if ($sr) { Write-Host "  [aviso] SUPABASE_SERVICE_ROLE_KEY ainda esta no .env - apague essa linha: o agente nao usa mais, e ela da acesso ao banco inteiro" -ForegroundColor Yellow }
   foreach ($opcional in @("ANTHROPIC_API_KEY", "MESHY_API_KEY")) {
     $l = $linhas | Where-Object { $_ -match "^$opcional=" }
     if (-not $l -or $l -match "^$opcional=\s*$") {
@@ -78,7 +83,8 @@ if (Test-Path $env_) {
     Copy-Item $modelo $env_
     Write-Host "  [ok]    .env criado a partir do modelo (falta preencher as chaves)" -ForegroundColor Green
     $faltando += "Abra slicer-agent\.env e preencha:"
-    $faltando += "   SUPABASE_SERVICE_ROLE_KEY  (Supabase - Project Settings - API - service_role)"
+    $faltando += "   SUPABASE_ANON_KEY          (a chave publica, a mesma que esta no catalogo/index.html)"
+    $faltando += "   AGENT_EMAIL / AGENT_PASSWORD (usuario do agente: Supabase - Authentication - Users)"
     $faltando += "   ANTHROPIC_API_KEY          (console.anthropic.com - crie uma chave POR maquina)"
     $faltando += "   HI3D_ACCESS_KEY / HI3D_SECRET_KEY  (platform.hi3d.ai - API Key)"
     $faltando += "As chaves so aparecem na hora de criar. Guarde no gerenciador de senhas."
