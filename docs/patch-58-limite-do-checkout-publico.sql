@@ -2,7 +2,11 @@
 -- Patch 58 — limite de requisições no checkout público (calcular-frete e
 -- finalizar-pedido). Rode este arquivo inteiro no SQL Editor do Supabase.
 --
--- STATUS: AINDA NÃO APLICADO (escrito em 30/10/2026, esperando o "sim").
+-- STATUS: APLICADO EM PRODUÇÃO em 30/10/2026, com o "sim" do Anderson, pelo SQL
+-- Editor do painel (ensaio 6/6 numa transação desfeita). As duas Edge Functions
+-- foram publicadas em seguida e provadas de fora: a 61ª cotação de frete do mesmo
+-- IP voltou 429; no fechar pedido, 3 tentativas (recusadas pela conferência do
+-- frete) e a 4ª voltou 429 pela regra de IP+CPF. Nenhum pedido criado.
 --
 -- POR QUE ISTO EXISTE (auditoria de 11/09/2026, achado r3d-02)
 --

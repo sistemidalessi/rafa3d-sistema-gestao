@@ -139,6 +139,17 @@ calcular de novo, sem criar pedido. Consequências:
   folga de 1 centavo não recusa cliente honesto. Se um dia recusar, é o Melhor
   Envio variando preço entre chamadas — aumentar a folga, não tirar a conferência.
 
+**Limite de requisições no checkout (patch 58, 30/10/2026, achado `r3d-02`).**
+`_shared/limite.ts` + tabela `limite_checkout` e função `limite_checkout_tentar`, que
+só a `service_role` alcança. `calcular-frete`: 60 cotações por IP a cada 10 min;
+`finalizar-pedido`: 5 pedidos por IP por hora e 3 por IP+CPF por dia, conferidos
+depois das validações baratas e antes de qualquer consulta. Estourou: `429` com
+mensagem que o catálogo já mostra. **Falha aberta de propósito**: sem a função no
+banco ou com erro, deixa passar e loga — limite nunca derruba venda honesta. Pra
+destravar alguém na mão: `delete from limite_checkout where chave like 'pedido:%'`.
+Tentativa recusada por outro motivo (frete errado etc.) também conta — é o que
+impede um script de ficar tentando de graça.
+
 **Como testar uma Edge Function sem Deno nem Docker na máquina** (foi assim em
 21/09): `npx esbuild arquivo.ts` só pra sintaxe; guardar a resposta de produção
 *antes*; `supabase functions deploy <nome>`; comparar a resposta *depois* (a do
