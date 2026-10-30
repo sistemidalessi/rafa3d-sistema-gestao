@@ -3,10 +3,13 @@
 -- Rode este arquivo inteiro no SQL Editor do Supabase (projeto Rafa 3D).
 -- É uma transação: ou entra tudo, ou nada.
 --
--- STATUS: AINDA NÃO APLICADO (escrito em 30/10/2026). Depende de UM passo que só
--- o Anderson faz antes, no painel: Authentication › Users › Add user, com o
--- e-mail abaixo em AGENT_EMAIL, senha forte, e "Auto Confirm User" marcado.
--- (O cadastro público está desligado, então é por ali mesmo.)
+-- STATUS: APLICADO EM PRODUÇÃO em 30/10/2026, com o "sim" do Anderson, pelo SQL
+-- Editor do painel, depois de ele criar o usuário agente@rafa3ddalessi.com.br em
+-- Authentication › Users › Add user (Auto Confirm). Ensaio 23/23 numa transação
+-- desfeita (agente lê/atualiza as filas e grava em modelos-3d; vê 0 clientes, 0
+-- pedidos, 0 pagamentos, só o próprio perfil; não apaga nem insere produto; não
+-- grava em produtos-fotos; estranho logado vê 0; dono segue vendo tudo). Depois
+-- de aplicar: 16 políticas agent_*, perfil agent/true, is_staff exclui o agente.
 --
 -- POR QUE ISTO EXISTE (auditoria de 11/09/2026, achado r3d-05)
 --
@@ -133,7 +136,8 @@ commit;
 -- =====================================================================
 -- CONFERÊNCIA (rodar depois)
 -- =====================================================================
--- select role, active, full_name from profiles order by role;          -- 1 linha 'agent'
+-- select p.role, p.active, p.full_name from profiles p order by 1;       -- 1 linha 'agent'
+-- (ao juntar com auth.users, qualifique: auth.users TAMBÉM tem coluna "role")
 -- select count(*) from pg_policies where policyname like 'agent\_%';     -- 14
 -- E o teste de verdade é o agente subir, dar sinal de vida (slicer_agents
 -- com last_seen_at novo) e processar um item da fila com o .env SEM a
