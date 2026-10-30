@@ -8,7 +8,7 @@ primeiro. Este arquivo só guarda o que dá pra tropeçar ao mexer no código.
 
 O Anderson trabalha em dois computadores, e o agente precisa ser instalado em
 cada um — Node, dependências e o `.env` não viajam no repositório, de
-propósito (o `.env` carrega a `service_role`).
+propósito (o `.env` carrega a senha do usuário do agente e as chaves de IA).
 
 **Se a sessão parecer estar numa máquina ainda não preparada** — o agente não
 roda, o `node` não existe, ou ele mencionar que trocou de computador — rode
@@ -171,10 +171,23 @@ Duas regras, as duas impostas no banco, as duas aprendidas do jeito ruim:
   `is_staff()`, e nenhuma função do schema `public` é executável pelo `anon`
   (conferência no fim do arquivo do patch).
 
-Quem **não** é afetado por política nenhuma: o `slicer-agent` e as Edge
-Functions, que usam a `service_role`. É por isso que o patch não mudou nada
-pra eles — e é também por isso que a `service_role` em texto puro no PC do
-Rafael (`r3d-05`) continua sendo o ponto mais sensível do sistema.
+Quem **não** é afetado por política nenhuma: as Edge Functions, que usam a
+`service_role`. O `slicer-agent` usava também — era o `r3d-05`, o ponto mais
+sensível do sistema — e **desde o patch 57 (30/10/2026) entra como um usuário
+próprio**, papel `agent` em `profiles`: `is_agent()` libera só ler/atualizar
+`products`, `order_line_items` e `project_parts`, o upsert em `slicer_agents`,
+ler `print_feedback` e ler/gravar nos buckets `modelos-3d` e `projetos-fotos`
+(nunca apagar). `is_staff()` **exclui** o agente de propósito, senão ele
+herdaria clientes e pedidos. No `agent.js`: chave pública + `AGENT_EMAIL` /
+`AGENT_PASSWORD`, `signInWithPassword`, e `garantirLogin()` reloga quando a
+sessão vence (computador que dormiu). Sintoma de permissão faltando: o botão
+gira e o `agent.log` mostra `permission denied for table X` ou `row-level
+security` — acrescentar a política `agent_*` no banco, nunca voltar pra
+`service_role`. O `agent.js` ainda sobe em "modo antigo" (só service_role no
+`.env`), gritando, pra transição não derrubar o agente do Rafael — tirar esse
+fallback quando os dois `.env` estiverem migrados. Testado em 30/10 no PC do
+escritório: login, sinal de vida e "abrir no fatiador" (download do bucket +
+update) com o usuário novo; `.env` daqui já sem a service_role.
 
 **Como essa leitura foi feita, pra repetir:** a auditoria de 11/09 leu só o
 repositório e não viu nada disto, porque o que vale é o banco. Ler o banco

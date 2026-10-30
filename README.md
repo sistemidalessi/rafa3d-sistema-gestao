@@ -30,9 +30,9 @@ Row Level Security do banco, não o segredo da chave.
 ## O padrão central: fila no banco + agente local
 
 O navegador **nunca** fala com o Bambu Studio, com o OrcaSlicer ou com as APIs
-de IA. Ele não tem como — é uma página web numa máquina qualquer, e a chave que
-autoriza esse tipo de operação (`service_role`) não pode sair do computador do
-Rafael.
+de IA. Ele não tem como — é uma página web numa máquina qualquer; quem faz o
+trabalho é o agente, que roda no computador do Rafael com um usuário próprio do
+banco (papel `agent`, só filas e arquivos de modelo — patch 57).
 
 Então tudo que precisa do mundo real funciona assim:
 
@@ -173,7 +173,7 @@ em configuração de segurança da máquina.
 
 O `.env` também não viaja — cada máquina tem o seu, preenchido a partir do
 [`.env.example`](slicer-agent/.env.example). É de propósito: ele carrega a
-`service_role key`.
+senha do usuário do agente e as chaves de IA.
 
 O sistema em si (a página) funciona de qualquer máquina, sempre. O que depende
 de máquina é só o agente: sem ele ligado, os botões de fatiador e de IA ficam
@@ -264,9 +264,12 @@ copy .env.example .env
 ```
 
 Preencha o `.env` — as instruções de cada variável estão dentro do próprio
-[`.env.example`](slicer-agent/.env.example). O mínimo é `SUPABASE_URL` e
-`SUPABASE_SERVICE_ROLE_KEY`; sem `ANTHROPIC_API_KEY` e `MESHY_API_KEY` o agente
-roda normal, só com a IA desligada.
+[`.env.example`](slicer-agent/.env.example). O mínimo é `SUPABASE_URL`,
+`SUPABASE_ANON_KEY` (a chave pública do catálogo), `AGENT_EMAIL` e
+`AGENT_PASSWORD` (o usuário do agente, criado em Supabase › Authentication ›
+Users); sem `ANTHROPIC_API_KEY` e `MESHY_API_KEY` o agente roda normal, só com a
+IA desligada. **A `SUPABASE_SERVICE_ROLE_KEY` não é mais usada desde 30/10/2026**
+(patch 57) — se estiver num `.env` antigo, apague a linha.
 
 Pra rodar vendo o que ele está fazendo:
 
@@ -285,8 +288,10 @@ inicialização (`Win+R` → `shell:startup`).
 
 Três lugares, e nenhum deles é o repositório:
 
-- **`slicer-agent/.env`** — a `service_role key`, que passa por cima de toda a
-  RLS, mais as chaves da Anthropic e da Meshy. Está no
+- **`slicer-agent/.env`** — a senha do usuário do agente (papel `agent`: só as
+  filas, o sinal de vida e os buckets de modelos/fotos; se vazar, troca-se a
+  senha no painel e nada mais muda), mais as chaves da Anthropic e da Meshy.
+  Até 30/10/2026 era a `service_role`, que passava por cima de toda a RLS. Está no
   [`.gitignore`](.gitignore) e nunca deve ser commitada, colada em chat ou
   copiada pro navegador.
 - **Secrets do projeto Supabase** — token do Melhor Envio (compra etiqueta com
