@@ -8,6 +8,7 @@ import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import webpush from "web-push";
 import { cotarFrete, limparCep } from "../_shared/frete.ts";
+import { cabeNoLimite, ipDe, RESPOSTA_429, sha256Curto } from "../_shared/limite.ts";
 
 // Todo texto que vem do navegador entra cortado: o catálogo é público, e sem
 // limite alguém grava um livro inteiro no nome do cliente (achado r3d-02).
@@ -159,6 +160,19 @@ export default {
 
     if (!itens.length) return Response.json({ error: "Carrinho vazio." }, { status: 400 });
     if (itens.length > 60) return Response.json({ error: "Carrinho grande demais. Fecha em dois pedidos." }, { status: 400 });
+
+    // Limites (r3d-02): 5 pedidos por IP por hora, 3 por IP+CPF por dia. Cada pedido
+    // dispara push e e-mail pro dono e grava um CPF — um script sem freio virava spam
+    // pra equipe e pedidos falsos em nome de terceiros. Conferido DEPOIS das validações
+    // baratas acima, pra erro de preenchimento não gastar tentativa; ANTES de qualquer
+    // consulta ao banco ou ao Melhor Envio.
+    const ip = ipDe(req);
+    if (!(await cabeNoLimite(ctx.supabaseAdmin, "pedido:ip:" + ip, 5, 3600))) {
+      return RESPOSTA_429("Muitos pedidos seguidos deste endereço. Espera uma hora ou fala com a gente no WhatsApp.");
+    }
+    if (documentoCliente.length === 11 && !(await cabeNoLimite(ctx.supabaseAdmin, "pedido:cpf:" + await sha256Curto(ip + "|" + documentoCliente), 3, 86400))) {
+      return RESPOSTA_429("Já recebemos vários pedidos com este CPF hoje. Se precisa de mais, fala com a gente no WhatsApp.");
+    }
     if (!nomeCliente) return Response.json({ error: "Falta o nome de quem está comprando." }, { status: 400 });
     if (!contatoCliente) return Response.json({ error: "Falta um WhatsApp pra contato." }, { status: 400 });
     if (documentoCliente.length !== 11) return Response.json({ error: "CPF inválido." }, { status: 400 });

@@ -9,11 +9,18 @@
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
 import { cotarFrete } from "../_shared/frete.ts";
+import { cabeNoLimite, ipDe, RESPOSTA_429 } from "../_shared/limite.ts";
 
 export default {
-  fetch: withSupabase({ auth: ["publishable"] }, async (req) => {
+  fetch: withSupabase({ auth: ["publishable"] }, async (req, ctx) => {
     if (req.method !== "POST") {
       return Response.json({ error: "Use POST." }, { status: 405 });
+    }
+
+    // 60 cotações por IP a cada 10 min (r3d-02): cada uma gasta a cota do Melhor Envio.
+    // Uma pessoa digitando CEP e mudando quantidade não chega perto; um script chega.
+    if (!(await cabeNoLimite(ctx.supabaseAdmin, "frete:ip:" + ipDe(req), 60, 600))) {
+      return RESPOSTA_429("Muitas consultas de frete seguidas. Espera uns minutos e tenta de novo.");
     }
 
     let corpo;
