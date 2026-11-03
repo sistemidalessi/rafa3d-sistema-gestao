@@ -8,7 +8,8 @@
 -- clientes, 0 na lixeira (nada tão antigo); com prazo 0 (só no ensaio), 16 pedidos e 9
 -- clientes ficaram "Cliente (dados apagados)" sem contato, CPF e rua, com o valor
 -- mantido; agendamento "15 4 1 * *" ativo; authenticated não executa a função.
--- NÃO APLICADO: espera o "sim" do Anderson.
+-- APLICADO EM PRODUÇÃO no mesmo dia, com o "sim" do Anderson (12:40): função criada, pg_cron
+-- ligado, job "anonimizar-dados-antigos" agendado (15 4 1 * *, ativo), nenhum pedido mexido.
 --
 -- O QUE A ROTINA FAZ, todo dia 1º às 04:15 (agendador pg_cron do próprio banco):
 --   * pedido sem mexer há mais de 5 anos: some o nome (vira "Cliente (dados

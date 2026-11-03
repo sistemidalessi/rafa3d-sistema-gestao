@@ -10,7 +10,10 @@
 -- da Fila seguem legíveis; conta sem perfil recebe 0 linhas da RPC. Não havia ajudante
 -- ativo cadastrado. O index.html novo (getSpools) já foi publicado ANTES, com reserva:
 -- sem a RPC, lê o valor direto — testado na sessão do dono (Filamentos e Margem ok).
--- NÃO APLICADO: espera o "sim" do Anderson.
+-- APLICADO EM PRODUÇÃO no mesmo dia, com o "sim" do Anderson: etapa 1 às 12:40, etapa 2
+-- às 12:44 (depois do cache do site novo, publicado às 12:33). Conferido no sistema com
+-- a sessão do dono: leitura direta de cost_paid dá 42501, a RPC devolve os 25 rolos,
+-- Filamentos, Margem e Fila abrem sem erro.
 --
 -- O QUE MUDA: filament_spools.cost_paid deixa de chegar a quem não é dono. Como
 -- RLS escolhe linhas e não colunas, e dono e ajudante são o mesmo papel do banco

@@ -253,6 +253,18 @@ dono ATIVO; `sugerir-cadastro-produto` exige dono ou ajudante ATIVO (a conta do 
 recusa foto acima de ~5 MB, o máximo da API. Mesmo critério do `is_staff()`/`is_owner()` do banco:
 função nova que use a service_role confere `active` também.
 
+**O ajudante não vê o valor pago pelo rolo (patch 61, 03/11/2026).** `filament_spools` é lida por coluna,
+sem `cost_paid`; o dono pega o valor pela RPC `spools_custo()` (confere `is_owner()`), que o `getSpools()`
+junta no rolo. Custo estimado e custo extra de Projetos/Pedidos continuam visíveis pro ajudante (ele usa).
+Coluna nova em `filament_spools` que a tela precise: entra no grant por coluna do patch 61 e no select do
+`getSpools()`. `select('*')` nessa tabela dá 42501.
+
+**Dados pessoais apagados 5 anos depois (patch 62, 03/11/2026, LGPD).** A rotina
+`anonimizar_dados_antigos()` roda todo dia 1º às 04:15 pelo pg_cron: pedido e cliente sem movimento há
+mais de 5 anos perdem nome, WhatsApp, CPF e endereço (valor e itens ficam), e a lixeira perde o que foi
+apagado há mais de 5 anos. O checkout avisa isso. Coluna nova com dado pessoal em `orders` ou
+`customers` entra na rotina. Ver execuções: `select * from cron.job_run_details order by start_time desc`.
+
 **Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
 TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não
 passa pelo RLS. Saiu de `anon` e `authenticated` em todas as tabelas e das que forem
