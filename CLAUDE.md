@@ -220,6 +220,12 @@ Toda view nova nasce `with (security_invoker = true)`; depois de apertar
 política, procurar view sem isso (`select relname, reloptions from pg_class
 where relkind = 'v'`).
 
+**Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
+TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não
+passa pelo RLS. Saiu de `anon` e `authenticated` em todas as tabelas e das que forem
+criadas daqui pra frente (privilégio padrão). A API não usa; as Edge Functions são
+`service_role`. Ensaiado e conferido de fora: vitrine igual (208 produtos, 36 cores).
+
 **A vitrine só enxerga as colunas da vitrine (patch 56, 21/09/2026).** A política de
 `products` pro visitante escolhe LINHAS (`active`), não COLUNAS, e o `anon` tinha
 SELECT na tabela inteira: com `select('*')` qualquer pessoa recebia as dicas e a

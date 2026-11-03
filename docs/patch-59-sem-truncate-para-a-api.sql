@@ -3,7 +3,11 @@
 --
 -- STATUS: PREPARADO E ENSAIADO em 03/11/2026 no banco de produção, pelo SQL Editor
 -- (bloco DO que termina em erro proposital: o Postgres desfez tudo; conferido
--- depois que nenhuma permissão mudou). NÃO APLICADO: espera o "sim" do Anderson.
+-- depois que nenhuma permissão mudou). APLICADO EM PRODUÇÃO no mesmo dia, com o
+-- "sim" do Anderson: 0 tabelas com TRUNCATE para anon/authenticated. De fora, com a
+-- chave pública: vitrine 200 (208 produtos, 36 cores), customers 401/42501. Site
+-- publicado aberto no navegador: produtos e preços na tela (os 2 erros 404 são do
+-- image-slot.js, que já faltava antes).
 -- Resultado do ensaio: tabelas com TRUNCATE para anon ou authenticated: 0;
 -- vitrine como visitante, antes = depois: 208 produtos ativos e 36 cores.
 --
