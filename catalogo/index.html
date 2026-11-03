@@ -1346,7 +1346,7 @@ class Component extends DCLogic {
       ckLabel('Seu nome') + '<input id="ckNome" style="' + ckInputStyle() + '" value="' + (e.nome || '') + '">' +
       ckLabel('Seu WhatsApp') + '<input id="ckContato" style="' + ckInputStyle() + '" placeholder="(11) 90000-0000" value="' + (e.contato || '') + '">' +
       ckLabel('Seu CPF') + '<input id="ckDocumento" style="' + ckInputStyle() + '" placeholder="000.000.000-00" value="' + (e.documento || '') + '">' +
-      dicaCheckout('É exigido pra declaração da encomenda nos Correios/transportadora.') +
+      dicaCheckout('É exigido pra declaração da encomenda nos Correios/transportadora. Seu nome, WhatsApp, CPF e endereço servem só pra este pedido e são apagados 5 anos depois.') +
       '<div style="margin-top:16px; padding-top:14px; border-top:1px solid #f0f1f4;">' +
       '<label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#0b1733; cursor:pointer;">' +
       '<input type="checkbox" id="ckCombinar" onchange="ckToggleCombinar()"' + (CK.combinar ? ' checked' : '') + '> Prefiro combinar a entrega (retirar, Uber, moro perto...)' +

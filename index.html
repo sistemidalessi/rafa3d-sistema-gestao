@@ -5736,9 +5736,23 @@ async function getFilamentos(force) {
   filamentosCache = await q(SUPA.from('filament_colors').select('*').order('name'));
   return filamentosCache;
 }
+// Sem o valor pago (patch 61, achado r3d-07, 03/11/2026): o ajudante usa os rolos na Fila (peso que sobrou), mas não
+// vê quanto custaram — o banco nem entrega essa coluna pra quem não é dono. O dono busca o valor pago pela RPC
+// spools_custo() e ele é juntado aqui em cost_paid, então o resto do código (Filamentos, Margem) não muda.
+// Coluna nova em filament_spools que a tela precise: entra nesta lista E no grant por coluna do patch 61.
 async function getSpools(force) {
   if (spoolsCache.length && !force) return spoolsCache;
-  spoolsCache = await q(SUPA.from('filament_spools').select('*').order('purchased_at', { ascending: false }));
+  const rolos = await q(SUPA.from('filament_spools')
+    .select('id, color_id, purchased_at, initial_weight_g, remaining_weight_g, supplier, status')
+    .order('purchased_at', { ascending: false }));
+  if (currentProfile && currentProfile.role === 'owner') {
+    let { data: custos, error } = await SUPA.rpc('spools_custo');
+    // Antes da etapa 1 do patch 61 a RPC não existe: lê o valor direto (ainda permitido até a etapa 2).
+    if (error) ({ data: custos } = await SUPA.from('filament_spools').select('id, cost_paid'));
+    const porId = new Map((custos || []).map((c) => [c.id, c.cost_paid]));
+    rolos.forEach((r) => { r.cost_paid = porId.has(r.id) ? porId.get(r.id) : null; });
+  }
+  spoolsCache = rolos;
   return spoolsCache;
 }
 // versão sem custo/kg, pra popular seletor de cor em telas que ajudante também acessa (Fila, itens de pedido)
