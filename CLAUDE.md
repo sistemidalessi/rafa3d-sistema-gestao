@@ -247,6 +247,12 @@ não barram um XSS já na página — barram carregar script de fora e mandar da
 **Domínio novo (CDN, API, imagem de fora) entra na `<meta>` da página ANTES da funcionalidade**,
 senão ela falha em silêncio com "Refused to ..." no console. Ver o comentário acima de cada `<meta>`.
 
+**Limites de upload (patch 60) e Edge Functions só pra quem está ativo (03/11/2026).** Fotos de produto
+até 10 MB e só JPEG/PNG/WebP, fotos de projeto até 15 MB, modelos até 100 MB. `gerar-etiqueta` exige
+dono ATIVO; `sugerir-cadastro-produto` exige dono ou ajudante ATIVO (a conta do agente não passa) e
+recusa foto acima de ~5 MB, o máximo da API. Mesmo critério do `is_staff()`/`is_owner()` do banco:
+função nova que use a service_role confere `active` também.
+
 **Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
 TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não
 passa pelo RLS. Saiu de `anon` e `authenticated` em todas as tabelas e das que forem

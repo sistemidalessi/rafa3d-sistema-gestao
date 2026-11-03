@@ -4,8 +4,8 @@
 --
 -- STATUS: PREPARADO E ENSAIADO em 03/11/2026 (transação desfeita; conferido depois
 -- que os buckets seguem sem limite). Ensaio: modelos-3d=100MB tipo livre,
--- produtos-fotos=10MB 3 tipos, projetos-fotos=15MB tipo livre. NÃO APLICADO:
--- espera o "sim" do Anderson.
+-- produtos-fotos=10MB 3 tipos, projetos-fotos=15MB tipo livre. APLICADO EM
+-- PRODUÇÃO no mesmo dia, com o "sim" do Anderson; conferência igual ao ensaio.
 --
 -- POR QUÊ: os três buckets estavam sem limite de tamanho nem de tipo. Só a
 -- equipe sobe arquivo (políticas do patch 54/57), então o risco é baixo; o
