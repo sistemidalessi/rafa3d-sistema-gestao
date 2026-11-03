@@ -10,11 +10,11 @@
                   'unsafe-eval' porque o support.js compila o JSX da página no navegador (Babel + new Function);
                   'unsafe-inline' pelos onclick= e scripts inline do checkout
        style   -> Google Fonts; font -> fonts.gstatic.com
-       img     -> Storage do Supabase, data:, blob: e api.qrserver.com (o QR do PIX depois de fechar o pedido)
+       img     -> Storage do Supabase, data: e blob: (o QR do PIX é desenhado no navegador, vendor/qrcode-generator)
        connect -> Supabase (banco e Edge Functions calcular-frete / finalizar-pedido) e ViaCEP
      A política não barra um XSS já na página; barra carregar script de outro lugar e mandar dados pra fora.
      Domínio novo ENTRA AQUI ANTES. Links (WhatsApp, formulário do Google, Pinterest) são navegação. -->
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://zaoyqjzvwuhsqcgigppu.supabase.co https://api.qrserver.com; connect-src 'self' https://zaoyqjzvwuhsqcgigppu.supabase.co https://viacep.com.br; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://zaoyqjzvwuhsqcgigppu.supabase.co; connect-src 'self' https://zaoyqjzvwuhsqcgigppu.supabase.co https://viacep.com.br; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafa Impressão 3D - Catálogo</title>
 <meta name="description" content="Catálogo de peças impressas em 3D da Rafa 3D Dalessi: vasos, chaveiros, brinquedos, suportes e muito mais. Modelos a partir de R$ 9,90.">
@@ -1181,9 +1181,29 @@ class Component extends DCLogic {
   </div>
 </div>
 
+<script src="vendor/qrcode-generator-2.0.4.js"></script>
 <script>
 (function () {
   var SB_FUNC_URL = 'https://zaoyqjzvwuhsqcgigppu.supabase.co/functions/v1/';
+
+  // QR do PIX desenhado AQUI, no navegador (03/11/2026). Antes era uma <img> do api.qrserver.com com o
+  // "copia e cola" inteiro na URL — chave, valor e nome do recebedor iam pra um serviço de terceiro.
+  // Codifica em UTF-8, igual ao copia e cola (nome e cidade do recebedor podem ter acento). Conferido com
+  // um leitor de QR independente (jsQR): lê exatamente o mesmo texto, com e sem acento.
+  // Se a biblioteca não carregar, some só o QR; o copia e cola logo acima continua funcionando.
+  function ckQrPix(codigo) {
+    try {
+      if (!codigo || typeof qrcode !== 'function') throw new Error('sem biblioteca');
+      qrcode.stringToBytes = qrcode.stringToBytesFuncs['UTF-8'];
+      var qr = qrcode(0, 'M');
+      qr.addData(codigo);
+      qr.make();
+      return '<img src="' + qr.createDataURL(5, 4) + '" alt="QR Code do PIX" style="width:170px; border:1px solid #e7e9ef; border-radius:10px; image-rendering:pixelated;">';
+    } catch (e) {
+      console.error('[checkout] não consegui desenhar o QR do PIX:', e);
+      return '<p style="font-size:12px; color:#5b6474;">Não consegui mostrar o QR Code aqui. Use o código "copia e cola" acima.</p>';
+    }
+  }
   var SB_ANON = 'sb_publishable_UPFqlHbmOH84eYiF6ZRfsw_L_31GOqy';
   var WA_NUMBER = '5511987190466';
 
@@ -1785,7 +1805,7 @@ class Component extends DCLogic {
     html += ckPasso(2, 'Cole no app do seu banco',
       '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Abra o banco, procure <strong>PIX</strong> e depois <strong>&ldquo;Pix Copia e Cola&rdquo;</strong>. Cole o código e confira: tem que aparecer <strong>' + fmtMoney(sinal) + '</strong> para <strong>Rafael A. Dalessi</strong>.</div>'
       + '<a onclick="ckVerQr(this)" style="display:inline-block; margin-top:7px; font-size:12px; color:#0061f7; text-decoration:underline; cursor:pointer;">prefiro pagar pelo QR Code</a>'
-      + '<div id="ckQrBox" style="display:none; margin-top:8px;"><img src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(r.pix_copia_cola) + '" style="width:170px; border:1px solid #e7e9ef; border-radius:10px;"></div>');
+      + '<div id="ckQrBox" style="display:none; margin-top:8px;">' + ckQrPix(r.pix_copia_cola) + '</div>');
 
     // O botão verde do WhatsApp é o elemento mais familiar da tela, e
     // era por ele que as pessoas saíam ANTES de pagar — chegavam no

@@ -237,8 +237,12 @@ há modo "só relatar": **o que não estiver na lista o navegador bloqueia**. Si
 cdnjs (script), Google Fonts, Storage do Supabase + `data:`/`blob:` (img), Supabase (connect);
 as janelas de compartilhar (`window.open('')` + `document.write`) **herdam** a política, por
 isso o cdnjs e as fontes estão lá. Catálogo: unpkg e jsDelivr com `'unsafe-eval'` (o
-`support.js` compila o JSX no navegador), Storage + `api.qrserver.com` (QR do PIX) em img,
-Supabase + ViaCEP em connect. As duas mantêm `'unsafe-inline'` (JS inline e `onclick=`), então
+`support.js` compila o JSX no navegador), Storage + `data:` em img, Supabase + ViaCEP em
+connect. **O QR do PIX é desenhado no próprio navegador** (`ckQrPix()` com
+`catalogo/vendor/qrcode-generator-2.0.4.js`, cópia sem alteração do pacote npm, MIT), em UTF-8
+igual ao copia e cola — antes vinha do `api.qrserver.com`, que recebia o PIX inteiro (chave,
+valor, nome) na URL. Conferido com um leitor independente (jsQR) lendo o QR da tela. Não
+voltar a usar gerador de QR de fora. As duas mantêm `'unsafe-inline'` (JS inline e `onclick=`), então
 não barram um XSS já na página — barram carregar script de fora e mandar dado pra fora.
 **Domínio novo (CDN, API, imagem de fora) entra na `<meta>` da página ANTES da funcionalidade**,
 senão ela falha em silêncio com "Refused to ..." no console. Ver o comentário acima de cada `<meta>`.
