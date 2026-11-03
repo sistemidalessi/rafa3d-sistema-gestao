@@ -75,15 +75,27 @@ export default {
     if (!tokenUsuario) return Response.json({ error: "Não autenticado." }, { status: 401 });
     const { data: userData, error: erroUser } = await ctx.supabaseAdmin.auth.getUser(tokenUsuario);
     if (erroUser || !userData?.user) return Response.json({ error: "Sessão inválida." }, { status: 401 });
+    // Só gente ATIVA da loja (achado r3d-08, 03/11/2026): antes bastava estar logado — a conta do agente do
+    // fatiador (papel "agent", patch 57) ou um perfil desativado gastariam crédito da API. Mesmo critério do
+    // is_staff() do banco. Dono e ajudante seguem podendo usar.
+    const { data: perfil } = await ctx.supabaseAdmin.from("profiles").select("role, active").eq("id", userData.user.id).single();
+    if (!perfil || !["owner", "helper"].includes(perfil.role) || perfil.active !== true) {
+      return Response.json({ error: "Só quem é da loja pode pedir a sugestão." }, { status: 403 });
+    }
 
     let corpo;
     try { corpo = await req.json(); } catch { return Response.json({ error: "Corpo inválido." }, { status: 400 }); }
 
-    const nome = String(corpo.nome || "").trim();
+    const nome = String(corpo.nome || "").trim().slice(0, 200);
     const imagemBase64 = String(corpo.imagem_base64 || "");
     const mediaType = String(corpo.media_type || "image/jpeg");
     if (!nome) return Response.json({ error: "Falta o nome do produto." }, { status: 400 });
     if (!imagemBase64) return Response.json({ error: "Falta a foto do produto." }, { status: 400 });
+    // Foto até ~5 MB (em base64 ocupa 4/3) e só os formatos que a API aceita: uma imagem gigante custa caro.
+    if (imagemBase64.length > 7_000_000) return Response.json({ error: "Foto grande demais. Tira outra ou diminui antes de mandar." }, { status: 413 });
+    if (!["image/jpeg", "image/png", "image/webp", "image/gif"].includes(mediaType)) {
+      return Response.json({ error: "Formato de foto não aceito. Usa JPG ou PNG." }, { status: 400 });
+    }
 
     const apiKey = Deno.env.get("ANTHROPIC_API_KEY");
     if (!apiKey) {

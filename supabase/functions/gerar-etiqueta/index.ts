@@ -102,8 +102,9 @@ export default {
     if (!tokenUsuario) return Response.json({ error: "Não autenticado." }, { status: 401 });
     const { data: userData, error: erroUser } = await ctx.supabaseAdmin.auth.getUser(tokenUsuario);
     if (erroUser || !userData?.user) return Response.json({ error: "Sessão inválida." }, { status: 401 });
-    const { data: perfil } = await ctx.supabaseAdmin.from("profiles").select("role").eq("id", userData.user.id).single();
-    if (!perfil || perfil.role !== "owner") return Response.json({ error: "Só o dono pode gerar etiqueta." }, { status: 403 });
+    // Dono ATIVO (achado r3d-12, 03/11/2026): perfil desativado não gera etiqueta, igual ao is_owner() do banco.
+    const { data: perfil } = await ctx.supabaseAdmin.from("profiles").select("role, active").eq("id", userData.user.id).single();
+    if (!perfil || perfil.role !== "owner" || perfil.active !== true) return Response.json({ error: "Só o dono pode gerar etiqueta." }, { status: 403 });
 
     let corpo;
     try { corpo = await req.json(); } catch { return Response.json({ error: "Corpo inválido." }, { status: 400 }); }
