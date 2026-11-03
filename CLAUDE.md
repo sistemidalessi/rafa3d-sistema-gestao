@@ -220,6 +220,18 @@ Toda view nova nasce `with (security_invoker = true)`; depois de apertar
 política, procurar view sem isso (`select relname, reloptions from pg_class
 where relkind = 'v'`).
 
+**Biblioteca de CDN só com versão exata + SRI (03/11/2026).** O sistema e o catálogo
+carregavam `@supabase/supabase-js@2` (versão flutuante, sem `integrity`) e as janelas
+de compartilhar o `html2canvas` sem `integrity`: um pacote adulterado no CDN rodaria
+dentro da sessão logada da equipe, e o catálogo está no mesmo domínio (mesmo
+`localStorage`). Agora as duas páginas apontam pro arquivo original
+`supabase-js@2.118.0/dist/umd/supabase.js` com `integrity` + `crossorigin`, e os três
+`html2canvas` também. Hash conferido contra o registro do pacote e testado dos dois
+lados: hash certo carrega (catálogo com os preços, sistema no login), hash errado o
+navegador bloqueia. **Trocar versão:** mudar no `index.html` E no `catalogo/index.html`,
+recalcular o hash (comando no comentário do `index.html`) e abrir os dois. React,
+ReactDOM e Babel do catálogo já vinham com SRI no `catalogo/support.js`. Ainda sem CSP.
+
 **Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
 TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não
 passa pelo RLS. Saiu de `anon` e `authenticated` em todas as tabelas e das que forem

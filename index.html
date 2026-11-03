@@ -279,7 +279,17 @@
   </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- SEGURANÇA (03/11/2026, mesmo achado do jjs-08 da JJ Solene): biblioteca de CDN sempre com VERSÃO EXATA +
+     integrity (SRI) + crossorigin. Com "@2" (flutuante) e sem SRI, um pacote adulterado no CDN rodaria dentro da
+     sessão logada da equipe — e o catálogo, no mesmo domínio, alcança o mesmo localStorage. Com SRI o navegador
+     RECUSA o arquivo se um byte mudar. Apontar pro arquivo ORIGINAL do pacote (dist/umd/supabase.js, imutável
+     naquela versão), nunca pro "@2" nem pro .min gerado na hora. Fixado na 2.118.0, a que o "@2" entregava.
+     Trocar de versão: mudar a URL AQUI e em catalogo/index.html, recalcular
+       curl -s URL | openssl dgst -sha384 -binary | openssl base64 -A
+     conferir contra https://data.jsdelivr.com/v1/packages/npm/@supabase/supabase-js@<versão>?structure=flat
+     (hash sha256 do arquivo) e abrir o sistema e o catálogo. Hash errado = a biblioteca não carrega e nada abre.
+     O html2canvas das janelas de compartilhar (orçamento e post) segue a mesma regra. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.118.0/dist/umd/supabase.js" integrity="sha384-TcHRA3zBbn+Lexh5n+Oil4guNPOS3rjNDpGRAN46u/s/mB2IZ50ceC6TYDU2yvgK" crossorigin="anonymous"></script>
 <script>
 /* ============================================================
    RAFA 3D — SISTEMA DE GESTÃO
@@ -3622,7 +3632,7 @@ async function preencherOrcamentoCard(lineItemId, janela) {
     // celular (Android/iPhone) e em alguns Chrome de computador — onde
     // não existir, cai pra baixar o arquivo, que ainda é bem menos
     // trabalho que print + recortar.
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"><\/script>' +
     '<script>' +
       'async function gerarImagemCartao() {' +
         'var canvas = await html2canvas(document.getElementById("cartaoOrcamento"), { useCORS: true, scale: 2, backgroundColor: null });' +
@@ -3819,7 +3829,7 @@ async function preencherPostInstagram(productId, janela) {
     '<div class="legenda"><textarea id="legenda" spellcheck="false"></textarea></div>' +
     '<div class="dica">A legenda é ponto de partida — mexa à vontade antes de copiar. O link leva direto pra seção dessa peça no catálogo.</div>' +
 
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"><\/script>' +
     '<script>' +
       'var dados = ' + JSON.stringify(dados) + ';' +
       'var CHAVE = "rafa3d_instagram";' +
@@ -4025,7 +4035,7 @@ async function preencherOrcamentoPedidoCard(orderId, janela) {
       '</div>' +
     '</div>' +
 
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"><\/script>' +
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js" integrity="sha384-ZZ1pncU3bQe8y31yfZdMFdSpttDoPmOZg2wguVK9almUodir1PghgT0eY7Mrty8H" crossorigin="anonymous"><\/script>' +
     '<script>' +
       'async function gerarImagemCartao() {' +
         'var canvas = await html2canvas(document.getElementById("cartaoOrcamento"), { useCORS: true, scale: 2, backgroundColor: null });' +
