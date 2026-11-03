@@ -230,7 +230,18 @@ dentro da sessão logada da equipe, e o catálogo está no mesmo domínio (mesmo
 lados: hash certo carrega (catálogo com os preços, sistema no login), hash errado o
 navegador bloqueia. **Trocar versão:** mudar no `index.html` E no `catalogo/index.html`,
 recalcular o hash (comando no comentário do `index.html`) e abrir os dois. React,
-ReactDOM e Babel do catálogo já vinham com SRI no `catalogo/support.js`. Ainda sem CSP.
+ReactDOM e Babel do catálogo já vinham com SRI no `catalogo/support.js`.
+
+**CSP por `<meta>` no sistema e no catálogo (03/11/2026).** O Pages não manda cabeçalho e não
+há modo "só relatar": **o que não estiver na lista o navegador bloqueia**. Sistema: jsDelivr e
+cdnjs (script), Google Fonts, Storage do Supabase + `data:`/`blob:` (img), Supabase (connect);
+as janelas de compartilhar (`window.open('')` + `document.write`) **herdam** a política, por
+isso o cdnjs e as fontes estão lá. Catálogo: unpkg e jsDelivr com `'unsafe-eval'` (o
+`support.js` compila o JSX no navegador), Storage + `api.qrserver.com` (QR do PIX) em img,
+Supabase + ViaCEP em connect. As duas mantêm `'unsafe-inline'` (JS inline e `onclick=`), então
+não barram um XSS já na página — barram carregar script de fora e mandar dado pra fora.
+**Domínio novo (CDN, API, imagem de fora) entra na `<meta>` da página ANTES da funcionalidade**,
+senão ela falha em silêncio com "Refused to ..." no console. Ver o comentário acima de cada `<meta>`.
 
 **Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
 TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não

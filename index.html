@@ -2,6 +2,21 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8">
+<!-- SEGURANÇA (03/11/2026): Content Security Policy. O GitHub Pages não manda cabeçalho, então ela vem por <meta>
+     e não tem modo "só relatar": o que não estiver listado o navegador BLOQUEIA. Levantada passeando logado pelas
+     10 abas, pelo detalhe do pedido, pela tela de preço e pelas artes de compartilhar (orçamento do pedido, do
+     projeto e post do Instagram, com a imagem gerada de verdade): zero violações.
+       script  -> jsDelivr (supabase-js) e cdnjs (html2canvas das janelas de compartilhar)
+       style   -> Google Fonts; font -> fonts.gstatic.com
+       img     -> Storage do Supabase, data: e blob: (fotos, previews, o html2canvas)
+       connect -> Supabase (banco, Storage, Edge Functions gerar-etiqueta e sugerir-cadastro-produto)
+     As janelas abertas com window.open('') + document.write (cartinha, orçamento, post) HERDAM esta política —
+     por isso o cdnjs e o Google Fonts estão aqui. 'unsafe-inline' é inevitável (todo o JS é inline e há ~250
+     onclick=), então a CSP NÃO barra um XSS já na página; barra o passo seguinte: carregar script de fora e
+     mandar dados pra fora. Domínio novo (CDN, API, imagem de fora) ENTRA AQUI ANTES da funcionalidade, senão ela
+     falha em silêncio ("Refused to ..." no console). Abrir link (WhatsApp, etiqueta, arquivo assinado) é
+     navegação e não passa por aqui. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://zaoyqjzvwuhsqcgigppu.supabase.co; connect-src 'self' https://zaoyqjzvwuhsqcgigppu.supabase.co; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafa 3D — Sistema de Gestão</title>
 <script>

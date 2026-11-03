@@ -2,6 +2,19 @@
 <html>
 <head>
 <meta charset="utf-8">
+<!-- SEGURANÇA (03/11/2026): Content Security Policy por <meta> (o Pages não manda cabeçalho; não há modo "só
+     relatar" — o que não estiver listado é BLOQUEADO). Testada com a política no arquivo desde o primeiro byte:
+     catálogo inteiro rolado (210 preços, fotos do Storage), carrinho, CEP no ViaCEP e cotação de frete, e a
+     imagem do QR do PIX: zero violações.
+       script  -> unpkg (React, ReactDOM, Babel — com SRI no support.js) e jsDelivr (supabase-js, com SRI)
+                  'unsafe-eval' porque o support.js compila o JSX da página no navegador (Babel + new Function);
+                  'unsafe-inline' pelos onclick= e scripts inline do checkout
+       style   -> Google Fonts; font -> fonts.gstatic.com
+       img     -> Storage do Supabase, data:, blob: e api.qrserver.com (o QR do PIX depois de fechar o pedido)
+       connect -> Supabase (banco e Edge Functions calcular-frete / finalizar-pedido) e ViaCEP
+     A política não barra um XSS já na página; barra carregar script de outro lugar e mandar dados pra fora.
+     Domínio novo ENTRA AQUI ANTES. Links (WhatsApp, formulário do Google, Pinterest) são navegação. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' data: https://fonts.gstatic.com; img-src 'self' data: blob: https://zaoyqjzvwuhsqcgigppu.supabase.co https://api.qrserver.com; connect-src 'self' https://zaoyqjzvwuhsqcgigppu.supabase.co https://viacep.com.br; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafa Impressão 3D - Catálogo</title>
 <meta name="description" content="Catálogo de peças impressas em 3D da Rafa 3D Dalessi: vasos, chaveiros, brinquedos, suportes e muito mais. Modelos a partir de R$ 9,90.">
