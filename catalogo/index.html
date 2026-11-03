@@ -1191,6 +1191,13 @@ class Component extends DCLogic {
   // Codifica em UTF-8, igual ao copia e cola (nome e cidade do recebedor podem ter acento). Conferido com
   // um leitor de QR independente (jsQR): lê exatamente o mesmo texto, com e sem acento.
   // Se a biblioteca não carregar, some só o QR; o copia e cola logo acima continua funcionando.
+  // Texto que entra em HTML montado por string (achado r3d-10, 03/11/2026): nome do item, cor, transportadora,
+  // mensagem de erro e número do pedido (este vem do localStorage). Hoje as fontes são o dono e o servidor, mas
+  // o escape fica de propósito — um nome com < ou aspas não quebra mais a tela nem vira código.
+  function ckEsc(s) {
+    return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
+
   function ckQrPix(codigo) {
     try {
       if (!codigo || typeof qrcode !== 'function') throw new Error('sem biblioteca');
@@ -1238,7 +1245,7 @@ class Component extends DCLogic {
   }
 
   function ckHtmlErro() {
-    return CK.erro ? '<div style="background:#fdeaea; color:#c0392b; padding:9px 12px; border-radius:8px; font-size:12.5px; margin-bottom:10px;">' + CK.erro + '</div>' : '';
+    return CK.erro ? '<div style="background:#fdeaea; color:#c0392b; padding:9px 12px; border-radius:8px; font-size:12.5px; margin-bottom:10px;">' + ckEsc(CK.erro) + '</div>' : '';
   }
   function ckLabel(txt) {
     return '<label style="display:block; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.4px; color:#7b879c; margin:12px 0 5px;">' + txt + '</label>';
@@ -1273,7 +1280,7 @@ class Component extends DCLogic {
     CK.cartItems.forEach(function (it, i) {
       var escolhida = CK.cores[it.code] || '';
       html += '<div id="ckCorBloco' + i + '" style="margin-bottom:14px;">';
-      html += '<div style="font-size:12.5px; font-weight:600; color:#0b1733; margin-bottom:2px;">' + it.qty + 'x ' + it.name + '</div>';
+      html += '<div style="font-size:12.5px; font-weight:600; color:#0b1733; margin-bottom:2px;">' + it.qty + 'x ' + ckEsc(it.name) + '</div>';
       html += '<div id="ckCorNome' + i + '" style="font-size:12px; color:' + (escolhida ? '#0f7850' : '#c0392b') + '; margin-bottom:7px;">'
         + (escolhida ? '✓ ' + escolhida : 'Falta escolher a cor') + '</div>';
 
@@ -1282,7 +1289,7 @@ class Component extends DCLogic {
       html += '<div style="display:flex; flex-wrap:wrap; gap:7px;">';
       cores.forEach(function (c) {
         var sel = c.name === escolhida;
-        html += '<button type="button" title="' + c.name.replace(/"/g, '') + '" onclick="ckCorEscolhida(' + i + ', this.dataset.cor)" data-cor="' + c.name.replace(/"/g, '') + '"'
+        html += '<button type="button" title="' + ckEsc(c.name) + '" onclick="ckCorEscolhida(' + i + ', this.dataset.cor)" data-cor="' + ckEsc(c.name) + '"'
           + ' style="width:34px; height:34px; padding:0; border-radius:50%; cursor:pointer; background:' + (c.bg || '#ccc').replace(/"/g, '')
           + '; border:' + (sel ? '3px solid #0061f7' : '1px solid rgba(0,0,0,0.15)')
           + '; box-shadow:' + (sel ? '0 0 0 2px #fff inset' : '0 1px 2px rgba(0,0,0,0.12)') + ';"></button>';
@@ -1513,7 +1520,7 @@ class Component extends DCLogic {
     CK.fretes.forEach(function (f, i) {
       var sel = CK.freteEscolhido && CK.freteEscolhido.id === f.id;
       html += '<div onclick="ckEscolherFrete(' + i + ')" style="display:flex; justify-content:space-between; align-items:center; padding:12px 14px; border:1.5px solid ' + (sel ? '#0061f7' : '#e7e9ef') + '; background:' + (sel ? '#eef4ff' : '#fff') + '; border-radius:10px; margin-bottom:8px; cursor:pointer;">' +
-        '<div><div style="font-weight:700; font-size:13.5px; color:#0b1733;">' + f.transportadora + ' · ' + f.servico + '</div>' +
+        '<div><div style="font-weight:700; font-size:13.5px; color:#0b1733;">' + ckEsc(f.transportadora) + ' · ' + ckEsc(f.servico) + '</div>' +
         '<div style="font-size:12px; color:#7b879c;">' + (f.prazo_dias ? 'chega em até ' + f.prazo_dias + ' dias úteis' : '') + '</div></div>' +
         '<div style="font-weight:700; font-family:\'Space Grotesk\',sans-serif;">' + fmtMoney(f.preco) + '</div></div>';
     });
@@ -1535,7 +1542,7 @@ class Component extends DCLogic {
     var html = ckHtmlErro();
     html += '<div style="font-size:13px; line-height:1.9;">';
     CK.cartItems.forEach(function (it) {
-      html += '<div style="display:flex; justify-content:space-between;"><span>' + it.qty + 'x ' + it.name + '</span><strong>' + fmtMoney(it.qty * it.priceNum) + '</strong></div>';
+      html += '<div style="display:flex; justify-content:space-between;"><span>' + it.qty + 'x ' + ckEsc(it.name) + '</span><strong>' + fmtMoney(it.qty * it.priceNum) + '</strong></div>';
     });
     html += '<div style="display:flex; justify-content:space-between;"><span>Frete</span><strong>' + (CK.combinar ? 'a combinar' : fmtMoney(CK.freteEscolhido.preco)) + '</strong></div>';
     html += '</div><hr style="border:none; border-top:1px solid #e7e9ef; margin:12px 0;">';
@@ -1671,7 +1678,7 @@ class Component extends DCLogic {
   // o Rafa não sabe nem de qual pedido é. Esta mensagem já vai com o
   // número e o valor, então ele responde sem ter que investigar.
   function ckLinkDuvida(r) {
-    var texto = 'Olá! Fechei o pedido ' + r.pedido_numero + ' no catálogo ('
+    var texto = 'Olá! Fechei o pedido ' + ckEsc(r.pedido_numero) + ' no catálogo ('
       + fmtMoney(contaDoPagamento(r).agora) + ') mas tive uma dúvida no pagamento. Pode me ajudar?';
     var base = String(r.whatsapp_url || '').split('?text=')[0];
     if (!base) return r.whatsapp_url || '#';
@@ -1738,7 +1745,7 @@ class Component extends DCLogic {
     // O caminho abaixo só aparece se o servidor não tiver mandado PIX,
     // que é a versão antiga da função. Some assim que o deploy sair.
     if (r.combinar && !r.pix_copia_cola) {
-      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
+      html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + ckEsc(r.pedido_numero) + ' separado!</div>';
       html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
         + '<strong>Falta combinar a entrega.</strong> O pagamento vem logo depois disso — me chame que eu te explico tudo.</div>';
 
@@ -1760,7 +1767,7 @@ class Component extends DCLogic {
       html += ckPasso(3, 'Eu imprimo e mando',
         '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Te aviso quando a sua peça ficar pronta e combino a entrega com você.</div>');
 
-      html += '<div style="font-size:12px; color:#7b879c; margin-top:16px;">Guarde este número: <strong>pedido ' + r.pedido_numero + '</strong>.</div>';
+      html += '<div style="font-size:12px; color:#7b879c; margin-top:16px;">Guarde este número: <strong>pedido ' + ckEsc(r.pedido_numero) + '</strong>.</div>';
       html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
       return html + '</div>';
     }
@@ -1772,7 +1779,7 @@ class Component extends DCLogic {
     // Nada de "🎉 pedido criado" aqui: o pedido ainda não está de pé, e
     // a versão anterior comemorava justamente na hora em que faltava o
     // passo mais importante. Muita gente fechava achando que acabou.
-    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + r.pedido_numero + ' separado!</div>';
+    html += '<div style="font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:17px; color:#0b1733;">Pedido ' + ckEsc(r.pedido_numero) + ' separado!</div>';
     html += '<div style="background:#fff6e5; border:1px solid #ffd894; border-radius:10px; padding:9px 12px; margin-top:9px; font-size:12.5px; color:#8a5b00; line-height:1.5;">'
       + '<strong>Ainda falta pagar.</strong> Eu começo a imprimir a sua peça assim que o pagamento cair.</div>';
 
@@ -1800,7 +1807,7 @@ class Component extends DCLogic {
     html += ckPasso(1, 'Copie o código do PIX',
       '<button onclick="ckCopiarPix(this)" style="width:100%; padding:13px; border:none; border-radius:10px; background:#0061f7; color:#fff; font-family:\'Space Grotesk\',sans-serif; font-weight:700; font-size:14.5px; cursor:pointer;">Copiar o código PIX</button>'
       + '<div id="ckPixCru" style="display:none; margin-top:8px;"><div style="font-size:11px; color:#7b879c; margin-bottom:4px;">Copie este código à mão:</div>'
-      + '<textarea readonly style="width:100%; height:58px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + r.pix_copia_cola + '</textarea></div>');
+      + '<textarea readonly style="width:100%; height:58px; font-size:10.5px; padding:8px; border:1.5px solid #dde1e8; border-radius:8px; font-family:monospace; box-sizing:border-box;" onclick="this.select()">' + ckEsc(r.pix_copia_cola) + '</textarea></div>');
 
     html += ckPasso(2, 'Cole no app do seu banco',
       '<div style="font-size:12.5px; color:#5b6a85; line-height:1.6;">Abra o banco, procure <strong>PIX</strong> e depois <strong>&ldquo;Pix Copia e Cola&rdquo;</strong>. Cole o código e confira: tem que aparecer <strong>' + fmtMoney(sinal) + '</strong> para <strong>Rafael A. Dalessi</strong>.</div>'
@@ -1832,7 +1839,7 @@ class Component extends DCLogic {
               : 'Confirmo o seu pagamento &rarr; imprimo a sua peça &rarr; te aviso quando ficar pronta &rarr; eu envio.'))
       + '</div>';
 
-    html += '<div style="font-size:12px; color:#7b879c; margin-top:12px;">Pode fechar sem medo: guardei o seu <strong>pedido ' + r.pedido_numero + '</strong> aqui e o PIX volta a aparecer quando você abrir a loja de novo.</div>';
+    html += '<div style="font-size:12px; color:#7b879c; margin-top:12px;">Pode fechar sem medo: guardei o seu <strong>pedido ' + ckEsc(r.pedido_numero) + '</strong> aqui e o PIX volta a aparecer quando você abrir a loja de novo.</div>';
     html += '<button onclick="fecharCheckoutModal()" style="width:100%; margin-top:8px; padding:10px; border:none; background:none; color:#7b879c; font-size:13px; cursor:pointer;">Fechar</button>';
     html += '</div>';
     return html;
@@ -1908,7 +1915,7 @@ class Component extends DCLogic {
     var barra = document.createElement('div');
     barra.id = 'avisoPedidoAberto';
     barra.style.cssText = 'position:fixed; left:0; right:0; bottom:0; z-index:9998; background:#0b1733; color:#fff; padding:11px 14px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; justify-content:center; box-shadow:0 -3px 14px rgba(0,0,0,0.25); font-family:\'Space Grotesk\',sans-serif;';
-    barra.innerHTML = '<span style="font-size:13px; line-height:1.4;">O seu <strong>pedido ' + r.pedido_numero + '</strong> está esperando o pagamento de <strong>' + fmtMoney(sinal) + '</strong>.</span>'
+    barra.innerHTML = '<span style="font-size:13px; line-height:1.4;">O seu <strong>pedido ' + ckEsc(r.pedido_numero) + '</strong> está esperando o pagamento de <strong>' + fmtMoney(sinal) + '</strong>.</span>'
       + '<button onclick="ckReabrirPedido()" style="border:none; border-radius:9px; background:#0061f7; color:#fff; font-family:inherit; font-weight:700; font-size:13px; padding:9px 15px; cursor:pointer;">Ver o PIX de novo</button>'
       + '<button onclick="ckEsquecerPedido()" style="border:none; background:none; color:#8ea0c0; font-size:12px; cursor:pointer; text-decoration:underline;">já paguei</button>';
     document.body.appendChild(barra);

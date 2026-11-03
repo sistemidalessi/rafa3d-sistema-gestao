@@ -391,13 +391,22 @@ function extrairMiniatura(fileBuf) {
 // caminho relativo dentro de catalogo/assets (produto antigo, importado por
 // SQL) — nesse segundo caso é arquivo local, lido do próprio checkout do
 // repositório, já que catalogo/ é pasta irmã de slicer-agent/.
+// Segurança (auditoria de 11/09/2026, achado r3d-09; 03/11/2026): image_path vem do banco, então o agente não
+// confia nele. URL só do Storage DESTE projeto (antes baixava qualquer endereço); caminho local só DENTRO da pasta
+// catalogo/ (antes um "../../" lia qualquer arquivo do computador). Conferido no banco real: as 208 fotos são
+// todas de um dos dois tipos (47 do Storage, 161 locais), então nada que funciona deixa de funcionar.
+const PASTA_CATALOGO = path.resolve(__dirname, '..', 'catalogo');
 async function baixarFotoDoCatalogo(imagePath) {
-  if (/^https?:\/\//.test(imagePath)) {
-    const resp = await fetch(imagePath);
+  const valor = String(imagePath || '');
+  if (/^https?:\/\//i.test(valor)) {
+    const storageDoProjeto = new URL(SUPABASE_URL).origin + '/storage/v1/';
+    if (!valor.startsWith(storageDoProjeto)) throw new Error('a foto do catálogo não é do Storage do sistema: ' + valor.slice(0, 80));
+    const resp = await fetch(valor);
     if (!resp.ok) throw new Error('a foto do catálogo respondeu ' + resp.status + '.');
     return Buffer.from(await resp.arrayBuffer());
   }
-  const caminhoLocal = path.join(__dirname, '..', 'catalogo', imagePath);
+  const caminhoLocal = path.resolve(PASTA_CATALOGO, valor);
+  if (!caminhoLocal.startsWith(PASTA_CATALOGO + path.sep)) throw new Error('o caminho da foto sai da pasta do catálogo: ' + valor.slice(0, 80));
   if (!fs.existsSync(caminhoLocal)) throw new Error('a foto do catálogo não foi encontrada em ' + caminhoLocal + '.');
   return fs.readFileSync(caminhoLocal);
 }
