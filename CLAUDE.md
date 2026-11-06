@@ -265,6 +265,11 @@ mais de 5 anos perdem nome, WhatsApp, CPF e endereço (valor e itens ficam), e a
 apagado há mais de 5 anos. O checkout avisa isso. Coluna nova com dado pessoal em `orders` ou
 `customers` entra na rotina. Ver execuções: `select * from cron.job_run_details order by start_time desc`.
 
+**Etiqueta não é paga duas vezes (06/11/2026).** A `gerar-etiqueta` reserva o pedido antes de comprar (marca
+"gerando a etiqueta desde ..." em `shipping_label_error`, vence em 3 min: o status só aceita `gerada`/`erro`) e,
+logo depois do pagamento no Melhor Envio, grava `gerada` + `shipping_melhorenvio_id` sem link. Se a geração falhar
+depois de pagar, o próximo clique cai na recuperação (gera de novo e busca o link), sem comprar outra etiqueta.
+
 **Storage sem listagem pelo visitante (patch 63, 06/11/2026).** A foto do catálogo abre pela URL pública,
 que não passa por política; a leitura de `produtos-fotos` em `storage.objects` é só do dono (o upload com
 `upsert: true` precisa dela). Política de Storage nova: `to authenticated`, com `bucket_id` e `is_owner()`/

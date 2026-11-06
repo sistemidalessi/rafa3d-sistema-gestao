@@ -140,6 +140,9 @@ export default {
     // Recuperação: a etiqueta já existe e já foi paga, só falta o link.
     // Não passa por carrinho, checkout nem generate — nada é comprado.
     if (precisaRecuperar) {
+      // Se o pagamento passou e a geração falhou (06/11/2026), a etiqueta paga ainda não foi gerada: pede de novo.
+      // Gerar não cobra (quem cobra é o checkout); se já estava gerada, o Melhor Envio recusa e segue.
+      try { await chamarMelhorEnvio("/shipment/generate", token, "POST", { orders: [pedido.shipping_melhorenvio_id] }); } catch (_) { /* já gerada */ }
       const { url, tracking, motivo } = await buscarEtiquetaPronta(pedido.shipping_melhorenvio_id, token);
       if (!url) {
         // O motivo vai junto: sem ele, a tela dizia "tente de novo" pra
@@ -157,6 +160,19 @@ export default {
       return Response.json({ ok: true, recuperada: true, tracking, label_url: url });
     }
 
+    // Reserva o pedido antes de comprar (06/11/2026): dois cliques ao mesmo tempo passavam juntos pela conferência
+    // de "já gerada" e pagavam duas etiquetas. A coluna de status só aceita 'gerada'/'erro', então a marca de
+    // "gerando" vai no shipping_label_error, e vence sozinha em 3 minutos (se a função cair no meio).
+    const marca = "gerando a etiqueta desde " + new Date().toISOString();
+    const { data: reservado } = await ctx.supabaseAdmin.from("orders").update({ shipping_label_error: marca })
+      .eq("id", orderId)
+      // aqui o status já é vazio ou 'erro' (a 'gerada' saiu antes); o que decide é a marca de outro clique em andamento
+      .or('shipping_label_error.is.null,shipping_label_error.not.like."gerando a etiqueta desde*",shipping_label_error.lt."gerando a etiqueta desde ' +
+        new Date(Date.now() - 180000).toISOString() + '"')
+      .select("id");
+    if (!reservado?.length) return Response.json({ error: "A etiqueta desse pedido já está sendo gerada. Espere um pouco e atualize." }, { status: 409 });
+
+    let pago = false;
     try {
       const carrinho = await chamarMelhorEnvio("/cart", token, "POST", {
         service: pedido.shipping_service_id,
@@ -197,6 +213,14 @@ export default {
 
       const cartItemId = carrinho.id;
       await chamarMelhorEnvio("/shipment/checkout", token, "POST", { orders: [cartItemId] });
+      pago = true;
+      await ctx.supabaseAdmin.from("orders").update({
+        shipping_label_status: "gerada",
+        shipping_melhorenvio_id: cartItemId,
+        shipping_label_url: null,
+        shipping_label_error: "etiqueta paga; falta o link (clique de novo para buscar)",
+        updated_at: new Date().toISOString(),
+      }).eq("id", orderId);
       await chamarMelhorEnvio("/shipment/generate", token, "POST", { orders: [cartItemId] });
 
       const { url, tracking } = await buscarEtiquetaPronta(cartItemId, token);
@@ -214,7 +238,7 @@ export default {
     } catch (e: any) {
       console.error("Erro gerando etiqueta:", e.message, e.detalhe);
       await ctx.supabaseAdmin.from("orders").update({
-        shipping_label_status: "erro",
+        ...(pago ? {} : { shipping_label_status: "erro" }),
         shipping_label_error: (e.message || "erro desconhecido") + (e.detalhe ? " — " + JSON.stringify(e.detalhe) : ""),
         updated_at: new Date().toISOString(),
       }).eq("id", orderId);
