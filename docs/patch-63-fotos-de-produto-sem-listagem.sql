@@ -1,5 +1,8 @@
 -- =====================================================================
 -- Patch 63 (06/11/2026): visitante não lista mais o bucket produtos-fotos
+-- APLICADO em 06/11/2026 com o "sim" do Anderson, depois do ensaio (visitante
+-- listava 93 arquivos e passou a 0; o dono segue com 93). Provado de fora com
+-- a chave pública: listagem vazia, foto do catálogo abre (HTTP 200).
 --
 -- Achado pela consulta docs/auditoria-storage.sql do sistemi-dalessi, rodada
 -- no painel em 06/11/2026: a política produtos_fotos_select (SELECT para

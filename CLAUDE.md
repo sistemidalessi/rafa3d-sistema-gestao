@@ -265,6 +265,11 @@ mais de 5 anos perdem nome, WhatsApp, CPF e endereço (valor e itens ficam), e a
 apagado há mais de 5 anos. O checkout avisa isso. Coluna nova com dado pessoal em `orders` ou
 `customers` entra na rotina. Ver execuções: `select * from cron.job_run_details order by start_time desc`.
 
+**Storage sem listagem pelo visitante (patch 63, 06/11/2026).** A foto do catálogo abre pela URL pública,
+que não passa por política; a leitura de `produtos-fotos` em `storage.objects` é só do dono (o upload com
+`upsert: true` precisa dela). Política de Storage nova: `to authenticated`, com `bucket_id` e `is_owner()`/
+`is_agent()`, nunca para `anon`/`public`. Conferir com `docs/auditoria-storage.sql` do sistemi-dalessi.
+
 **Sem TRUNCATE pela API (patch 59, 03/11/2026).** O padrão antigo do Supabase dava
 TRUNCATE ao visitante e às contas logadas em toda tabela; TRUNCATE apaga tudo e não
 passa pelo RLS. Saiu de `anon` e `authenticated` em todas as tabelas e das que forem
